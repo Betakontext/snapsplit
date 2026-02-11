@@ -1,28 +1,37 @@
-Das Blender (5.0.1) Addon „SnapSplit“ automatisiert das Zerlegen komplexer 3D‑Modelle in druckbare Einzelteile und generiert präzise, passgenaue Steckverbindungen ohne Kleber. Es integriert sich in einen 3D‑Druck‑Workflow (Toleranzen, Ausrichtung, Bauraum, Stützvermeidung) und nutzt robuste Booleans, adaptive Toleranzmodelle und Drucker-/Materialprofile.
+This first version of the “SnapSplit” add-on for Blender (5.0.1) automates splitting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
 
-Das Addon enthält:
+It integrates into a 3D printing workflow (tolerances, alignment, build volume, support avoidance) and uses robust booleans, adaptive tolerance models, and printer/material profiles.
 
-    Panel im 3D‑View (N‑Panel → „SnapSplit“)
-    Property‑Gruppe mit:
-        Teileanzahl (z. B. 2–8)
-        Verbindungsart (Zylinder‑Pin, Rechteck‑Zapfen)
-        Material-/Druckerprofil (PLA, PETG, ABS, ASA, TPU, SLA)
-        daraus abgeleitete Toleranzen (pro Seite)
-    Operatoren:
-        Planar Split entlang globaler Achse, auf die angegebene Teileanzahl
-        Automatische Platzierung und Erzeugung der Steckverbindungen entlang der Naht
-        Exporthilfe (optional im Skeleton als Stub)
-    QA‑Checks (leichtgewichtig) und best‑practice Addon-Struktur
+Scene Units: Metric, Length Millimeters, Unit Scale 1.000
 
-Bitte beachte: Dies ist ein solides Startgerüst. Die Geometriealgorithmen sind auf Robustheit ausgelegt, aber minimal gehalten. Du kannst später Freiform‑Nähte, Bajonett, Schwalbenschwanz, Magnettaschen, Support‑Aware Features usw. ergänzen.
+The add-on includes:
+
+    Panel in the 3D View (N-Panel → “SnapSplit”)
+
+    Property group with:
+        Number of parts (e.g., 2–8)
+        Connector type (Cylindrical Pin, Rectangular Tenon)
+        Material/Printer profile (PLA, PETG, ABS, ASA, TPU, SLA)
+        Derived tolerances (per side)
+
+    Operators:
+        Planar Split along a global axis into the specified number of parts
+        Grid Split on the cut face with rows and columns input
+        Percentage-based edge margin for connector placement
+        Adjustable insertion depth. Default: 50%
+        Automatic placement and generation of connectors
+
+This is a solid starting scaffold. The geometry algorithms prioritize robustness and remain minimal for now. Future versions can add free-form seams, bayonet locks, dovetails, magnet pockets, support-aware features, etc.
 
 Installation
 
-    Lege die unten gezeigte Ordnerstruktur an und ziple den Ordner „snapsplit“ (nicht den Inhalt, sondern den Ordner selbst).
-    In Blender: Edit → Preferences → Add-ons → Install… → ZIP auswählen → aktivieren.
-    N‑Panel öffnen (Taste N) → Tab „SnapSplit“.
+    Create the folder structure shown below and zip the “snapsplit” folder (zip the folder itself, not just its contents).
 
-Ordnerstruktur (für die ZIP):
+    In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
+
+    Open the N-Panel (press N) → “SnapSplit” tab.
+
+Folder structure (for the ZIP):
 
     snapsplit/
         init.py
@@ -33,50 +42,67 @@ Ordnerstruktur (für die ZIP):
         utils.py
         profiles.py
 
-Toleranzprofile (Richtwerte, anpassbar)
+Tolerance profiles (guidelines, adjustable)
 
-    PLA: 0.15–0.25 mm pro Seite
-    PETG: 0.25–0.35 mm pro Seite
-    ABS/ASA: 0.20–0.30 mm pro Seite
-    TPU: 0.30–0.45 mm pro Seite
-    SLA: 0.05–0.15 mm pro Seite
+    PLA: 0.15–0.25 mm per side
+    PETG: 0.25–0.35 mm per side
+    ABS/ASA: 0.20–0.30 mm per side
+    TPU: 0.30–0.45 mm per side
+    SLA: 0.05–0.15 mm per side
 
-Diese werden im Addon als Presets vorgegeben und können vom Nutzer übersteuert werden. Ein künftiger Kalibrier‑Wizard kann Messwerte rückkoppeln.
+These are provided as presets in the add-on and can be overridden by the user. A future calibration wizard can feed measured values back into the model.
 
-Hinweise zur Verwendung
+Usage notes
 
-    Wähle ein geschlossenes Mesh (manifold). Skala anwenden (Ctrl+A → Scale). Einheit mm optional in Scene Settings.
-    N‑Panel → SnapSplit:
-        Teileanzahl und Schnittachse wählen.
-        Planar Split ausführen. Es entstehen mehrere Teile in der Sammlung „_SnapSplit_Parts“.
-    Wähle zwei oder mehr benachbarte Teile aus (Reihenfolge egal).
-    Wähle Verbindungsart und Toleranzprofil (optional Override).
-    „Verbinder hinzufügen“ klicken. Pins/Zapfen werden auf einer gedachten Nahtlinie verteilt:
-        Pin/Zapfen wird an Teil A vereinigt, in Teil B eine Buchse mit Toleranz geschnitten.
-    Exportiere Teile wie gewohnt (STL/OBJ/3MF). Tipp: für 3MF bitte Skala/Einheiten prüfen.
+    Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
 
-Grenzen und nächste Schritte
+    Scale Unit 1.000
 
-    Der aktuelle „Planar Split“ nutzt Heuristiken und große Cutter-Körper. Für hochkomplexe Geometrien sind gelegentlich manuelle Nacharbeiten sinnvoll.
-    Verbinder werden aktuell entlang einer groben Mittellinie platziert; spätere Versionen können:
-        Nahtkurve exakt bestimmen,
-        Überhang-/Wandstärke‑Aware Platzierung,
-        Anti‑Verdreh-Kombinationen automatisch setzen,
-        Freiform‑/Krümmungsbasierte Nähte,
-        Kalibrier‑Wizard für präzisere Toleranzen.
-    SLA‑Modelle benötigen ggf. Entlüftungsbohrungen in Buchsen (geplant).
+    N-Panel → SnapSplit:
+        Choose desired number of parts and split axis.
+        Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
-Qualitätssicherung und Fehlervermeidung
+    Select two or more adjacent parts (order does not matter).
 
-    Vor Split: 3D‑Printing Toolbox nutzen (Manifold, Thin Walls, Intersections).
-    Nach Split: Sichtprüfung, ob alle Teile Polygone enthalten.
-    Wenn Booleans fehlschlagen: Remesh (Voxel, moderat), Doppelte Vertices entfernen, Normals rücksetzen.
-    Skalierung: Arbeite in mm‑Werten, das Addon rechnet korrekt nach Blender‑Metern um.
+    Choose connector type and tolerance profile (optional override).
 
-Wenn du möchtest, erweitere ich dir als Nächstes:
+    Click “Add Connectors”.
 
-    einen Export‑Operator (3MF mit Metadaten),
-    ein QA‑Panel (Manifold-/Wandstärke‑Checks),
-    Bajonett/Schwalbenschwanz‑Verbinder,
-    einen Kalibrier‑Wizard für Toleranzen.
+    Pins/tenons are distributed along a seam line or across the seam surface:
+        The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
+    Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+
+Limitations and next steps
+
+    The current Planar Split uses heuristics and large cutter bodies. For highly complex geometry, occasional manual cleanup may be helpful.
+
+    Connectors are currently placed along a coarse midline or in a grid across the seam surface.
+
+    Roadmap ideas:
+        Determine seam curves precisely
+        Overhang/wall-thickness–aware placement
+        Automatic anti-rotation combinations
+        Freeform/curvature-based seams
+        Calibration wizard for more accurate tolerances
+        Export operator (3MF with metadata)
+        QA panel (manifold/wall-thickness checks)
+        Bayonet/dovetail connectors
+        A calibration wizard for tolerances
+
+    SLA models may require vent holes in sockets (planned).
+
+Quality assurance and error prevention
+
+    Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
+
+    After splitting: visually check that all parts contain polygons.
+
+    If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
+
+    Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
+
+The project is made with AI assistance (GPT 5) and under the MIT license.
+
+If you want to contribute, fork and explore the code. Have fun splitting and printing.
+CONTACT: info@betakontext.de

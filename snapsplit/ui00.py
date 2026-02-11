@@ -31,24 +31,16 @@ class SNAP_PT_panel(Panel):
         col = layout.column(align=True)
         col.label(text="Verbindungen")
         col.prop(props, "connector_type")
-        col.prop(props, "connector_distribution")
-        if props.connector_distribution == "LINE":
-            col.prop(props, "connectors_per_seam")
-        else:
-            row = col.row(align=True)
-            row.prop(props, "connectors_per_seam", text="Spalten")
-            row.prop(props, "connectors_rows", text="Reihen")
-        col.prop(props, "connector_margin_pct")  # Randabstand %
+        col.prop(props, "connectors_per_seam")
+        col.prop(props, "connector_margin_pct")  # NEU: Randabstand in %
 
         box = col.box()
         if props.connector_type == "CYL_PIN":
             box.prop(props, "pin_diameter_mm")
             box.prop(props, "pin_length_mm")
-            box.prop(props, "pin_embed_pct")
         else:
             box.prop(props, "tenon_width_mm")
             box.prop(props, "tenon_depth_mm")
-            box.prop(props, "pin_embed_pct")
         box.prop(props, "add_chamfer_mm")
 
         layout.separator()
