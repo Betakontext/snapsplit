@@ -1,4 +1,5 @@
-This first version of the “SnapSplit” add-on for Blender (5.0.1) automates splitting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
+This is a first version of “SnapSplit”.
+An add-on for Blender (5.0.1) that automates splitting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
 
 It integrates into a 3D printing workflow (tolerances, alignment, build volume, support avoidance) and uses robust booleans, adaptive tolerance models, and printer/material profiles.
 
@@ -31,16 +32,16 @@ Installation
 
     Open the N-Panel (press N) → “SnapSplit” tab.
 
-Folder structure (for the ZIP):
+Folder structure (for the *.ZIP):
 
-    snapsplit/
-        init.py
-        ops_split.py
-        ops_connectors.py
-        ui.py
-        prefs.py
-        utils.py
-        profiles.py
+snapsplit/
+    __init__.py
+    ops_split.py
+    ops_connectors.py
+    ui.py
+    prefs.py
+    utils.py
+    profiles.py
 
 Tolerance profiles (guidelines, adjustable)
 
@@ -54,55 +55,44 @@ These are provided as presets in the add-on and can be overridden by the user. A
 
 Usage notes
 
-    Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
-
-    Scale Unit 1.000
-
-    N-Panel → SnapSplit:
+    - Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
+    - Scale Unit 1.000, Millimeters
+    - N-Panel → SnapSplit:
         Choose desired number of parts and split axis.
         Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
-
-    Select two or more adjacent parts (order does not matter).
-
-    Choose connector type and tolerance profile (optional override).
-
-    Click “Add Connectors”.
+    - Select two or more adjacent parts (order does not matter).
+    - Choose connector type and tolerance profile (optional override).
+    -> Click “Add Connectors”.
 
     Pins/tenons are distributed along a seam line or across the seam surface:
-        The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
+    The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
     Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
-Limitations and next steps
-
+Limitations and next steps:
     The current Planar Split uses heuristics and large cutter bodies. For highly complex geometry, occasional manual cleanup may be helpful.
-
     Connectors are currently placed along a coarse midline or in a grid across the seam surface.
 
-    Roadmap ideas:
-        Determine seam curves precisely
-        Overhang/wall-thickness–aware placement
-        Automatic anti-rotation combinations
-        Freeform/curvature-based seams
-        Calibration wizard for more accurate tolerances
-        Export operator (3MF with metadata)
-        QA panel (manifold/wall-thickness checks)
-        Bayonet/dovetail connectors
-        A calibration wizard for tolerances
+Roadmap ideas:
+    Determine seam curves precisely
+    Overhang/wall-thickness–aware placement
+    Automatic anti-rotation combinations
+    Freeform/curvature-based seams
+    Calibration wizard for more accurate tolerances
+    Export operator (3MF with metadata)
+    QA panel (manifold/wall-thickness checks)
+    Bayonet/dovetail connectors
+    A calibration wizard for tolerances
 
-    SLA models may require vent holes in sockets (planned).
+SLA models may require vent holes in sockets (planned).
 
 Quality assurance and error prevention
 
-    Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
-
-    After splitting: visually check that all parts contain polygons.
-
-    If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
-
-    Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
+    - Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
+    - After splitting: visually check that all parts contain polygons.
+    - If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
+    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
 
 The project is made with AI assistance (GPT 5) and under the MIT license.
-
 If you want to contribute, fork and explore the code. Have fun splitting and printing.
 CONTACT: info@betakontext.de
