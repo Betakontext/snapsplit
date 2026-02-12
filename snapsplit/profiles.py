@@ -16,121 +16,121 @@ MATERIAL_PROFILES = {
     "SLA": 0.10,
 }
 
-# Statische Items-Liste, damit default ein String sein darf
-MATERIAL_ITEMS = [(k, k, f"Empf. Toleranz pro Seite: {v:.2f} mm") for k, v in MATERIAL_PROFILES.items()]
+# Static items list to allow string default
+MATERIAL_ITEMS = [(k, k, f"Recommended tolerance per side: {v:.2f} mm") for k, v in MATERIAL_PROFILES.items()]
 
 class SnapSplitProps(PropertyGroup):
-    # Segmentierung
+    # Segmentation
     parts_count: bpy.props.IntProperty(
-        name="Teileanzahl",
+        name="Number of Parts",
         default=2,
         min=2,
         max=12,
-        description="Anzahl der gewünschten Segmente",
+        description="Number of desired segments",
     )
     split_axis: bpy.props.EnumProperty(
-        name="Schnittachse",
+        name="Split Axis",
         items=[
-            ("X", "X", "Entlang X teilen"),
-            ("Y", "Y", "Entlang Y teilen"),
-            ("Z", "Z", "Entlang Z teilen"),
+            ("X", "X", "Split along X"),
+            ("Y", "Y", "Split along Y"),
+            ("Z", "Z", "Split along Z"),
         ],
         default="Z",
     )
 
-    # Verbinder-Typ und Verteilung
+    # Connector Type and Distribution
     connector_type: bpy.props.EnumProperty(
-        name="Verbindungsart",
+        name="Connector Type",
         items=[
-            ("CYL_PIN", "Zylinder-Pin", "Rundstift + Buchse"),
-            ("RECT_TENON", "Rechteck-Zapfen", "Anti-Verdreh-Verbindung"),
+            ("CYL_PIN", "Cylinder Pin", "Dowel pin + socket"),
+            ("RECT_TENON", "Rectangular Tenon", "Anti-rotation joint"),
         ],
         default="CYL_PIN",
     )
     connector_distribution: EnumProperty(
-        name="Verteilung",
-        description="Verbinder entlang einer Linie oder als Gitter über die Nahtfläche verteilen",
+        name="Distribution",
+        description="Distribute connectors along a line or grid across the seam face",
         items=[
-            ("LINE", "Linie", "Verbinder entlang einer Linie in der Nahtfläche"),
-            ("GRID", "Gitter", "Verbinder als Gitter über die Nahtfläche"),
+            ("LINE", "Line", "Place connectors along a line in the seam face"),
+            ("GRID", "Grid", "Distribute connectors in a grid over the seam face"),
         ],
         default="LINE",
     )
     connectors_per_seam: bpy.props.IntProperty(
-        name="Verbinder je Naht",
+        name="Connectors per Seam",
         default=3,
         min=1,
         max=64,
     )
     connectors_rows: IntProperty(
-        name="Reihen (GRID)",
-        description="Anzahl der Reihen bei Gitter-Verteilung",
+        name="Rows (GRID)",
+        description="Number of rows in grid distribution",
         default=2,
         min=1,
         max=64,
     )
 
-    # Maße Pins / Zapfen
+    # Pin / Tenon Dimensions
     pin_diameter_mm: FloatProperty(
-        name="Pin Ø (mm)",
+        name="Pin Diameter (mm)",
         default=5.0,
         min=0.5,
         soft_max=50.0,
     )
     pin_length_mm: FloatProperty(
-        name="Pin Länge (mm)",
+        name="Pin Length (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
     tenon_width_mm: FloatProperty(
-        name="Zapfen Breite (mm)",
+        name="Tenon Width (mm)",
         default=6.0,
         min=1.0,
         soft_max=100.0,
     )
     tenon_depth_mm: FloatProperty(
-        name="Zapfen Tiefe (mm)",
+        name="Tenon Depth (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
     add_chamfer_mm: FloatProperty(
-        name="Fase (mm)",
+        name="Chamfer (mm)",
         default=0.3,
         min=0.0,
         soft_max=2.0,
     )
 
-    # Einstecktiefe
+    # Insert Depth
     pin_embed_pct: FloatProperty(
-        name="Einstecktiefe (%)",
-        description="Wie viel Prozent der Verbinder-Länge in Teil A versenkt wird",
+        name="Insert Depth (%)",
+        description="Percentage of connector length recessed into part A",
         default=50.0,
         min=0.0,
         max=100.0,
         subtype='PERCENTAGE'
     )
 
-    # Verteilungs-Randabstand
+    # Margin for Distribution
     connector_margin_pct: FloatProperty(
-        name="Randabstand (%)",
-        description="Randabstand entlang der Naht (und senkrecht dazu bei GRID) in Prozent der Teil-Länge (0–40 % empfohlen)",
+        name="Margin (%)",
+        description="Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)",
         default=10.0,
         min=0.0,
         soft_max=40.0,
         subtype='PERCENTAGE'
     )
 
-    # Toleranzen / Materialprofil
+    # Tolerances / Material Profile
     material_profile: bpy.props.EnumProperty(
-        name="Materialprofil",
-        items=MATERIAL_ITEMS,   # statisch
+        name="Material Profiles",
+        items=MATERIAL_ITEMS,   # static
         default="PLA",
     )
     tol_override: FloatProperty(
-        name="Toleranz pro Seite (mm)",
-        description="Übersteuert das Materialprofil (0 = Profilwert verwenden)",
+        name="Tolerance per Face (mm)",
+        description="Overrides material profile (0 = use profile value)",
         default=0.0,
         min=0.0,
         soft_max=0.6,
@@ -151,4 +151,4 @@ def unregister():
     if hasattr(bpy.types.Scene, "snapsplit"):
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
-        bpy.utils.unregister_class(c)
+        bpy.utils.unregister_class(c)   
