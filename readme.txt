@@ -102,6 +102,6 @@ Necessary folder structure (inside snapsplit.zip):
 
 ---------------------------
 
-The project is made with AI assistance (GPT 5) and under the MIT license.
+The project is made with AI assistance (GPT 5) and under the terms of the GNU General Public License.
 If you want to contribute, fork and explore the code. Have fun splitting and printing.
 CONTACT: info@betakontext.de
