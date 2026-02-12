@@ -24,15 +24,13 @@ This file is part of SnapSplit
 
 
 bl_info = {
-    "name": "SnapSplit – Print-ready segmentation with connectors"
-            " / SnapSplit – Druckgerechte Segmentierung mit Steckverbindern",
+    "name": "SnapSplit – Print-ready segmentation with connectors",
     "author": "Betakontext | Christoph Medicus",
     "version": (0, 1, 0),
     "blender": (5, 0, 1),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
         "Split meshes into printable parts and generate fitting connectors for 3D printing. "
-        "Zerlegt Meshes in druckgerechte Teile und erzeugt passgenaue Steckverbindungen."
     ),
     "warning": "",
     "doc_url": "",
