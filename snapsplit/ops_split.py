@@ -149,7 +149,7 @@ class SNAP_OT_planar_split(Operator):
     def execute(self, context):
         obj = context.active_object
         if not obj or obj.type != 'MESH':
-            report_user(self, 'ERROR', "Bitte ein Mesh-Objekt auswählen.")
+            report_user(self, 'ERROR', "Please select a Mesh-Objekt.")
             return {'CANCELLED'}
 
         props = context.scene.snapsplit
@@ -159,9 +159,9 @@ class SNAP_OT_planar_split(Operator):
         parts = apply_bmesh_split_sequence(obj, axis, count)
 
         if len(parts) < count:
-            report_user(self, 'WARNING', f"Weniger Teile als erwartet erzeugt ({len(parts)} < {count}).")
+            report_user(self, 'WARNING', f"Less parts created as expected ({len(parts)} < {count}).")
         else:
-            report_user(self, 'INFO', f"{len(parts)} Teile erzeugt.")
+            report_user(self, 'INFO', f"{len(parts)} parts created.")
 
         # In _SnapSplit_Parts sammeln und selektieren
         parts_coll = ensure_collection("_SnapSplit_Parts")
