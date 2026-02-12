@@ -334,7 +334,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         try:
                             bpy.ops.object.modifier_apply(modifier=mod.name)
                         except Exception as e:
-                            report_user(None, 'WARNING', f"Bevel Apply fehlgeschlagen: {e}")
+                            report_user(None, 'WARNING', f"Bevel Apply failure: {e}")
                         tenon.select_set(False)
 
                 # UNION in A
@@ -380,7 +380,7 @@ class SNAP_OT_add_connectors(Operator):
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) < 2:
-            report_user(self, 'ERROR', "Mindestens zwei geschnittene Mesh-Teile auswählen.")
+            report_user(self, 'ERROR', "Select at least 2 cut mesh-pieces.")
             return {'CANCELLED'}
 
         created = place_connectors_between(
@@ -390,7 +390,7 @@ class SNAP_OT_add_connectors(Operator):
             ctype=props.connector_type,
             props=props
         )
-        report_user(self, 'INFO', f"{len(created)} Verbinder erzeugt.")
+        report_user(self, 'INFO', f"{len(created)} connectors created.")
         return {'FINISHED'}
 
 classes = (SNAP_OT_add_connectors,)
