@@ -27,15 +27,7 @@ import bpy
 import bmesh
 from bpy.types import Operator
 from mathutils import Vector
-
-from .utils import (
-    ensure_collection,
-    obj_world_bb,
-    report_user,
-    apply_scale_if_needed,
-    validate_mesh,
-    is_lang_de,
-)
+from .utils import ensure_collection, obj_world_bb, report_user
 
 # ---------------------------
 # BMesh-based core split
@@ -43,7 +35,7 @@ from .utils import (
 
 def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffix=""):
     """
-    Split 'source_obj' by a plane defined in the object's local space.
+    Split 'source_obj' by a plane (given in source_obj's local space).
     Creates two new meshes:
       - POS: geometry on the positive side of the plane normal
       - NEG: geometry on the negative side
@@ -54,7 +46,8 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
     source_obj.select_set(True)
     bpy.context.view_layer.objects.active = source_obj
 
-    # Build halves via BMesh (operating in local/object space)
+    # Do NOT apply transforms destructively here; we convert plane into local space instead.
+    # Build halves via BMesh
     def make_half(keep_positive: bool):
         bm = bmesh.new()
         bm.from_mesh(source_obj.data)
@@ -71,16 +64,17 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
             clear_inner=keep_positive        # delete "positive" side
         )
 
-        # Cap the open cut edges to keep the halves manifold (best effort)
+        # Cap the open cut edges to keep the halves manifold if possible
         boundary_edges = [e for e in bm.edges if e.is_boundary]
         if boundary_edges:
             try:
                 bmesh.ops.holes_fill(bm, edges=boundary_edges, sides=0)
             except Exception:
-                # Continue even if fill fails
+                # If fill fails, we still keep the split result
                 pass
 
         bm.normal_update()
+
         me = bpy.data.meshes.new(f"{source_obj.name}_{'POS' if keep_positive else 'NEG'}{name_suffix}")
         bm.to_mesh(me)
         bm.free()
@@ -105,7 +99,11 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
 
     # Validate/update result meshes
     for o in (o_pos, o_neg):
-        validate_mesh(o)
+        try:
+            o.data.validate(verbose=False)
+            o.data.update()
+        except Exception:
+            pass
 
     return o_pos, o_neg
 
@@ -146,9 +144,9 @@ def create_cut_data(obj, axis, parts_count):
 
 def apply_bmesh_split_sequence(root_obj, axis, parts_count):
     """
-    Perform a sequence of BMesh splits across the current set of parts.
+    Perform a sequence of BMesh splits across the active set of parts.
     After each plane, all current parts are split again by the next plane.
-    Supports recursive splitting by selecting any resulting half and running again.
+    This allows recursive splitting (e.g., taking a half and splitting it again).
     """
     cuts = create_cut_data(root_obj, axis, parts_count)
     if not cuts:
@@ -183,45 +181,34 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count):
 
 class SNAP_OT_planar_split(Operator):
     bl_idname = "snapsplit.planar_split"
-    bl_label = "Planar Split" if not is_lang_de() else "Planarer Schnitt"
+    bl_label = "Planar Split"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
         obj = context.active_object
         if not obj or obj.type != 'MESH':
-            report_user(self, 'ERROR',
-                        "Please select a mesh object.",
-                        "Bitte ein Mesh-Objekt auswählen.")
+            report_user(self, 'ERROR', "Please select a mesh object.")
             return {'CANCELLED'}
 
         props = context.scene.snapsplit
         axis = props.split_axis
         count = max(2, int(props.parts_count))
 
-        # Optional robustness: ensure no odd object scales before splitting
-        apply_scale_if_needed(obj, apply_location=False, apply_rotation=False, apply_scale=True)
-
-        # Work on the selected (possibly already-split) object directly
+        # Important: Work on the selected (possibly already-split) object directly.
+        # This supports recursive splits: select any resulting half and run again.
         parts = apply_bmesh_split_sequence(obj, axis, count)
 
         if len(parts) < count:
-            report_user(self, 'WARNING',
-                        f"Fewer parts created than expected ({len(parts)} < {count}).",
-                        f"Weniger Teile erstellt als erwartet ({len(parts)} < {count}).")
+            report_user(self, 'WARNING', f"Fewer parts created than expected ({len(parts)} < {count}).")
         else:
-            report_user(self, 'INFO',
-                        f"{len(parts)} parts created.",
-                        f"{len(parts)} Teile erstellt.")
+            report_user(self, 'INFO', f"{len(parts)} parts created.")
 
         # Organize in collection and select
         parts_coll = ensure_collection("_SnapSplit_Parts")
         bpy.ops.object.select_all(action='DESELECT')
         for p in parts:
             if parts_coll not in p.users_collection:
-                try:
-                    parts_coll.objects.link(p)
-                except Exception:
-                    pass
+                parts_coll.objects.link(p)
             p.hide_set(False)
             p.select_set(True)
 
@@ -239,4 +226,5 @@ def register():
 def unregister():
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+
 

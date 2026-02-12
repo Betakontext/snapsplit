@@ -22,41 +22,10 @@ This file is part of SnapSplit
 /licenses>.
 '''
 
-
 import bpy
 from mathutils import Vector
 
-# ---------------------------
-# Localization / language
-# ---------------------------
-
-def current_language():
-    """
-    Return Blender UI language as a BCP-47-like code (e.g., 'en_US', 'de_DE').
-    If Blender language is 'Automatic', derive from system language.
-    """
-    prefs = bpy.context.preferences
-    intl = prefs.view
-    # Blender 3.x/4.x exposes language in preferences as a code like 'en_US'
-    lang = getattr(intl, "language", "") or ""
-    if lang.lower() in {"default", "automatic", ""}:
-        # Try system language setting exposed by Blender
-        lang = getattr(intl, "language_flag", "") or "en_US"
-    return lang or "en_US"
-
-def is_lang_de():
-    """Convenience: True if UI language is German."""
-    return current_language().lower().startswith(("de", "de_de"))
-
-# ---------------------------
-# Collections
-# ---------------------------
-
-def ensure_collection(name: str):
-    """
-    Ensure a collection of given name exists and is linked to the scene.
-    Returns the collection.
-    """
+def ensure_collection(name):
     coll = bpy.data.collections.get(name)
     if not coll:
         coll = bpy.data.collections.new(name)
@@ -64,11 +33,7 @@ def ensure_collection(name: str):
     return coll
 
 def link_to_collection(obj, coll):
-    """
-    Unlink obj from all current collections and link it to the provided collection.
-    Safe for typical add-on workflows.
-    """
-    for c in list(obj.users_collection):
+    for c in obj.users_collection:
         try:
             c.objects.unlink(obj)
         except Exception:
@@ -78,39 +43,19 @@ def link_to_collection(obj, coll):
     except Exception:
         pass
 
-# ---------------------------
-# Bounding boxes
-# ---------------------------
-
 def obj_world_bb(obj):
-    """
-    World-space bounding box of an object.
-    Returns (min_vec, max_vec).
-    """
     mat = obj.matrix_world
     coords = [mat @ Vector(corner) for corner in obj.bound_box]
-    min_v = Vector((
-        min(c.x for c in coords),
-        min(c.y for c in coords),
-        min(c.z for c in coords),
-    ))
-    max_v = Vector((
-        max(c.x for c in coords),
-        max(c.y for c in coords),
-        max(c.z for c in coords),
-    ))
+    min_v = Vector((min(c.x for c in coords), min(c.y for c in coords), min(c.z for c in coords)))
+    max_v = Vector((max(c.x for c in coords), max(c.y for c in coords), max(c.z for c in coords)))
     return min_v, max_v
 
-# ---------------------------
-# Units: adaptive mm <-> scene
-# ---------------------------
-
+# --- Units: keep compatibility with your working scene ---
 def unit_mm():
     """
-    Legacy helper: how many scene units correspond to 1 mm.
-    - Millimeters + Unit Scale 1.0 -> 1.0 (1 BU = 1 mm)
-    - Otherwise (meter-based)      -> 0.001 (1 mm = 0.001 m)
-    Prefer using mm_to_scene/scene_to_mm in new code.
+    Return how many scene units correspond to 1 mm.
+    - Millimeters + Unit Scale 1.0: 1.0 (1 BU = 1 mm)
+    - Otherwise (meter-based): 0.001 (1 mm = 0.001 m)
     """
     us = bpy.context.scene.unit_settings
     if (us.system == 'METRIC'
@@ -120,11 +65,7 @@ def unit_mm():
     return 0.001
 
 def mm_to_scene(mm_value: float) -> float:
-    """
-    Convert millimeters to scene units robustly.
-    - If scene is Metric, Length=Millimeters, Unit Scale=1.0: 1 BU = 1 mm
-    - Else (e.g., meter-based): 1 mm = 0.001 m
-    """
+    """Helper for UI conversions; not used to change your working math."""
     us = bpy.context.scene.unit_settings
     if (us.system == 'METRIC'
         and getattr(us, "length_unit", "MILLIMETERS") == 'MILLIMETERS'
@@ -133,9 +74,6 @@ def mm_to_scene(mm_value: float) -> float:
     return float(mm_value) * 0.001
 
 def scene_to_mm(scene_value: float) -> float:
-    """
-    Convert scene units back to millimeters (inverse of mm_to_scene for common setups).
-    """
     us = bpy.context.scene.unit_settings
     if (us.system == 'METRIC'
         and getattr(us, "length_unit", "MILLIMETERS") == 'MILLIMETERS'
@@ -143,17 +81,16 @@ def scene_to_mm(scene_value: float) -> float:
         return float(scene_value)
     return float(scene_value) / 0.001
 
-# ---------------------------
-# Reporting
-# ---------------------------
+# --- Minimal localization helper used only in UI/reporting; no math impact ---
+def _is_lang_de():
+    try:
+        lang = bpy.context.preferences.view.language or ""
+        return lang.lower().startswith("de")
+    except Exception:
+        return False
 
-def report_user(self, level: str, msg_en: str, msg_de: str = None):
-    """
-    Report to Blender UI and console. If a German UI is detected and msg_de is provided,
-    it will be used; otherwise msg_en is used.
-    level: 'INFO' | 'WARNING' | 'ERROR'
-    """
-    text = (msg_de if (msg_de and is_lang_de()) else msg_en) or ""
+def report_user(self, level, msg_en, msg_de=None):
+    text = msg_de if (msg_de and _is_lang_de()) else msg_en
     if hasattr(self, "report"):
         try:
             self.report({level}, text)
@@ -161,53 +98,8 @@ def report_user(self, level: str, msg_en: str, msg_de: str = None):
             pass
     print(f"[SnapSplit][{level}] {text}")
 
-# ---------------------------
-# Misc robustness helpers
-# ---------------------------
-
-def apply_scale_if_needed(obj, apply_location=False, apply_rotation=False, apply_scale=True):
-    """
-    Apply transforms on an object if needed (primarily scale) to stabilize booleans.
-    """
-    if not obj:
-        return
-    sx, sy, sz = obj.scale
-    need_scale = apply_scale and (abs(sx - 1.0) > 1e-6 or abs(sy - 1.0) > 1e-6 or abs(sz - 1.0) > 1e-6)
-    if not (need_scale or apply_rotation or apply_location):
-        return
-    try:
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-        bpy.ops.object.transform_apply(
-            location=apply_location,
-            rotation=apply_rotation,
-            scale=apply_scale
-        )
-    except Exception:
-        pass
-    finally:
-        try:
-            obj.select_set(False)
-        except Exception:
-            pass
-
-def validate_mesh(obj):
-    """Validate and update mesh data safely."""
-    try:
-        obj.data.validate(verbose=False)
-        obj.data.update()
-    except Exception:
-        pass
-
-# ---------------------------
-# Add-on register hooks
-# ---------------------------
-
 def register():
-    # Nothing to register in utils
     pass
 
 def unregister():
-    # Nothing to unregister in utils
     pass
-
