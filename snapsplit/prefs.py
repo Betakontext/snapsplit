@@ -23,23 +23,28 @@ This file is part of SnapSplit
 '''
 
 
-
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import StringProperty, BoolProperty, FloatProperty
+from bpy.props import StringProperty, BoolProperty
+
+from .utils import is_lang_de
 
 class SNAPADDON_Preferences(AddonPreferences):
-    bl_idname = __package__  # "snapsplit"
+    # Use the top-level package name; fallback to module name if __package__ is None
+    bl_idname = (__package__ or "snapsplit")
 
     default_profile: StringProperty(
-        name="Standard-Profil",
+        name="Default Profile" if not is_lang_de() else "Standard-Profil",
         default="PLA",
-        description="Standard-Material/Druckerprofil",
+        description=("Default material/printer profile used for tolerance hints"
+                     if not is_lang_de() else "Standard-Material/Druckerprofil für Toleranzvorschläge"),
     )
+
     create_export_collection: BoolProperty(
-        name="Export-Sammlung anlegen",
+        name="Create Export Collection" if not is_lang_de() else "Export-Sammlung anlegen",
         default=True,
-        description="Erzeuge Sammlung für exportfertige Teile",
+        description=("Create a collection intended for export-ready parts"
+                     if not is_lang_de() else "Erzeugt eine Sammlung für exportfertige Teile"),
     )
 
     def draw(self, context):
@@ -56,3 +61,4 @@ def register():
 def unregister():
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+

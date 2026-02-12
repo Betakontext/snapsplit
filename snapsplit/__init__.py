@@ -24,12 +24,16 @@ This file is part of SnapSplit
 
 
 bl_info = {
-    "name": "SnapSplit - Druckgerechte Segmentierung mit Steckverbindern",
-    "author": "fobizz (Assistant)",
+    "name": "SnapSplit – Print-ready segmentation with connectors"
+            " / SnapSplit – Druckgerechte Segmentierung mit Steckverbindern",
+    "author": "Betakontext | Christoph Medicus",
     "version": (0, 1, 0),
     "blender": (5, 0, 1),
     "location": "View3D > N-Panel > SnapSplit",
-    "description": "Zerlegt Meshes in Teile und erzeugt passgenaue Steckverbindungen für 3D-Druck.",
+    "description": (
+        "Split meshes into printable parts and generate fitting connectors for 3D printing. "
+        "Zerlegt Meshes in druckgerechte Teile und erzeugt passgenaue Steckverbindungen."
+    ),
     "warning": "",
     "doc_url": "",
     "tracker_url": "",
@@ -37,18 +41,32 @@ bl_info = {
 }
 
 import importlib
-from . import ui, prefs, ops_split, ops_connectors, profiles, utils
 
-modules = [ui, prefs, ops_split, ops_connectors, profiles, utils]
+# Import submodules
+from . import utils
+from . import profiles
+from . import prefs
+from . import ops_split
+from . import ops_connectors
+from . import ui
+
+# Registration order matters if modules reference each other in register()
+_modules = [utils, profiles, prefs, ops_split, ops_connectors, ui]
 
 def register():
-    for m in modules:
-        importlib.reload(m)
-    for m in modules:
+    # Reload modules during dev to pick up edits without Blender restart
+    for m in _modules:
+        try:
+            importlib.reload(m)
+        except Exception:
+            # On first load, reload may fail harmlessly
+            pass
+
+    for m in _modules:
         if hasattr(m, "register"):
             m.register()
 
 def unregister():
-    for m in reversed(modules):
+    for m in reversed(_modules):
         if hasattr(m, "unregister"):
             m.unregister()
