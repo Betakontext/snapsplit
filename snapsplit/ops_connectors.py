@@ -373,7 +373,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
 class SNAP_OT_add_connectors(Operator):
     bl_idname = "snapsplit.add_connectors"
-    bl_label = "Verbinder hinzufügen"
+    bl_label = "Add connectors"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
