@@ -21,11 +21,10 @@ This file is part of SnapSplit
     along with this program; if not, see <https://www.gnu.org
 /licenses>.
 '''
-
-
 import bpy
 from bpy.types import Panel
 from .profiles import MATERIAL_PROFILES
+from .utils import is_lang_de, current_language  # current_language available if you later add more locales
 
 class SNAP_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
@@ -38,55 +37,87 @@ class SNAP_PT_panel(Panel):
         return context is not None and context.scene is not None
 
     def draw(self, context):
+        _DE = is_lang_de()
         layout = self.layout
         props = getattr(context.scene, "snapsplit", None)
         if props is None:
-            layout.label(text="SnapSplit properties not available.", icon="ERROR")
-            layout.label(text="Please reactivate the Add-on.")
+            layout.label(text=("SnapSplit properties not available." if not _DE
+                               else "SnapSplit-Eigenschaften nicht verfügbar."),
+                         icon="ERROR")
+            layout.label(text=("Please re-enable the Add-on." if not _DE
+                               else "Bitte das Add-on erneut aktivieren."))
             return
 
+        # Segmentation
         col = layout.column(align=True)
-        col.label(text="Segmentation")
-        col.prop(props, "parts_count")
-        col.prop(props, "split_axis")
-        col.operator("snapsplit.planar_split", icon="MOD_BOOLEAN")
+        col.label(text=("Segmentation" if not _DE else "Segmentierung"))
+        col.prop(props, "parts_count",
+                 text=("Number of Parts" if not _DE else "Anzahl Teile"))
+        col.prop(props, "split_axis",
+                 text=("Split Axis" if not _DE else "Schnittachse"))
+        col.operator("snapsplit.planar_split",
+                     icon="MOD_BOOLEAN",
+                     text=("Planar Split" if not _DE else "Planarer Schnitt"))
 
         layout.separator()
 
+        # Connections
         col = layout.column(align=True)
-        col.label(text="Connections")
-        col.prop(props, "connector_type")
-        col.prop(props, "connector_distribution")
+        col.label(text=("Connections" if not _DE else "Verbindungen"))
+        col.prop(props, "connector_type",
+                 text=("Connector Type" if not _DE else "Verbinder-Typ"))
+        col.prop(props, "connector_distribution",
+                 text=("Distribution" if not _DE else "Verteilung"))
+
         if props.connector_distribution == "LINE":
-            col.prop(props, "connectors_per_seam")
+            col.prop(props, "connectors_per_seam",
+                     text=("Connectors per Seam" if not _DE else "Verbinder pro Naht"))
         else:
             row = col.row(align=True)
-            row.prop(props, "connectors_per_seam", text="Columns")
-            row.prop(props, "connectors_rows", text="Rows")
-        col.prop(props, "connector_margin_pct")  # Randabstand %
+            row.prop(props, "connectors_per_seam",
+                     text=("Columns" if not _DE else "Spalten"))
+            row.prop(props, "connectors_rows",
+                     text=("Rows" if not _DE else "Reihen"))
+
+        col.prop(props, "connector_margin_pct",
+                 text=("Margin (%)" if not _DE else "Randabstand (%)"))
 
         box = col.box()
         if props.connector_type == "CYL_PIN":
-            box.prop(props, "pin_diameter_mm")
-            box.prop(props, "pin_length_mm")
-            box.prop(props, "pin_embed_pct")
+            box.prop(props, "pin_diameter_mm",
+                     text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
+            box.prop(props, "pin_length_mm",
+                     text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
+            box.prop(props, "pin_embed_pct",
+                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
         else:
-            box.prop(props, "tenon_width_mm")
-            box.prop(props, "tenon_depth_mm")
-            box.prop(props, "pin_embed_pct")
-        box.prop(props, "add_chamfer_mm")
+            box.prop(props, "tenon_width_mm",
+                     text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
+            box.prop(props, "tenon_depth_mm",
+                     text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
+            box.prop(props, "pin_embed_pct",
+                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+        box.prop(props, "add_chamfer_mm",
+                 text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
 
         layout.separator()
         col = layout.column(align=True)
-        col.label(text="Tolerance")
-        col.prop(props, "material_profile")
+        col.label(text=("Tolerance" if not _DE else "Toleranz"))
+        col.prop(props, "material_profile",
+                 text=("Material Profiles" if not _DE else "Material-Profile"))
         row = col.row(align=True)
-        row.prop(props, "tol_override")
-        row.label(text=f"Profil: {MATERIAL_PROFILES.get(props.material_profile, 0.2):.2f} mm")
+        row.prop(props, "tol_override",
+                 text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
+
+        prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
+        row = col.row(align=True)
+        row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
 
         layout.separator()
         col = layout.column(align=True)
-        col.operator("snapsplit.add_connectors", icon="SNAP_FACE")
+        col.operator("snapsplit.add_connectors",
+                     icon="SNAP_FACE",
+                     text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
 
 def register():
     bpy.utils.register_class(SNAP_PT_panel)
