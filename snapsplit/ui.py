@@ -16,12 +16,12 @@ class SNAP_PT_panel(Panel):
         layout = self.layout
         props = getattr(context.scene, "snapsplit", None)
         if props is None:
-            layout.label(text="SnapSplit Properties nicht verfügbar.", icon="ERROR")
-            layout.label(text="Bitte Add-on neu aktivieren.")
+            layout.label(text="SnapSplit properties not available.", icon="ERROR")
+            layout.label(text="Please reactivate the Add-on.")
             return
 
         col = layout.column(align=True)
-        col.label(text="Segmentierung")
+        col.label(text="Segmentation")
         col.prop(props, "parts_count")
         col.prop(props, "split_axis")
         col.operator("snapsplit.planar_split", icon="MOD_BOOLEAN")
@@ -29,15 +29,15 @@ class SNAP_PT_panel(Panel):
         layout.separator()
 
         col = layout.column(align=True)
-        col.label(text="Verbindungen")
+        col.label(text="Connections")
         col.prop(props, "connector_type")
         col.prop(props, "connector_distribution")
         if props.connector_distribution == "LINE":
             col.prop(props, "connectors_per_seam")
         else:
             row = col.row(align=True)
-            row.prop(props, "connectors_per_seam", text="Spalten")
-            row.prop(props, "connectors_rows", text="Reihen")
+            row.prop(props, "connectors_per_seam", text="Columns")
+            row.prop(props, "connectors_rows", text="Rows")
         col.prop(props, "connector_margin_pct")  # Randabstand %
 
         box = col.box()
@@ -53,7 +53,7 @@ class SNAP_PT_panel(Panel):
 
         layout.separator()
         col = layout.column(align=True)
-        col.label(text="Toleranzen")
+        col.label(text="Tolerance")
         col.prop(props, "material_profile")
         row = col.row(align=True)
         row.prop(props, "tol_override")
