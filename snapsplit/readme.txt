@@ -7,7 +7,7 @@ Let me know if you test it on another Blender version, to update Version compata
 
 Blender setup:  
 
-    Unit scale: 1.000, Millimeters
+    Unit system: Metric, Unit scale: 1.000, Length: Adaptive
 
 Installation:
     -> Download snapsplit.zip
