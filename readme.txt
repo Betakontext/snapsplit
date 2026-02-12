@@ -1,11 +1,38 @@
 This is a first version of “SnapSplit”.
 An add-on for Blender (5.0.1) that automates splitting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
+Its goal is to integrate into a 3D printing workflow (tolerances, alignment, build volume, support avoidance) and uses robust booleans, adaptive tolerance models, and printer/material profiles.
 
-It integrates into a 3D printing workflow (tolerances, alignment, build volume, support avoidance) and uses robust booleans, adaptive tolerance models, and printer/material profiles.
+Blender setup:  Unit scale: 1.000, Millimeters
 
-Scene Units: Metric, Length Millimeters, Unit Scale 1.000
+Installation:
 
-The add-on includes:
+    -> Download snapsplit.zip
+    -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
+    -> Open the N-Panel (press N) → “SnapSplit” tab.
+
+---------------------------------
+
+Usage:
+
+    - Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
+    - Scale Unit 1.000, Millimeters
+    - N-Panel → SnapSplit:
+        Choose desired number of parts and split axis.
+        Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
+    - Select two or more adjacent parts (order does not matter).
+    - Choose connector type and tolerance profile (optional override).
+    -> Click “Add Connectors”.
+
+Quality assurance and error prevention:
+
+    - Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
+    - After splitting: visually check that all parts contain polygons.
+    - If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
+    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
+
+-------------------------
+
+For now the add-on includes:
 
     Panel in the 3D View (N-Panel → “SnapSplit”)
 
@@ -22,27 +49,6 @@ The add-on includes:
         Adjustable insertion depth. Default: 50%
         Automatic placement and generation of connectors
 
-This is a solid starting scaffold. The geometry algorithms prioritize robustness and remain minimal for now. Future versions can add free-form seams, bayonet locks, dovetails, magnet pockets, support-aware features, etc.
-
-Installation
-
-    Create the folder structure shown below and zip the “snapsplit” folder (zip the folder itself, not just its contents).
-
-    In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
-
-    Open the N-Panel (press N) → “SnapSplit” tab.
-
-Folder structure (for the *.ZIP):
-
-snapsplit/
-    __init__.py
-    ops_split.py
-    ops_connectors.py
-    ui.py
-    prefs.py
-    utils.py
-    profiles.py
-
 Tolerance profiles (guidelines, adjustable)
 
     PLA: 0.15–0.25 mm per side
@@ -51,29 +57,21 @@ Tolerance profiles (guidelines, adjustable)
     TPU: 0.30–0.45 mm per side
     SLA: 0.05–0.15 mm per side
 
-These are provided as presets in the add-on and can be overridden by the user. A future calibration wizard can feed measured values back into the model.
+These are provided as presets and can be overridden by the user.
 
-Usage notes
+Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
-    - Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
-    - Scale Unit 1.000, Millimeters
-    - N-Panel → SnapSplit:
-        Choose desired number of parts and split axis.
-        Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
-    - Select two or more adjacent parts (order does not matter).
-    - Choose connector type and tolerance profile (optional override).
-    -> Click “Add Connectors”.
+Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
-    Pins/tenons are distributed along a seam line or across the seam surface:
-    The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
+---------------------------
 
-    Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
-
-Limitations and next steps:
+Limitations and thoughts for next steps:
     The current Planar Split uses heuristics and large cutter bodies. For highly complex geometry, occasional manual cleanup may be helpful.
-    Connectors are currently placed along a coarse midline or in a grid across the seam surface.
+    Connectors are currently placed along a coarse midline or into a grid across the seam surface.
 
-Roadmap ideas:
+Future versions can add free-form seams, bayonet locks, dovetails, magnet pockets, support-aware features, etc.
+
+Roadmap of ideas:
     Determine seam curves precisely
     Overhang/wall-thickness–aware placement
     Automatic anti-rotation combinations
@@ -83,15 +81,24 @@ Roadmap ideas:
     QA panel (manifold/wall-thickness checks)
     Bayonet/dovetail connectors
     A calibration wizard for tolerances
+    SLA models may require vent holes in sockets.
 
-SLA models may require vent holes in sockets (planned).
+---------------------------
 
-Quality assurance and error prevention
+For development:
 
-    - Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
-    - After splitting: visually check that all parts contain polygons.
-    - If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
-    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
+Necessary folder structure (inside snapsplit.zip):
+
+    snapsplit/
+        __init__.py
+        ops_split.py
+        ops_connectors.py
+        ui.py
+        prefs.py
+        utils.py
+        profiles.py
+
+---------------------------
 
 The project is made with AI assistance (GPT 5) and under the MIT license.
 If you want to contribute, fork and explore the code. Have fun splitting and printing.
