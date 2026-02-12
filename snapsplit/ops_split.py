@@ -23,7 +23,6 @@ This file is part of SnapSplit
 '''
 
 
-
 import bpy
 import bmesh
 from bpy.types import Operator
@@ -31,52 +30,52 @@ from mathutils import Vector
 from .utils import ensure_collection, obj_world_bb, report_user
 
 # ---------------------------
-# BMesh-basierter Kernsplit
+# BMesh-based core split
 # ---------------------------
 
-def split_mesh_bmesh_into_two(obj, plane_co_obj, plane_no_obj, name_suffix=""):
+def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffix=""):
     """
-    Teilt obj entlang einer Ebene (im Objektraum von obj).
-    Erzeugt zwei neue Meshes: POS (behält Seite in Normalenrichtung) und NEG (Gegenseite).
-    Gibt zwei neue Objekte zurück. Original wird ausgeblendet.
+    Split 'source_obj' by a plane (given in source_obj's local space).
+    Creates two new meshes:
+      - POS: geometry on the positive side of the plane normal
+      - NEG: geometry on the negative side
+    Returns two new OBJECTS. The source object is hidden (not deleted).
     """
-    # Objekt aktivieren und Transforms anwenden (wichtig für stabile Maße)
+    # Make sure source is active/selected for dependable data access
     bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    try:
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    except Exception:
-        pass
+    source_obj.select_set(True)
+    bpy.context.view_layer.objects.active = source_obj
 
+    # Do NOT apply transforms destructively here; we convert plane into local space instead.
+    # Build halves via BMesh
     def make_half(keep_positive: bool):
         bm = bmesh.new()
-        bm.from_mesh(obj.data)
+        bm.from_mesh(source_obj.data)
         geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
 
-        # Mesh entlang Ebene schneiden und je nach Hälfte Seite löschen
+        # Bisect and clear one side
         bmesh.ops.bisect_plane(
             bm,
             geom=geom,
             plane_co=plane_co_obj,
             plane_no=plane_no_obj,
             use_snap_center=False,
-            clear_outer=not keep_positive,   # löscht "negative" Seite relativ zur Normalen
-            clear_inner=keep_positive        # löscht "positive" Seite
+            clear_outer=not keep_positive,   # delete "negative" side relative to normal
+            clear_inner=keep_positive        # delete "positive" side
         )
 
-        # Offene Schnittkanten schließen (Caps), damit Teile manifold sind
+        # Cap the open cut edges to keep the halves manifold if possible
         boundary_edges = [e for e in bm.edges if e.is_boundary]
         if boundary_edges:
             try:
                 bmesh.ops.holes_fill(bm, edges=boundary_edges, sides=0)
             except Exception:
-                # Falls Füllen irgendwo scheitert, Mesh bleibt dennoch teilbar
+                # If fill fails, we still keep the split result
                 pass
 
         bm.normal_update()
 
-        me = bpy.data.meshes.new(f"{obj.name}_{'POS' if keep_positive else 'NEG'}{name_suffix}")
+        me = bpy.data.meshes.new(f"{source_obj.name}_{'POS' if keep_positive else 'NEG'}{name_suffix}")
         bm.to_mesh(me)
         bm.free()
         return me
@@ -84,34 +83,38 @@ def split_mesh_bmesh_into_two(obj, plane_co_obj, plane_no_obj, name_suffix=""):
     me_pos = make_half(True)
     me_neg = make_half(False)
 
-    # Neue Objekte verlinken
-    col = obj.users_collection[0] if obj.users_collection else bpy.context.scene.collection
-    o1 = bpy.data.objects.new(f"{obj.name}_A{name_suffix}", me_pos)
-    o2 = bpy.data.objects.new(f"{obj.name}_B{name_suffix}", me_neg)
-    col.objects.link(o1)
-    col.objects.link(o2)
+    # Link new objects alongside the source object's first collection (or scene collection)
+    target_coll = source_obj.users_collection[0] if source_obj.users_collection else bpy.context.scene.collection
+    o_pos = bpy.data.objects.new(f"{source_obj.name}_A{name_suffix}", me_pos)
+    o_neg = bpy.data.objects.new(f"{source_obj.name}_B{name_suffix}", me_neg)
+    target_coll.objects.link(o_pos)
+    target_coll.objects.link(o_neg)
 
-    # Original ausblenden zur klaren Sicht
-    obj.hide_set(True)
+    # Inherit world transform so the halves stay in place
+    o_pos.matrix_world = source_obj.matrix_world.copy()
+    o_neg.matrix_world = source_obj.matrix_world.copy()
 
-    # Daten validieren/aktualisieren
-    for o in (o1, o2):
+    # Hide the source so only results remain visible
+    source_obj.hide_set(True)
+
+    # Validate/update result meshes
+    for o in (o_pos, o_neg):
         try:
             o.data.validate(verbose=False)
             o.data.update()
         except Exception:
             pass
 
-    return o1, o2
+    return o_pos, o_neg
 
 # ---------------------------
-# Ebenendaten direkt aus BB
+# Plane data from world-space BB
 # ---------------------------
 
 def create_cut_data(obj, axis, parts_count):
     """
-    Liefert eine Liste von (co_world, no_world) Ebenen für gleichmäßige Schnitte
-    entlang der Bounding-Box-Achse in Weltkoordinaten.
+    Returns a list of world-space cutting planes (co_world, no_world) for
+    evenly spaced cuts along the object's bounding-box axis.
     """
     min_v, max_v = obj_world_bb(obj)
     axis_index = {"X": 0, "Y": 1, "Z": 2}[axis]
@@ -135,32 +138,41 @@ def create_cut_data(obj, axis, parts_count):
         cuts.append((co_world, no_world))
     return cuts
 
-def apply_bmesh_split_sequence(obj, axis, parts_count):
-    """
-    Führt nacheinander BMesh-basierte Splits anhand der Ebenen durch.
-    Nach jedem Schnitt werden alle aktuell vorhandenen Teile weiter geschnitten.
-    """
-    cuts = create_cut_data(obj, axis, parts_count)
-    if not cuts:
-        return [obj]
+# ---------------------------
+# Split sequence across parts
+# ---------------------------
 
-    current_parts = [obj]
+def apply_bmesh_split_sequence(root_obj, axis, parts_count):
+    """
+    Perform a sequence of BMesh splits across the active set of parts.
+    After each plane, all current parts are split again by the next plane.
+    This allows recursive splitting (e.g., taking a half and splitting it again).
+    """
+    cuts = create_cut_data(root_obj, axis, parts_count)
+    if not cuts:
+        return [root_obj]
+
+    # Start with the provided object only (visible or not)
+    current_parts = [root_obj]
 
     for idx, (co_world, no_world) in enumerate(cuts, start=1):
         next_parts = []
-        for p in current_parts:
-            # Welt -> Objektraum dieses Teils
-            M = p.matrix_world
+        for part in current_parts:
+            # Convert world plane into this part's local space
+            M = part.matrix_world
             M_inv = M.inverted()
             co_obj = M_inv @ co_world
             no_obj = (M_inv.to_3x3().transposed() @ no_world).normalized()
 
-            a, b = split_mesh_bmesh_into_two(p, co_obj, no_obj, name_suffix=f"_S{idx}")
+            # Split part into two new objects (this hides 'part')
+            a, b = split_mesh_bmesh_into_two(part, co_obj, no_obj, name_suffix=f"_S{idx}")
             next_parts.extend([a, b])
-        current_parts = next_parts
 
-    # Valide Meshes zurückgeben
-    valid = [o for o in current_parts if o.type == 'MESH' and o.data and len(o.data.polygons) > 0]
+        # Continue with the newly created parts for the next cut
+        current_parts = [p for p in next_parts if p and p.type == 'MESH']
+
+    # Return only valid mesh objects with faces
+    valid = [o for o in current_parts if o and o.type == 'MESH' and o.data and len(o.data.polygons) > 0]
     return valid
 
 # ---------------------------
@@ -175,27 +187,31 @@ class SNAP_OT_planar_split(Operator):
     def execute(self, context):
         obj = context.active_object
         if not obj or obj.type != 'MESH':
-            report_user(self, 'ERROR', "Please select a Mesh-Objekt.")
+            report_user(self, 'ERROR', "Please select a mesh object.")
             return {'CANCELLED'}
 
         props = context.scene.snapsplit
         axis = props.split_axis
         count = max(2, int(props.parts_count))
 
+        # Important: Work on the selected (possibly already-split) object directly.
+        # This supports recursive splits: select any resulting half and run again.
         parts = apply_bmesh_split_sequence(obj, axis, count)
 
         if len(parts) < count:
-            report_user(self, 'WARNING', f"Less parts created as expected ({len(parts)} < {count}).")
+            report_user(self, 'WARNING', f"Fewer parts created than expected ({len(parts)} < {count}).")
         else:
             report_user(self, 'INFO', f"{len(parts)} parts created.")
 
-        # In _SnapSplit_Parts sammeln und selektieren
+        # Organize in collection and select
         parts_coll = ensure_collection("_SnapSplit_Parts")
         bpy.ops.object.select_all(action='DESELECT')
         for p in parts:
             if parts_coll not in p.users_collection:
                 parts_coll.objects.link(p)
+            p.hide_set(False)
             p.select_set(True)
+
         if parts:
             bpy.context.view_layer.objects.active = parts[0]
 
@@ -210,3 +226,4 @@ def register():
 def unregister():
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+
