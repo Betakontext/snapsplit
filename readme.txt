@@ -2,30 +2,33 @@ This is a first version of “SnapSplit”.
 An add-on for Blender (5.0.1) that automates splitting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
 Its goal is to integrate into a 3D printing workflow (tolerances, alignment, build volume, support avoidance) and uses robust booleans, adaptive tolerance models, and printer/material profiles.
 
+---------------------------
+
 Blender setup:  Unit scale: 1.000, Millimeters
 
 Installation:
-
     -> Download snapsplit.zip
     -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
-    -> Open the N-Panel (press N) → “SnapSplit” tab.
 
----------------------------------
-
-Usage:
-
-    - Select a watertight (manifold) mesh. Apply scale (Ctrl+A → Scale). Units in mm are optional in Scene Settings.
+Split:
+    - Select a watertight (manifold) mesh.
+    - Apply scale (Ctrl+A → Scale).
     - Scale Unit 1.000, Millimeters
     - N-Panel → SnapSplit:
         Choose desired number of parts and split axis.
         Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
+
+Connect:
     - Select two or more adjacent parts (order does not matter).
     - Choose connector type and tolerance profile (optional override).
     -> Click “Add Connectors”.
 
-Quality assurance and error prevention:
+Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
-    - Before splitting: use 3D-Printing Toolbox (manifold, thin walls, intersections).
+Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+
+Quality assurance and error prevention:
+    - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
     - After splitting: visually check that all parts contain polygons.
     - If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
     - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
@@ -49,19 +52,15 @@ For now the add-on includes:
         Adjustable insertion depth. Default: 50%
         Automatic placement and generation of connectors
 
-Tolerance profiles (guidelines, adjustable)
+    Tolerance profiles (guidelines, adjustable):
 
-    PLA: 0.15–0.25 mm per side
-    PETG: 0.25–0.35 mm per side
-    ABS/ASA: 0.20–0.30 mm per side
-    TPU: 0.30–0.45 mm per side
-    SLA: 0.05–0.15 mm per side
+        PLA: 0.15–0.25 mm per side
+        PETG: 0.25–0.35 mm per side
+        ABS/ASA: 0.20–0.30 mm per side
+        TPU: 0.30–0.45 mm per side
+        SLA: 0.05–0.15 mm per side
 
-These are provided as presets and can be overridden by the user.
-
-Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
-
-Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+    These are provided as presets and can be overridden by the user.
 
 ---------------------------
 
