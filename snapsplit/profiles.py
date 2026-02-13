@@ -1,9 +1,7 @@
 """
-Copyright (C) 2026 Betakontext
+Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
-info@betakontext.de
-
-Created by Christoph Medicus
+dev@betakontext.de
 
 This file is part of SnapSplit
 

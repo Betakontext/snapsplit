@@ -1,7 +1,7 @@
 '''
-Copyright (C) 2026 Betakontext
+Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
-info@betakontext.de
+dev@betakontext.de
 
 Created by Christoph Medicus
 
