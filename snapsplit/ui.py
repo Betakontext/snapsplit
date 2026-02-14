@@ -51,8 +51,20 @@ class SNAP_PT_panel(Panel):
         col.label(text=("Segmentation" if not _DE else "Segmentierung"))
         col.prop(props, "parts_count",
                  text=("Number of Parts" if not _DE else "Anzahl Teile"))
+        # Split axis
         col.prop(props, "split_axis",
                  text=("Split Axis" if not _DE else "Schnittachse"))
+        # Axis regulation
+        col.prop(props, "show_split_preview",
+                text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
+        col.prop(props, "split_offset_mm",
+                 text=("Split Offset (mm)" if not is_lang_de() else "Schnitt-Offset (mm)"))
+        row = col.row(align=True)
+
+        row.operator("snapsplit.adjust_split_axis",
+                     icon="EMPTY_AXIS",
+                     text=("Adjust split axis" if not is_lang_de() else "Schnittachse anpassen"))
+
         col.operator("snapsplit.planar_split",
                      icon="MOD_BOOLEAN",
                      text=("Planar Split" if not _DE else "Planarer Schnitt"))

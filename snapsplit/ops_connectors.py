@@ -1,24 +1,23 @@
-'''
+"""
 Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
 dev@betakontext.de
 
 This file is part of SnapSplit
 
-    SnapSplit is free software; you can redistribute it and/or
-    modify it under the terms of the GNU General Public License
-    as published by the Free Software Foundation; either version 3
-    of the License, or (at your option) any later version.
+SnapSplit is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 3
+of the License, or (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, see <https://www.gnu.org
-/licenses>.
-'''
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <https://www.gnu.org/licenses>.
+"""
 
 import bpy
 import bmesh
@@ -38,28 +37,52 @@ def _proj_interval(points, axis_dir, origin):
     return (min((p - origin).dot(a) for p in points),
             max((p - origin).dot(a) for p in points))
 
+def _axis_index(axis):
+    return {"X": 0, "Y": 1, "Z": 2}[axis]
+
+def _axis_vectors(axis):
+    if axis == "X":
+        return Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))
+    if axis == "Y":
+        return Vector((0,1,0)), Vector((1,0,0)), Vector((0,0,1))
+    return Vector((0,0,1)), Vector((1,0,0)), Vector((0,1,0))
+
+def _seam_plane_world_pos_for_axis(parts, axis, props):
+    """
+    Compute the world-space coordinate of the seam plane along 'axis'
+    using the global split_offset_mm (same convention as ops_split).
+    """
+    idx = _axis_index(axis)
+    lo = float("inf"); hi = float("-inf")
+    for o in parts:
+        bb = _bb_world(o)
+        vals = [c[idx] for c in bb]
+        lo = min(lo, min(vals)); hi = max(hi, max(vals))
+    if not (lo < hi):
+        return 0.0
+    mid = 0.5 * (lo + hi)
+    offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
+    return max(lo, min(hi, mid + offset_scene))
+
 # ---------------------------
-# Distribution: line
+# Distribution helpers honoring seam plane
 # ---------------------------
 
-def distribute_points_line(obj_a, obj_b, count, axis, margin_pct=10.0):
+def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_pct=10.0):
     """
-    Distribute 'count' points along the longer in-plane tangent of the common seam area,
-    constrained to the overlap span of both parts, with percentage edge margin.
+    Like distribute_points_line but places points on the given seam plane (world coordinate seam_pos).
     """
-    axes = {
-        "X": (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))),
-        "Y": (Vector((0,1,0)), Vector((1,0,0)), Vector((0,0,1))),
-        "Z": (Vector((0,0,1)), Vector((1,0,0)), Vector((0,1,0))),
-    }
-    n_axis, t1, t2 = axes[axis]
-
+    n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
     bb_b = _bb_world(obj_b)
 
+    # Origin on seam plane (centered in tangential directions)
     ca = sum(bb_a, Vector()) / 8.0
     cb = sum(bb_b, Vector()) / 8.0
     origin = (ca + cb) * 0.5
+    oi = _axis_index(axis)
+    origin = Vector((origin.x, origin.y, origin.z))
+    origin[oi] = seam_pos
 
     def overlap_len(a_min, a_max, b_min, b_max):
         return max(0.0, min(a_max, b_max) - max(a_min, b_min))
@@ -84,15 +107,13 @@ def distribute_points_line(obj_a, obj_b, count, axis, margin_pct=10.0):
         span = ol2
 
     if span <= 0.0:
-        c = origin
-        return [c for _ in range(max(1, count))]
+        return [origin for _ in range(max(1, count))]
 
     m = max(0.0, float(margin_pct)) * 0.01 * span
-    lo_i = lo + m
-    hi_i = hi - m
+    lo_i, hi_i = lo + m, hi - m
     if hi_i < lo_i:
         mid = (lo + hi) * 0.5
-        return [(origin + t * mid) for _ in range(max(1, count))]
+        return [origin + t * mid for _ in range(max(1, count))]
 
     if count <= 1:
         mid = (lo_i + hi_i) * 0.5
@@ -100,37 +121,28 @@ def distribute_points_line(obj_a, obj_b, count, axis, margin_pct=10.0):
 
     pts = []
     for i in range(count):
-        f = i / (count - 1)  # 0..1
+        f = i / (count - 1)
         s = lo_i * (1.0 - f) + hi_i * f
         pts.append(origin + t * s)
     return pts
 
-# ---------------------------
-# Distribution: grid (area)
-# ---------------------------
-
-def distribute_points_grid(obj_a, obj_b, cols, rows, axis, margin_pct=10.0):
+def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, margin_pct=10.0):
     """
-    Distribute points in a grid within the overlapping rectangular span of the seam area.
-    cols = columns along primary tangent, rows = along secondary tangent.
+    Like distribute_points_grid but places points on the given seam plane (world coordinate seam_pos).
     """
-    axes = {
-        "X": (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))),
-        "Y": (Vector((0,1,0)), Vector((1,0,0)), Vector((0,0,1))),
-        "Z": (Vector((0,0,1)), Vector((1,0,0)), Vector((0,1,0))),
-    }
-    n_axis, t1, t2 = axes[axis]
-
+    n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
     bb_b = _bb_world(obj_b)
 
     ca = sum(bb_a, Vector()) / 8.0
     cb = sum(bb_b, Vector()) / 8.0
     origin = (ca + cb) * 0.5
+    oi = _axis_index(axis)
+    origin = Vector((origin.x, origin.y, origin.z))
+    origin[oi] = seam_pos
 
     def interval_overlap(a_min, a_max, b_min, b_max):
-        lo = max(a_min, b_min)
-        hi = min(a_max, b_max)
+        lo = max(a_min, b_min); hi = min(a_max, b_max)
         return lo, hi, max(0.0, hi - lo)
 
     t1_min_a, t1_max_a = _proj_interval(bb_a, t1, origin)
@@ -142,22 +154,17 @@ def distribute_points_grid(obj_a, obj_b, cols, rows, axis, margin_pct=10.0):
     lo2, hi2, span2 = interval_overlap(t2_min_a, t2_max_a, t2_min_b, t2_max_b)
 
     if span1 <= 0.0 or span2 <= 0.0:
-        # No rectangular overlap -> fallback to line on the larger span
-        return distribute_points_line(obj_a, obj_b, cols, axis, margin_pct)
+        return distribute_points_line_on_seam(obj_a, obj_b, cols, axis, seam_pos, margin_pct)
 
     m1 = max(0.0, float(margin_pct)) * 0.01 * span1
     m2 = max(0.0, float(margin_pct)) * 0.01 * span2
     lo1_i, hi1_i = lo1 + m1, hi1 - m1
     lo2_i, hi2_i = lo2 + m2, lo2 + (span2 - m2)
     if hi1_i < lo1_i or hi2_i < lo2_i:
-        # Margin too large -> place in the middle
         c = origin + t1.normalized() * ((lo1 + hi1) * 0.5) + t2.normalized() * ((lo2 + hi2) * 0.5)
         return [c for _ in range(max(1, cols * rows))]
 
-    # Even grid
-    t1n = t1.normalized()
-    t2n = t2.normalized()
-
+    t1n = t1.normalized(); t2n = t2.normalized()
     pts = []
     for r in range(rows):
         fr = r / (rows - 1) if rows > 1 else 0.5
@@ -173,26 +180,16 @@ def distribute_points_grid(obj_a, obj_b, cols, rows, axis, margin_pct=10.0):
 # ---------------------------
 
 def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="SnapSplit_Pin"):
-    """
-    Create a cylindrical pin object (not linked). Dimensions are millimeters converted to scene units.
-    """
     mm = unit_mm()
     d = float(d_mm) * mm
     L = float(length_mm) * mm
     r = max(1e-9, d * 0.5)
 
-    # Debug
-    print(f"[SnapSplit] create_cyl_pin: d_mm={d_mm}, L_mm={length_mm} -> d_scene={d:.6f}, L_scene={L:.6f}")
-
     bm = bmesh.new()
     bmesh.ops.create_cone(
-        bm,
-        cap_ends=True,
-        cap_tris=False,
+        bm, cap_ends=True, cap_tris=False,
         segments=max(8, int(segments)),
-        radius1=r,
-        radius2=r,
-        depth=L
+        radius1=r, radius2=r, depth=L
     )
     # Bottom at z=0, top at z=L
     bmesh.ops.transform(bm, matrix=Matrix.Translation((0, 0, L * 0.5)), verts=bm.verts)
@@ -202,40 +199,31 @@ def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="
         chamfer = float(chamfer_mm) * mm
         top_z = max(v.co.z for v in bm.verts)
         top_verts = [v for v in bm.verts if abs(v.co.z - top_z) < 1e-7]
-        scale = max(0.0, (r - chamfer) / r)
+        scale = max(0.0, (r - chamfer) / r) if r > 1e-12 else 1.0
         for v in top_verts:
             v.co.x *= scale
             v.co.y *= scale
             v.co.z -= chamfer
 
     me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
+    bm.to_mesh(me); bm.free()
     obj = bpy.data.objects.new(name, me)
     return obj
 
 def create_rect_tenon(w_mm, depth_mm, chamfer_mm, name="RectTenon"):
-    """
-    Rectangular tenon (W×W×Depth) with optional chamfer (Bevel modifier). Returns an unlinked object.
-    """
     mm = unit_mm()
     w = float(w_mm) * mm
     d = float(depth_mm) * mm
     ch = max(0.0, min(float(chamfer_mm), min(float(w_mm), float(depth_mm)) * 0.5)) * mm
-
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
     bmesh.ops.transform(bm, matrix=Matrix.Diagonal(Vector((w, w, d, 1.0))), verts=bm.verts)
     me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
+    bm.to_mesh(me); bm.free()
     obj = bpy.data.objects.new(name, me)
-
     if ch > 0.0:
         mod = obj.modifiers.new("Bevel", 'BEVEL')
-        mod.width = ch
-        mod.segments = 1
-        mod.limit_method = 'NONE'
+        mod.width = ch; mod.segments = 1; mod.limit_method = 'NONE'
     return obj
 
 # ---------------------------
@@ -264,16 +252,18 @@ def cut_socket_with_cutter(target_obj, cutter_obj):
     boolean_apply(target_obj, mod)
 
 # ---------------------------
-# Placement & connect
+# Placement & connect (honors split_offset_mm)
 # ---------------------------
 
 def place_connectors_between(parts, axis, count, ctype, props):
     """
     Connect adjacent parts along 'axis' with distribution per props.connector_distribution.
-    - Cylinder Pin: UNION into part A, DIFFERENCE (with tolerance) in part B
-    - Rectangular Tenon: same; socket via scaled cutter
+    The connectors are placed on the seam plane determined by Scene.snapsplit.split_offset_mm.
     """
-    idx = {"X": 0, "Y": 1, "Z": 2}[axis]
+    if not parts:
+        return []
+
+    idx = _axis_index(axis)
     ordered = sorted(parts, key=lambda o: o.location[idx])
     pairs = [(ordered[i], ordered[i + 1]) for i in range(len(ordered) - 1)]
     if not pairs:
@@ -287,18 +277,21 @@ def place_connectors_between(parts, axis, count, ctype, props):
     tol = float(props.effective_tolerance())  # mm per side
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
     margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
+    cols = max(1, int(getattr(props, "connectors_per_seam", count)))
+
+    # Global seam plane world position for this selection
+    seam_pos = _seam_plane_world_pos_for_axis(parts, axis, props)
 
     for a, b in pairs:
+        # Distribute on seam plane
         if getattr(props, "connector_distribution", "LINE") == "GRID":
-            cols = max(1, int(getattr(props, "connectors_per_seam", count)))
             rows = max(1, int(getattr(props, "connectors_rows", 2)))
-            points = distribute_points_grid(a, b, cols, rows, axis, margin_pct=margin_pct)
+            points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
         else:
-            cols = max(1, int(getattr(props, "connectors_per_seam", count)))
-            points = distribute_points_line(a, b, cols, axis, margin_pct=margin_pct)
+            points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
 
         for i, p in enumerate(points):
-            # Orthonormal frame; Z along seam
+            # Orthonormal frame; Z along seam normal
             z = naxis.normalized()
             x = Vector((1, 0, 0))
             if abs(z.dot(x)) > 0.99:
@@ -306,8 +299,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             y = z.cross(x); y.normalize()
             x = y.cross(z); x.normalize()
 
-            # Embed depth: move placement point toward A (against z)
-            # so that 'embed_pct' of connector length is in A.
+            # Embed depth: move placement point toward A (against z) so that 'embed_pct' of connector length is in A
             L_scene = float(props.pin_length_mm if ctype == "CYL_PIN" else props.tenon_depth_mm) * unit_mm()
             p_embed = p - z * (embed_pct * L_scene)
 
@@ -326,9 +318,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 # UNION into A
                 um = a.modifiers.new(f"PinUnion_{i}", 'BOOLEAN')
-                um.operation = 'UNION'
-                um.solver = 'EXACT'
-                um.object = pin
+                um.operation = 'UNION'; um.solver = 'EXACT'; um.object = pin
                 boolean_apply(a, um)
 
                 # Socket cutter with d = pin + 2*tol
@@ -358,9 +348,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 # UNION into A
                 um = a.modifiers.new(f"TenonUnion_{i}", 'BOOLEAN')
-                um.operation = 'UNION'
-                um.solver = 'EXACT'
-                um.object = tenon
+                um.operation = 'UNION'; um.solver = 'EXACT'; um.object = tenon
                 boolean_apply(a, um)
 
                 # Socket via scaled cutter (uniform tolerance)
@@ -399,7 +387,8 @@ class SNAP_OT_add_connectors(Operator):
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) < 2:
-            report_user(self, 'ERROR', "Select at least 2 cut mesh-pieces.")
+            report_user(self, 'ERROR', "Select at least 2 cut mesh-pieces.",
+                        "Mindestens 2 geschnittene Mesh-Teile auswählen.")
             return {'CANCELLED'}
 
         created = place_connectors_between(
@@ -409,7 +398,8 @@ class SNAP_OT_add_connectors(Operator):
             ctype=props.connector_type,
             props=props
         )
-        report_user(self, 'INFO', f"{len(created)} connectors created.")
+        report_user(self, 'INFO', f"{len(created)} connectors created.",
+                    f"{len(created)} Verbinder erstellt.")
         return {'FINISHED'}
 
 classes = (SNAP_OT_add_connectors,)
@@ -421,4 +411,3 @@ def register():
 def unregister():
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-
