@@ -20,7 +20,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
-
 import bpy
 import bmesh
 from bpy.types import Operator
@@ -33,6 +32,14 @@ from .utils import (
     is_lang_de,
     unit_mm,
 )
+
+# ---------------------------
+# Preview naming
+# ---------------------------
+
+PREVIEW_COLL_NAME = "_SnapSplit_Preview"
+PREVIEW_PLANE_PREFIX = "_SnapSplit_PreviewPlane_"  # numbered planes
+PREVIEW_MAT_NAME = "_SnapSplit_Preview_MAT"
 
 # ---------------------------
 # Helpers: BB / axes / preview material
@@ -65,7 +72,7 @@ def size_on_tangential_axes(obj, axis):
     return (abs(max_v[t1] - min_v[t1]), abs(max_v[t2] - min_v[t2])), (t1, t2), (min_v, max_v)
 
 def build_orange_preview_material():
-    name = "_SnapSplit_Preview_MAT"
+    name = PREVIEW_MAT_NAME
     mat = bpy.data.materials.get(name)
     if mat:
         return mat
@@ -92,15 +99,14 @@ def build_orange_preview_material():
     return mat
 
 def ensure_preview_collection():
-    return ensure_collection("_SnapSplit_Preview")
+    return ensure_collection(PREVIEW_COLL_NAME)
 
-def create_or_get_preview_plane(context, obj, axis):
+def create_or_get_preview_plane(context, obj, axis, name):
     """
     Create (or reuse) a plane object aligned to the split axis, scaled to BB tangential extents.
     Local Z points along the split axis; local X,Y span the tangential AABB axes.
     """
     coll = ensure_preview_collection()
-    name = "_SnapSplit_PreviewPlane"
     plane = bpy.data.objects.get(name)
     if plane is None or plane.type != 'MESH':
         me = bpy.data.meshes.new(name)
@@ -119,7 +125,7 @@ def create_or_get_preview_plane(context, obj, axis):
         plane.data.materials[0] = mat
 
     # Extents and tangential indices from AABB
-    (size_t1, size_t2), (t1_idx, t2_idx), (min_v, max_v) = size_on_tangential_axes(obj, axis)
+    (size_t1, size_t2), (t1_idx, t2_idx), _ = size_on_tangential_axes(obj, axis)
 
     # World basis axes
     world_axes = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))
@@ -134,21 +140,19 @@ def create_or_get_preview_plane(context, obj, axis):
     # y_dir orthogonal completion
     y_dir = z_dir.cross(x_dir)
     if y_dir.length_squared == 0.0:
-        # Fallback (rare)
         x_dir = world_axes[t2_idx].copy().normalized()
         y_dir = z_dir.cross(x_dir)
     y_dir.normalize()
     # Re-orthogonalize x_dir
     x_dir = y_dir.cross(z_dir); x_dir.normalize()
 
-    # Build 4x4 with columns (x,y,z) — Blender Matrix rows contain column components
+    # Build 4x4 with columns (x,y,z)
     R = Matrix((
         (x_dir.x, y_dir.x, z_dir.x, 0.0),
         (x_dir.y, y_dir.y, z_dir.y, 0.0),
         (x_dir.z, y_dir.z, z_dir.z, 0.0),
         (0.0,     0.0,     0.0,     1.0),
     ))
-
     # Scale in local plane: X=size_t1, Y=size_t2
     S = Matrix.Diagonal(Vector((max(size_t1, 1e-9), max(size_t2, 1e-9), 1.0, 1.0)))
 
@@ -159,8 +163,6 @@ def create_or_get_preview_plane(context, obj, axis):
     plane.show_in_front = True
     plane.display_type = 'TEXTURED'
     return plane
-
-
 
 def set_preview_plane_position(plane, obj, axis, world_pos):
     """
@@ -174,83 +176,109 @@ def set_preview_plane_position(plane, obj, axis, world_pos):
     M[0][3], M[1][3], M[2][3] = new_loc[0], new_loc[1], new_loc[2]
     plane.matrix_world = M
 
-# ---------------------------
-# Top-level updater so profiles.py and handlers can call it
-# ---------------------------
+def preview_plane_names_for(parts_count):
+    # Number of cuts is parts_count - 1
+    n = max(0, int(parts_count) - 1)
+    return [f"{PREVIEW_PLANE_PREFIX}{i+1}" for i in range(n)]
 
-def update_split_preview_plane(context):
+def position_preview_planes_for_object(context, obj, axis, parts_count, offset_scene):
     """
-    Create/update/remove the preview plane based on current props and active object.
-    - Creates/updates if props.show_split_preview is True and active mesh exists.
-    - Removes if toggle is off or no valid active mesh object.
-    Also detects active-object or axis changes and rebuilds orientation/scale accordingly.
+    Create/update multiple preview planes (one per planned cut) on current object.
+    Orients/scales each plane to object AABB tangents; positions each at its cut world position.
+    Removes any excess planes if parts_count decreased.
     """
-    props = getattr(context.scene, "snapsplit", None)
-    if props is None:
-        return
+    min_v, max_v = obj_world_bb(obj)
+    ax = axis_index_for(axis)
+    length = max_v[ax] - min_v[ax]
 
-    name = "_SnapSplit_PreviewPlane"
-    preview = bpy.data.objects.get(name)
+    targets = []
+    if length > 0.0 and parts_count >= 2:
+        for i in range(1, parts_count):
+            t = i / parts_count
+            pos = min_v[ax] + t * length + offset_scene
+            pos = max(min_v[ax], min(max_v[ax], pos))  # clamp
+            targets.append(pos)
 
-    obj = context.active_object
-    want_show = bool(getattr(props, "show_split_preview", False) and obj and obj.type == 'MESH')
+    want_names = preview_plane_names_for(parts_count)
 
-    if not want_show:
-        if preview and preview.name in bpy.data.objects:
-            for coll in list(preview.users_collection):
-                try: coll.objects.unlink(preview)
-                except Exception: pass
-            try: bpy.data.objects.remove(preview)
-            except Exception: pass
-        # Clear tracking
-        context.scene["_snapsplit_preview_last_obj"] = ""
-        context.scene["_snapsplit_preview_last_axis"] = ""
-        return
-
-    # Track which object/axis we last used to know when to rebuild
-    last_obj_name = context.scene.get("_snapsplit_preview_last_obj", "")
-    last_axis = context.scene.get("_snapsplit_preview_last_axis", "")
-    axis = props.split_axis
-
-    # Ensure plane exists
-    plane = preview or create_or_get_preview_plane(context, obj, axis)
-
-    # Rebuild only if object or axis changed
-    need_rebuild = (obj.name != last_obj_name) or (axis != last_axis)
-    if need_rebuild:
-        # Remove old plane object to force fresh orientation/scale for new object/axis
-        if plane and plane.name in bpy.data.objects:
-            for coll in list(plane.users_collection):
-                try: coll.objects.unlink(plane)
-                except Exception: pass
-            try: bpy.data.objects.remove(plane)
-            except Exception: pass
-        plane = create_or_get_preview_plane(context, obj, axis)
-    else:
-        # Sanity: verify alignment; rebuild if misaligned (rare)
-        axis_vec = Vector((1,0,0)) if axis == "X" else (Vector((0,1,0)) if axis == "Y" else Vector((0,0,1)))
+    # Ensure/create or update planes for each target position
+    for name, pos in zip(want_names, targets):
+        plane = bpy.data.objects.get(name) or create_or_get_preview_plane(context, obj, axis, name)
+        # Verify alignment; if misaligned (axis changed), rebuild
         z_world = Vector((plane.matrix_world[0][2], plane.matrix_world[1][2], plane.matrix_world[2][2])).normalized()
+        axis_vec = Vector((1,0,0)) if axis == "X" else (Vector((0,1,0)) if axis == "Y" else Vector((0,0,1)))
         if z_world.dot(axis_vec) < 0.999:
             for coll in list(plane.users_collection):
                 try: coll.objects.unlink(plane)
                 except Exception: pass
             try: bpy.data.objects.remove(plane)
             except Exception: pass
-            plane = create_or_get_preview_plane(context, obj, axis)
+            plane = create_or_get_preview_plane(context, obj, axis, name)
 
-    # Position from offset (mm -> scene units), clamped to this object's AABB
-    min_v, max_v = obj_world_bb(obj)
-    ax = axis_index_for(axis)
-    lo, hi = min_v[ax], max_v[ax]
-    mid = 0.5 * (lo + hi)
-    off_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
-    pos_world = max(lo, min(hi, mid + off_scene))
-    set_preview_plane_position(plane, obj, axis, pos_world)
+        set_preview_plane_position(plane, obj, axis, pos)
+        plane.hide_set(False)
+        plane.hide_viewport = False
+        plane.show_in_front = True
 
-    # Visibility
-    plane.hide_set(False)
-    plane.hide_viewport = False
-    plane.show_in_front = True
+    # Remove any extra preview planes not needed now
+    all_existing = [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]
+    for o in all_existing:
+        if o.name not in want_names:
+            for coll in list(o.users_collection):
+                try: coll.objects.unlink(o)
+                except Exception: pass
+            try: bpy.data.objects.remove(o)
+            except Exception: pass
+
+# ---------------------------
+# Top-level updater so profiles.py and handlers can call it
+# ---------------------------
+
+def update_split_preview_plane(context):
+    """
+    Create/update/remove the preview plane(s) based on current props and active object.
+    Creates one plane per planned cut (parts_count-1).
+    Removes any leftover planes when preview is disabled or no valid object.
+    """
+    props = getattr(context.scene, "snapsplit", None)
+    if props is None:
+        return
+
+    obj = context.active_object
+    want_show = bool(getattr(props, "show_split_preview", False) and obj and obj.type == 'MESH')
+
+    # If no preview wanted or no valid mesh, remove all preview planes
+    if not want_show:
+        for o in [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]:
+            for coll in list(o.users_collection):
+                try: coll.objects.unlink(o)
+                except Exception: pass
+            try: bpy.data.objects.remove(o)
+            except Exception: pass
+        # Clear tracking
+        context.scene["_snapsplit_preview_last_obj"] = ""
+        context.scene["_snapsplit_preview_last_axis"] = ""
+        return
+
+    # Track which object/axis we last used
+    last_obj_name = context.scene.get("_snapsplit_preview_last_obj", "")
+    last_axis = context.scene.get("_snapsplit_preview_last_axis", "")
+    axis = props.split_axis
+    parts_count = max(2, int(getattr(props, "parts_count", 2)))
+    offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
+
+    # If object or axis changed, easiest: drop all planes and rebuild
+    need_rebuild = (obj.name != last_obj_name) or (axis != last_axis)
+    if need_rebuild:
+        for o in [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]:
+            for coll in list(o.users_collection):
+                try: coll.objects.unlink(o)
+                except Exception: pass
+            try: bpy.data.objects.remove(o)
+            except Exception: pass
+
+    # Create/update all planes for current state
+    position_preview_planes_for_object(context, obj, axis, parts_count, offset_scene)
 
     # Persist tracking
     context.scene["_snapsplit_preview_last_obj"] = obj.name
@@ -403,9 +431,31 @@ class SNAP_OT_adjust_split_axis(Operator):
 
         self.current_world_pos, _ = world_pos_from_norm(self.obj, self.axis, self.t_norm)
 
-        # Ensure a preview plane object exists and is placed initially
-        self.preview_plane = create_or_get_preview_plane(context, self.obj, self.axis)
-        set_preview_plane_position(self.preview_plane, self.obj, self.axis, self.current_world_pos)
+        # Modale Vorschau initialisieren:
+        parts_cnt = max(2, int(getattr(self.props, "parts_count", 2)))
+        offset_scene = float(getattr(self.props, "split_offset_mm", 0.0)) * unit_mm()
+
+        if getattr(context.scene.snapsplit, "show_split_preview", False):
+            # Persistente (globale) Vorschau ist aktiv -> zentrale Multi-Vorschau aufziehen
+            try:
+                position_preview_planes_for_object(context, self.obj, self.axis, parts_cnt, offset_scene)
+            except Exception:
+                pass
+        else:
+            # Checkbox aus -> modale, temporäre Multi-Vorschau selbst aufbauen (x-1 Ebenen)
+            try:
+                position_preview_planes_for_object(context, self.obj, self.axis, parts_cnt, offset_scene)
+            except Exception:
+                pass
+
+        # Zusätzlich eine "führende" Ebene merken, um bei Mausbewegung sofort zu verschieben
+        lead_name = f"{PREVIEW_PLANE_PREFIX}1"
+        try:
+            self.preview_plane = create_or_get_preview_plane(context, self.obj, self.axis, lead_name)
+            set_preview_plane_position(self.preview_plane, self.obj, self.axis, self.current_world_pos)
+        except Exception:
+            self.preview_plane = None
+
 
         self._area = context.area; self._region = context.region
         context.window_manager.modal_handler_add(self)
@@ -418,7 +468,7 @@ class SNAP_OT_adjust_split_axis(Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
-        # Keep plane only if persistent preview is enabled
+        # Nur löschen, wenn persistente Vorschau deaktiviert ist
         keep = False
         try:
             keep = bool(getattr(context.scene.snapsplit, "show_split_preview", False))
@@ -426,9 +476,9 @@ class SNAP_OT_adjust_split_axis(Operator):
             pass
 
         if not keep:
+            # Alle temporären Preview-Planes (mit Prefix) entfernen
             try:
-                if getattr(self, "preview_plane", None) and self.preview_plane.name in bpy.data.objects:
-                    o = self.preview_plane
+                for o in [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]:
                     for coll in list(o.users_collection):
                         try: coll.objects.unlink(o)
                         except Exception: pass
@@ -477,6 +527,7 @@ class SNAP_OT_adjust_split_axis(Operator):
         if event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
             self.finish(context, cancelled=False); return {'FINISHED'}
 
+        # Mouse move: adjust normalized t (vertical movement)
         if event.type == 'MOUSEMOVE':
             dy = event.mouse_prev_y - event.mouse_y
             if dy != 0:
@@ -486,6 +537,7 @@ class SNAP_OT_adjust_split_axis(Operator):
                 self.props.split_offset_mm = float(scene_units_offset) * (1.0 / unit_mm())
                 updated = True
 
+        # Wheel / arrow fine steps
         step = 0.01
         if event.type in {'WHEELUPMOUSE', 'UP_ARROW'} and event.value == 'PRESS':
             self.t_norm = min(1.0, self.t_norm + step)
@@ -493,6 +545,7 @@ class SNAP_OT_adjust_split_axis(Operator):
             scene_units_offset = self.current_world_pos - self.mid_world
             self.props.split_offset_mm = float(scene_units_offset) * (1.0 / unit_mm())
             updated = True
+
         if event.type in {'WHEELDOWNMOUSE', 'DOWN_ARROW'} and event.value == 'PRESS':
             self.t_norm = max(-1.0, self.t_norm - step)
             self.current_world_pos, _ = world_pos_from_norm(self.obj, self.axis, self.t_norm)
@@ -500,14 +553,52 @@ class SNAP_OT_adjust_split_axis(Operator):
             self.props.split_offset_mm = float(scene_units_offset) * (1.0 / unit_mm())
             updated = True
 
-        if updated and getattr(self, "preview_plane", None):
-            set_preview_plane_position(self.preview_plane, self.obj, self.axis, self.current_world_pos)
+        # Apply preview movement once if anything changed (works for all inputs)
+        if updated:
+            # Ensure leading plane exists; recreate if it was removed externally
+            plane_ok = False
+            if getattr(self, "preview_plane", None):
+                try:
+                    _ = self.preview_plane.matrix_world
+                    plane_ok = True
+                except ReferenceError:
+                    plane_ok = False
+            if not plane_ok:
+                lead_name = f"{PREVIEW_PLANE_PREFIX}1"
+                try:
+                    self.preview_plane = create_or_get_preview_plane(context, self.obj, self.axis, lead_name)
+                except Exception:
+                    self.preview_plane = None
+
+            # Move the leading plane if available
+            if getattr(self, "preview_plane", None):
+                try:
+                    set_preview_plane_position(self.preview_plane, self.obj, self.axis, self.current_world_pos)
+                except ReferenceError:
+                    pass
+
+            # Update all modal preview planes to current offset/axis/parts
+            parts_cnt = max(2, int(getattr(self.props, "parts_count", 2)))
+            offset_scene = float(getattr(self.props, "split_offset_mm", 0.0)) * unit_mm()
+            try:
+                position_preview_planes_for_object(context, self.obj, self.axis, parts_cnt, offset_scene)
+            except Exception:
+                pass
+
+            # Only if persistent preview is enabled, update the global multi-plane preview state as well
+            try:
+                if getattr(context.scene.snapsplit, "show_split_preview", False):
+                    update_split_preview_plane(context)
+            except Exception:
+                pass
+
             if self._area: self._area.tag_redraw()
             if self._region:
                 try: self._region.tag_redraw()
                 except Exception: pass
 
         return {'RUNNING_MODAL'}
+
 
 # ---------------------------
 # Operator: Planar Split (uses split_offset_mm)
@@ -561,7 +652,7 @@ class SNAP_OT_planar_split(Operator):
         if parts:
             bpy.context.view_layer.objects.active = parts[0]
 
-        # Refresh/remove preview plane depending on toggle
+        # Refresh/remove preview planes depending on toggle and new active object
         try:
             update_split_preview_plane(context)
         except Exception:
