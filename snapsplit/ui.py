@@ -107,29 +107,25 @@ class SNAP_PT_panel(Panel):
         box = col.box()
         if props.connector_type == "CYL_PIN":
             box.prop(props, "pin_diameter_mm",
-                    text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
+                     text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
             box.prop(props, "pin_length_mm",
-                    text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
+                     text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
             box.prop(props, "pin_embed_pct",
-                    text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
 
             # Segments with subtle suggestion label
             row = box.row(align=True)
             row.prop(props, "pin_segments",
-                    text=("Segments" if not _DE else "Segmente"))
-
+                     text=("Segments" if not _DE else "Segmente"))
             try:
-                # Import suggestion helper from profiles
                 from .profiles import _suggest_pin_segments_from_diameter
                 suggested = _suggest_pin_segments_from_diameter(float(getattr(props, "pin_diameter_mm", 5.0)))
-                # Show subtle suggestion as secondary label
                 hint = f"Suggested: {suggested}" if not _DE else f"Vorschlag: {suggested}"
                 sub = row.row(align=True)
                 sub.alignment = 'RIGHT'
                 sub.label(text=hint, icon='INFO')
             except Exception:
                 pass
-
         else:
             box.prop(props, "tenon_width_mm",
                      text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
@@ -137,6 +133,7 @@ class SNAP_PT_panel(Panel):
                      text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
             box.prop(props, "pin_embed_pct",
                      text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+
         box.prop(props, "add_chamfer_mm",
                  text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
 
@@ -165,11 +162,14 @@ class SNAP_PT_panel(Panel):
 
         layout.separator()
 
-        # Action
+        # Actions
         col = layout.column(align=True)
         col.operator("snapsplit.add_connectors",
                      icon="SNAP_FACE",
                      text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
+        col.operator("snapsplit.place_connectors_click",
+                     icon="CURSOR",
+                     text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
 
 def register():
     bpy.utils.register_class(SNAP_PT_panel)
