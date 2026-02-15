@@ -1,4 +1,4 @@
-'''
+"""
 Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
 dev@betakontext.de
@@ -16,13 +16,13 @@ This file is part of SnapSplit
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with this program; if not, see <https://www.gnu.org
-/licenses>.
-'''
+    along with this program; if not, see <https://www.gnu.org/licenses>.
+"""
+
 import bpy
 from bpy.types import Panel
 from .profiles import MATERIAL_PROFILES
-from .utils import is_lang_de, current_language  # current_language available if you later add more locales
+from .utils import is_lang_de
 
 class SNAP_PT_panel(Panel):
     bl_space_type = 'VIEW_3D'
@@ -38,6 +38,7 @@ class SNAP_PT_panel(Panel):
         _DE = is_lang_de()
         layout = self.layout
         props = getattr(context.scene, "snapsplit", None)
+
         if props is None:
             layout.label(text=("SnapSplit properties not available." if not _DE
                                else "SnapSplit-Eigenschaften nicht verfügbar."),
@@ -46,32 +47,45 @@ class SNAP_PT_panel(Panel):
                                else "Bitte das Add-on erneut aktivieren."))
             return
 
-        # Segmentation
+        # ---------------- Segmentation ----------------
         col = layout.column(align=True)
         col.label(text=("Segmentation" if not _DE else "Segmentierung"))
-        col.prop(props, "parts_count",
+
+        row = col.row(align=True)
+        row.prop(props, "parts_count",
                  text=("Number of Parts" if not _DE else "Anzahl Teile"))
-        # Split axis
+        # Hint for heavy operations
+        try:
+            if int(props.parts_count) >= 12:
+                col.label(icon='INFO',
+                          text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
+        except Exception:
+            pass
+
         col.prop(props, "split_axis",
                  text=("Split Axis" if not _DE else "Schnittachse"))
-        # Axis regulation
         col.prop(props, "show_split_preview",
-                text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
+                 text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
         col.prop(props, "split_offset_mm",
-                 text=("Split Offset (mm)" if not is_lang_de() else "Schnitt-Offset (mm)"))
-        row = col.row(align=True)
+                 text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
 
+        row = col.row(align=True)
         row.operator("snapsplit.adjust_split_axis",
                      icon="EMPTY_AXIS",
-                     text=("Adjust split axis" if not is_lang_de() else "Schnittachse anpassen"))
+                     text=("Adjust split axis" if not _DE else "Schnittachse anpassen"))
 
         col.operator("snapsplit.planar_split",
                      icon="MOD_BOOLEAN",
                      text=("Planar Split" if not _DE else "Planarer Schnitt"))
 
+        # Optional: cap seams during split (slower)
+        if hasattr(props, "fill_seams_during_split"):
+            col.prop(props, "fill_seams_during_split",
+                     text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
+
         layout.separator()
 
-        # Connections
+        # ---------------- Connections ----------------
         col = layout.column(align=True)
         col.label(text=("Connections" if not _DE else "Verbindungen"))
         col.prop(props, "connector_type",
@@ -100,6 +114,9 @@ class SNAP_PT_panel(Panel):
                      text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
             box.prop(props, "pin_embed_pct",
                      text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+            if hasattr(props, "pin_segments"):
+                box.prop(props, "pin_segments",
+                         text=("Segments" if not _DE else "Segmente"))
         else:
             box.prop(props, "tenon_width_mm",
                      text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
@@ -111,19 +128,31 @@ class SNAP_PT_panel(Panel):
                  text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
 
         layout.separator()
+
+        # ---------------- Tolerance ----------------
         col = layout.column(align=True)
         col.label(text=("Tolerance" if not _DE else "Toleranz"))
         col.prop(props, "material_profile",
                  text=("Material Profiles" if not _DE else "Material-Profile"))
+
         row = col.row(align=True)
         row.prop(props, "tol_override",
                  text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
 
+        # Show profile value and effective tolerance
         prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
         row = col.row(align=True)
         row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
+        try:
+            eff_tol = float(props.effective_tolerance())
+            row2 = col.row(align=True)
+            row2.label(text=(f"Effective: {eff_tol:.2f} mm" if not _DE else f"Effektiv: {eff_tol:.2f} mm"))
+        except Exception:
+            pass
 
         layout.separator()
+
+        # Action
         col = layout.column(align=True)
         col.operator("snapsplit.add_connectors",
                      icon="SNAP_FACE",

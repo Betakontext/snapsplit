@@ -47,22 +47,19 @@ def _axis_vectors(axis):
         return Vector((0,1,0)), Vector((1,0,0)), Vector((0,0,1))
     return Vector((0,0,1)), Vector((1,0,0)), Vector((0,1,0))
 
-def _seam_plane_world_pos_for_axis(parts, axis, props):
-    """
-    Compute the world-space coordinate of the seam plane along 'axis'
-    using the global split_offset_mm (same convention as ops_split).
-    """
+def _pair_seam_plane_pos(obj_a, obj_b, axis, props):
+    """World-space seam plane coordinate for a specific adjacent pair (A,B)."""
     idx = _axis_index(axis)
-    lo = float("inf"); hi = float("-inf")
-    for o in parts:
-        bb = _bb_world(o)
-        vals = [c[idx] for c in bb]
-        lo = min(lo, min(vals)); hi = max(hi, max(vals))
+    bb_a = _bb_world(obj_a); bb_b = _bb_world(obj_b)
+    vals_a = [c[idx] for c in bb_a]; vals_b = [c[idx] for c in bb_b]
+    lo = min(min(vals_a), min(vals_b))
+    hi = max(max(vals_a), max(vals_b))
     if not (lo < hi):
-        return 0.0
+        return lo  # degenerate but safe
+
     mid = 0.5 * (lo + hi)
-    offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
-    return max(lo, min(hi, mid + offset_scene))
+    off_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
+    return max(lo, min(hi, mid + off_scene))
 
 # ---------------------------
 # Distribution helpers honoring seam plane
@@ -70,7 +67,7 @@ def _seam_plane_world_pos_for_axis(parts, axis, props):
 
 def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_pct=10.0):
     """
-    Like distribute_points_line but places points on the given seam plane (world coordinate seam_pos).
+    Distribute 'count' points along the overlap of (A,B) on the given seam plane (world coord).
     """
     n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
@@ -128,7 +125,7 @@ def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_p
 
 def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, margin_pct=10.0):
     """
-    Like distribute_points_grid but places points on the given seam plane (world coordinate seam_pos).
+    Distribute cols*rows points across the 2D overlap of (A,B) on the given seam plane (world coord).
     """
     n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
@@ -165,6 +162,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
         return [c for _ in range(max(1, cols * rows))]
 
     t1n = t1.normalized(); t2n = t2.normalized()
+
     pts = []
     for r in range(rows):
         fr = r / (rows - 1) if rows > 1 else 0.5
@@ -252,13 +250,14 @@ def cut_socket_with_cutter(target_obj, cutter_obj):
     boolean_apply(target_obj, mod)
 
 # ---------------------------
-# Placement & connect (honors split_offset_mm)
+# Placement & connect (pairwise seam plane)
 # ---------------------------
 
 def place_connectors_between(parts, axis, count, ctype, props):
     """
     Connect adjacent parts along 'axis' with distribution per props.connector_distribution.
-    The connectors are placed on the seam plane determined by Scene.snapsplit.split_offset_mm.
+    For each adjacent pair (A,B), compute a seam plane from the pair AABB midpoint plus split_offset_mm (clamped),
+    and place/connect on that plane. This keeps connectors aligned to actual seams even after offset changes.
     """
     if not parts:
         return []
@@ -279,11 +278,11 @@ def place_connectors_between(parts, axis, count, ctype, props):
     margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
     cols = max(1, int(getattr(props, "connectors_per_seam", count)))
 
-    # Global seam plane world position for this selection
-    seam_pos = _seam_plane_world_pos_for_axis(parts, axis, props)
-
     for a, b in pairs:
-        # Distribute on seam plane
+        # Pair-specific seam plane position
+        seam_pos = _pair_seam_plane_pos(a, b, axis, props)
+
+        # Distribute on this pair's seam plane
         if getattr(props, "connector_distribution", "LINE") == "GRID":
             rows = max(1, int(getattr(props, "connectors_rows", 2)))
             points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
@@ -299,7 +298,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             y = z.cross(x); y.normalize()
             x = y.cross(z); x.normalize()
 
-            # Embed depth: move placement point toward A (against z) so that 'embed_pct' of connector length is in A
+            # Embed depth: move placement point toward A (against z)
             L_scene = float(props.pin_length_mm if ctype == "CYL_PIN" else props.tenon_depth_mm) * unit_mm()
             p_embed = p - z * (embed_pct * L_scene)
 
