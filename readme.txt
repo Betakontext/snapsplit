@@ -14,17 +14,23 @@ Installation:
     -> Download snapsplit.zip
     -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
 
-Split:
+Split options:
+
     - Select a watertight (manifold) mesh.
     - Apply scale (Ctrl+A → Scale).
     - Scale Unit 1.000, Millimeters
     - N-Panel → SnapSplit:
         Choose desired number of parts and split axis.
-        Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
-Connect:
+    -> Run "Planar Split".
+
+    Multiple parts will be created in the “_SnapSplit_Parts” collection.
+
+Connections:
+
     - Select two or more adjacent parts (order does not matter).
     - Choose connector type and tolerance profile (optional override).
+
     -> Click “Add Connectors”.
 
 Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
