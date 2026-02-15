@@ -41,135 +41,150 @@ class SNAP_PT_panel(Panel):
 
         if props is None:
             layout.label(text=("SnapSplit properties not available." if not _DE
-                               else "SnapSplit-Eigenschaften nicht verfügbar."),
-                         icon="ERROR")
+                            else "SnapSplit-Eigenschaften nicht verfügbar."),
+                        icon="ERROR")
             layout.label(text=("Please re-enable the Add-on." if not _DE
-                               else "Bitte das Add-on erneut aktivieren."))
+                            else "Bitte das Add-on erneut aktivieren."))
             return
 
-        # Segmentation
-        col = layout.column(align=True)
-        col.label(text=("Segmentation" if not _DE else "Segmentierung"))
+        # SEGMENTATION (collapsed: only Split Axis + Planar Split)
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=("Segmentation" if not _DE else "Segmentierung"), icon='MOD_BOOLEAN')
+        more_txt = ("Less..." if props.ui_more_seg else "More...") if not _DE else ("Weniger..." if props.ui_more_seg else "Mehr...")
+        header.prop(props, "ui_more_seg", text=more_txt, toggle=True)
 
-        row = col.row(align=True)
-        row.prop(props, "parts_count",
-                 text=("Number of Parts" if not _DE else "Anzahl Teile"))
-        try:
-            if int(props.parts_count) >= 12:
-                col.label(icon='INFO',
-                          text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
-        except Exception:
-            pass
-
-        col.prop(props, "split_axis",
-                 text=("Split Axis" if not _DE else "Schnittachse"))
-        col.prop(props, "show_split_preview",
-                 text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
-        col.prop(props, "split_offset_mm",
-                 text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
+        col = box.column(align=True)
+        col.prop(props, "split_axis", text=("Split Axis" if not _DE else "Schnittachse"))
 
         row = col.row(align=True)
         row.operator("snapsplit.adjust_split_axis",
-                     icon="EMPTY_AXIS",
-                     text=("Adjust split axis" if not _DE else "Schnittachse anpassen"))
+                    icon="EMPTY_AXIS",
+                    text=("Adjust" if not _DE else "Anpassen"))
+        row.operator("snapsplit.planar_split",
+                    icon="MOD_BOOLEAN",
+                    text=("Planar Split" if not _DE else "Planarer Schnitt"))
 
-        col.operator("snapsplit.planar_split",
-                     icon="MOD_BOOLEAN",
-                     text=("Planar Split" if not _DE else "Planarer Schnitt"))
-
-        # Cap seams during split (slower)
-        col.prop(props, "fill_seams_during_split",
-                 text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
-
-        layout.separator()
-
-        # Connections
-        col = layout.column(align=True)
-        col.label(text=("Connections" if not _DE else "Verbindungen"))
-        col.prop(props, "connector_type",
-                 text=("Connector Type" if not _DE else "Verbinder-Typ"))
-        col.prop(props, "connector_distribution",
-                 text=("Distribution" if not _DE else "Verteilung"))
-
-        if props.connector_distribution == "LINE":
-            col.prop(props, "connectors_per_seam",
-                     text=("Connectors per Seam" if not _DE else "Verbinder pro Naht"))
-        else:
-            row = col.row(align=True)
-            row.prop(props, "connectors_per_seam",
-                     text=("Columns" if not _DE else "Spalten"))
-            row.prop(props, "connectors_rows",
-                     text=("Rows" if not _DE else "Reihen"))
-
-        col.prop(props, "connector_margin_pct",
-                 text=("Margin (%)" if not _DE else "Randabstand (%)"))
-
-        box = col.box()
-        if props.connector_type == "CYL_PIN":
-            box.prop(props, "pin_diameter_mm",
-                     text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
-            box.prop(props, "pin_length_mm",
-                     text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
-            box.prop(props, "pin_embed_pct",
-                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
-
-            # Segments with subtle suggestion label
-            row = box.row(align=True)
-            row.prop(props, "pin_segments",
-                     text=("Segments" if not _DE else "Segmente"))
+        if props.ui_more_seg:
+            # Advanced segmentation controls
+            adv = box.column(align=True)
+            adv.prop(props, "parts_count",
+                    text=("Number of Parts" if not _DE else "Anzahl Teile"))
             try:
-                from .profiles import _suggest_pin_segments_from_diameter
-                suggested = _suggest_pin_segments_from_diameter(float(getattr(props, "pin_diameter_mm", 5.0)))
-                hint = f"Suggested: {suggested}" if not _DE else f"Vorschlag: {suggested}"
-                sub = row.row(align=True)
-                sub.alignment = 'RIGHT'
-                sub.label(text=hint, icon='INFO')
+                if int(props.parts_count) >= 12:
+                    adv.label(icon='INFO',
+                            text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
             except Exception:
                 pass
-        else:
-            box.prop(props, "tenon_width_mm",
-                     text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
-            box.prop(props, "tenon_depth_mm",
-                     text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
-            box.prop(props, "pin_embed_pct",
-                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
-
-        box.prop(props, "add_chamfer_mm",
-                 text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
+            adv.prop(props, "show_split_preview",
+                    text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
+            adv.prop(props, "split_offset_mm",
+                    text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
+            adv.prop(props, "fill_seams_during_split",
+                    text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
 
         layout.separator()
 
-        # Tolerance
-        col = layout.column(align=True)
-        col.label(text=("Tolerance" if not _DE else "Toleranz"))
+        # CONNECTIONS (collapsed: only Connector Type + Distribution)
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=("Connections" if not _DE else "Verbindungen"), icon='SNAP_FACE')
+        more_txt = ("Less..." if props.ui_more_conn else "More...") if not _DE else ("Weniger..." if props.ui_more_conn else "Mehr...")
+        header.prop(props, "ui_more_conn", text=more_txt, toggle=True)
+
+        col = box.column(align=True)
+        col.prop(props, "connector_type", text=("Connector Type" if not _DE else "Verbinder-Typ"))
+        col.prop(props, "connector_distribution", text=("Distribution" if not _DE else "Verteilung"))
+
+        if props.ui_more_conn:
+            # Advanced connection placement
+            adv = box.column(align=True)
+            if props.connector_distribution == "LINE":
+                adv.prop(props, "connectors_per_seam",
+                        text=("Connectors per Seam" if not _DE else "Verbinder pro Naht"))
+            else:
+                row = adv.row(align=True)
+                row.prop(props, "connectors_per_seam",
+                        text=("Columns" if not _DE else "Spalten"))
+                row.prop(props, "connectors_rows",
+                        text=("Rows" if not _DE else "Reihen"))
+            adv.prop(props, "connector_margin_pct",
+                    text=("Margin (%)" if not _DE else "Randabstand (%)"))
+
+            # Geometry settings
+            gbox = box.box()
+            if props.connector_type == "CYL_PIN":
+                gbox.prop(props, "pin_diameter_mm",
+                        text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
+                gbox.prop(props, "pin_length_mm",
+                        text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
+                gbox.prop(props, "pin_embed_pct",
+                        text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+
+                row = gbox.row(align=True)
+                row.prop(props, "pin_segments",
+                        text=("Segments" if not _DE else "Segmente"))
+                try:
+                    from .profiles import _suggest_pin_segments_from_diameter
+                    suggested = _suggest_pin_segments_from_diameter(float(getattr(props, "pin_diameter_mm", 5.0)))
+                    hint = f"Suggested: {suggested}" if not _DE else f"Vorschlag: {suggested}"
+                    sub = row.row(align=True); sub.alignment = 'RIGHT'
+                    sub.label(text=hint, icon='INFO')
+                except Exception:
+                    pass
+            else:
+                gbox.prop(props, "tenon_width_mm",
+                        text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
+                gbox.prop(props, "tenon_depth_mm",
+                        text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
+                gbox.prop(props, "pin_embed_pct",
+                        text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+
+            gbox.prop(props, "add_chamfer_mm",
+                    text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
+
+        layout.separator()
+
+        # TOLERANCE (collapsed: only Material Profile)
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=("Tolerance" if not _DE else "Toleranz"), icon='MOD_SOLIDIFY')
+        more_txt = ("Less..." if props.ui_more_tol else "More...") if not _DE else ("Weniger..." if props.ui_more_tol else "Mehr...")
+        header.prop(props, "ui_more_tol", text=more_txt, toggle=True)
+
+        col = box.column(align=True)
         col.prop(props, "material_profile",
-                 text=("Material Profiles" if not _DE else "Material-Profile"))
+                text=("Material Profiles" if not _DE else "Material-Profile"))
 
-        row = col.row(align=True)
-        row.prop(props, "tol_override",
-                 text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
+        if props.ui_more_tol:
+            adv = box.column(align=True)
+            row = adv.row(align=True)
+            row.prop(props, "tol_override",
+                    text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
 
-        # Show both profile and effective tolerance
-        prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
-        row = col.row(align=True)
-        row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
-        try:
-            eff_tol = float(props.effective_tolerance())
-            row2 = col.row(align=True)
-            row2.label(text=(f"Effective: {eff_tol:.2f} mm" if not _DE else f"Effektiv: {eff_tol:.2f} mm"))
-        except Exception:
-            pass
+            # Profile and effective readout
+            from .profiles import MATERIAL_PROFILES
+            prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
+            row = adv.row(align=True)
+            row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
+            try:
+                eff_tol = float(props.effective_tolerance())
+                row2 = adv.row(align=True)
+                row2.label(text=(f"Effective: {eff_tol:.2f} mm" if not _DE else f"Effektiv: {eff_tol:.2f} mm"))
+            except Exception:
+                pass
 
         layout.separator()
 
-        # Actions
+        # ACTIONS (always visible)
         col = layout.column(align=True)
         col.operator("snapsplit.add_connectors",
-                     icon="SNAP_FACE",
-                     text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
+                    icon="SNAP_FACE",
+                    text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
         col.operator("snapsplit.place_connectors_click",
-                     icon="CURSOR",
-                     text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
+                    icon="CURSOR",
+                    text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
+
 
 def register():
     bpy.utils.register_class(SNAP_PT_panel)

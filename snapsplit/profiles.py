@@ -270,6 +270,25 @@ class SnapSplitProps(PropertyGroup):
         prof = MATERIAL_PROFILES.get(self.material_profile, 0.2)
         return prof if self.tol_override <= 0.0 else self.tol_override
 
+    # UI foldouts
+    ui_more_seg: BoolProperty(
+        name="More segmentation settings",
+        description="Show advanced segmentation options",
+        default=False
+    )
+
+    ui_more_conn: BoolProperty(
+        name="More connection settings",
+        description="Show advanced connection/geometry options",
+        default=False
+    )
+
+    ui_more_tol: BoolProperty(
+        name="More tolerance settings",
+        description="Show advanced tolerance options",
+        default=False
+    )
+
 # ---------------------------
 # Registration
 # ---------------------------
