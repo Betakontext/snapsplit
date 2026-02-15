@@ -19,6 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+import math
 import bpy
 from bpy.props import (
     EnumProperty,
@@ -30,7 +31,6 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from .utils import current_language, is_lang_de
-from .utils import unit_mm  # ggf. für spätere Rechenhelfer
 
 # ---------------------------
 # Material profiles (tolerance per side, in mm)
@@ -46,7 +46,7 @@ MATERIAL_PROFILES = {
 }
 
 def _snapsplit_update_preview(self, context):
-    """Update hook: keep preview planes in sync when relevant props change."""
+    """Update hook to keep split preview planes in sync."""
     try:
         from . import ops_split
         ops_split.update_split_preview_plane(context)
@@ -59,13 +59,28 @@ def _is_de():
     except Exception:
         return is_lang_de()
 
+def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
+    """
+    Heuristic recommendation for cylindrical pin radial segments based on diameter in mm.
+    Tuned for 3D printing: round enough without overloading mesh.
+    """
+    if d_mm <= 0:
+        return 16
+    # Proportional to circumference / divisor; adjust divisor to your taste
+    base = int(round(math.pi * d_mm / 1.8))
+    # Practical clamps
+    lo, hi = 12, 64
+    if d_mm < 3.0:
+        lo = 16  # tiny pins still need enough segments to avoid flats
+    return max(lo, min(hi, base))
+
 def _mat_item_desc(key: str, val: float) -> str:
     if _is_de():
         return f"Empfohlene Toleranz pro Seite: {val:.2f} mm"
     return f"Recommended tolerance per side: {val:.2f} mm"
 
 def _material_items():
-    # Localized tooltips
+    # Localized tooltips for material list
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
 
 # ---------------------------
@@ -75,8 +90,7 @@ def _material_items():
 class SnapSplitProps(PropertyGroup):
     _DE = _is_de()
 
-    # ---------------- Split / Preview ----------------
-
+    # Split / Preview
     split_offset_mm: FloatProperty(
         name="Schnitt-Offset (mm)" if _DE else "Split Offset (mm)",
         description=("Verschiebung der Schnittebene entlang der Achse (positiv in Achsrichtung)"
@@ -116,7 +130,7 @@ class SnapSplitProps(PropertyGroup):
         update=_snapsplit_update_preview,
     )
 
-    # Performance: hole fill policy during split
+    # Performance option: cap (fill) seams during split
     fill_seams_during_split: BoolProperty(
         name="Nähte beim Schnitt kappen (langsamer)" if _DE else "Cap seams during split (slower)",
         description=("Füllt Schnittöffnungen während des Splits. Kann die Laufzeit stark erhöhen."
@@ -124,8 +138,7 @@ class SnapSplitProps(PropertyGroup):
         default=False,
     )
 
-    # ---------------- Connectors ----------------
-
+    # Connectors
     connector_type: EnumProperty(
         name="Verbinder-Typ" if _DE else "Connector Type",
         items=[
@@ -235,11 +248,10 @@ class SnapSplitProps(PropertyGroup):
         subtype='PERCENTAGE'
     )
 
-    # ---------------- Tolerances / material profile ----------------
-
+    # Tolerances / material profile
     material_profile: EnumProperty(
         name="Material-Profile" if _DE else "Material Profiles",
-        items=_material_items(),   # localized tooltips
+        items=_material_items(),
         default="PLA",
         description=("Materialprofil wählen, um die Toleranz pro Seite zu setzen"
                      if _DE else "Select a material profile to auto-fill tolerance per side"),

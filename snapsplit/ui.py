@@ -12,8 +12,8 @@ This file is part of SnapSplit
 
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, see <https://www.gnu.org/licenses>.
@@ -47,14 +47,13 @@ class SNAP_PT_panel(Panel):
                                else "Bitte das Add-on erneut aktivieren."))
             return
 
-        # ---------------- Segmentation ----------------
+        # Segmentation
         col = layout.column(align=True)
         col.label(text=("Segmentation" if not _DE else "Segmentierung"))
 
         row = col.row(align=True)
         row.prop(props, "parts_count",
                  text=("Number of Parts" if not _DE else "Anzahl Teile"))
-        # Hint for heavy operations
         try:
             if int(props.parts_count) >= 12:
                 col.label(icon='INFO',
@@ -78,14 +77,13 @@ class SNAP_PT_panel(Panel):
                      icon="MOD_BOOLEAN",
                      text=("Planar Split" if not _DE else "Planarer Schnitt"))
 
-        # Optional: cap seams during split (slower)
-        if hasattr(props, "fill_seams_during_split"):
-            col.prop(props, "fill_seams_during_split",
-                     text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
+        # Cap seams during split (slower)
+        col.prop(props, "fill_seams_during_split",
+                 text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
 
         layout.separator()
 
-        # ---------------- Connections ----------------
+        # Connections
         col = layout.column(align=True)
         col.label(text=("Connections" if not _DE else "Verbindungen"))
         col.prop(props, "connector_type",
@@ -109,14 +107,29 @@ class SNAP_PT_panel(Panel):
         box = col.box()
         if props.connector_type == "CYL_PIN":
             box.prop(props, "pin_diameter_mm",
-                     text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
+                    text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
             box.prop(props, "pin_length_mm",
-                     text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
+                    text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
             box.prop(props, "pin_embed_pct",
-                     text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
-            if hasattr(props, "pin_segments"):
-                box.prop(props, "pin_segments",
-                         text=("Segments" if not _DE else "Segmente"))
+                    text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+
+            # Segments with subtle suggestion label
+            row = box.row(align=True)
+            row.prop(props, "pin_segments",
+                    text=("Segments" if not _DE else "Segmente"))
+
+            try:
+                # Import suggestion helper from profiles
+                from .profiles import _suggest_pin_segments_from_diameter
+                suggested = _suggest_pin_segments_from_diameter(float(getattr(props, "pin_diameter_mm", 5.0)))
+                # Show subtle suggestion as secondary label
+                hint = f"Suggested: {suggested}" if not _DE else f"Vorschlag: {suggested}"
+                sub = row.row(align=True)
+                sub.alignment = 'RIGHT'
+                sub.label(text=hint, icon='INFO')
+            except Exception:
+                pass
+
         else:
             box.prop(props, "tenon_width_mm",
                      text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
@@ -129,7 +142,7 @@ class SNAP_PT_panel(Panel):
 
         layout.separator()
 
-        # ---------------- Tolerance ----------------
+        # Tolerance
         col = layout.column(align=True)
         col.label(text=("Tolerance" if not _DE else "Toleranz"))
         col.prop(props, "material_profile",
@@ -139,7 +152,7 @@ class SNAP_PT_panel(Panel):
         row.prop(props, "tol_override",
                  text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
 
-        # Show profile value and effective tolerance
+        # Show both profile and effective tolerance
         prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
         row = col.row(align=True)
         row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))

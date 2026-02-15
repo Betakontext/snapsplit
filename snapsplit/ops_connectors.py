@@ -310,8 +310,9 @@ def place_connectors_between(parts, axis, count, ctype, props):
             ))
 
             if ctype == "CYL_PIN":
+                seg = int(getattr(props, "pin_segments", 32))
                 pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
-                                     segments=32, name=f"Pin_{i}")
+                segments=seg, name=f"Pin_{i}")
                 pin.matrix_world = M
                 cutters_coll.objects.link(pin)
 
@@ -322,7 +323,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 # Socket cutter with d = pin + 2*tol
                 socket_d = float(props.pin_diameter_mm) + 2.0 * tol
-                socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=32, name=f"SocketCutter_{i}")
+                socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"SocketCutter_{i}")
                 socket.matrix_world = M
                 cutters_coll.objects.link(socket)
                 cut_socket_with_cutter(b, socket)
