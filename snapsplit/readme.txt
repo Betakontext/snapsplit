@@ -18,17 +18,25 @@ Split:
     - Apply scale (Ctrl+A → Scale).
     - Scale Unit 1.000, Millimeters
     - N-Panel → SnapSplit:
-        Choose desired number of parts and split axis.
-        Run Planar Split. Multiple parts will be created in the “_SnapSplit_Parts” collection.
+
+        -> Choose desired number of parts and split axis.
+        -> Adjust and set the split axis
+        -> Run "Planar Split".
+
+        Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
 Connect:
     - Select two or more adjacent parts (order does not matter).
     - Choose connector type and tolerance profile (optional override).
     -> Click “Add Connectors”.
 
-Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
+        Pins/tenons are distributed along a seam line or spread across a grid on the seam surface:
+        The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
-Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+Export parts as usual (STL/OBJ/3MF).
+Tip: for 3MF, double-check scale/units.
+
+-------------------------
 
 Quality assurance and error prevention:
     - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
@@ -44,6 +52,7 @@ For now the add-on includes:
 
     Property group with:
         Number of parts (e.g., 2–8)
+        Split adjustment preview
         Connector type (Cylindrical Pin, Rectangular Tenon)
         Material/Printer profile (PLA, PETG, ABS, ASA, TPU, SLA)
         Derived tolerances (per side)
@@ -67,11 +76,21 @@ For now the add-on includes:
 
 ---------------------------
 
-Limitations and thoughts for next steps:
-    The current Planar Split uses heuristics and large cutter bodies. For highly complex geometry, occasional manual cleanup may be helpful.
-    Connectors are currently placed along a coarse midline or into a grid across the seam surface.
+For development:
 
-Future versions can add free-form seams, bayonet locks, dovetails, magnet pockets, support-aware features, etc.
+Necessary folder structure (inside snapsplit.zip):
+
+    snapsplit/
+        __init__.py
+        ops_split.py
+        ops_connectors.py
+        ui.py
+        prefs.py
+        utils.py
+        profiles.py
+
+Thoughts for next steps:
+    Future versions can add free-form seams, bayonet locks, dovetails, magnet pockets, support-aware features, etc.
 
 Roadmap of ideas:
     Determine seam curves precisely
@@ -87,21 +106,8 @@ Roadmap of ideas:
 
 ---------------------------
 
-For development:
 
-Necessary folder structure (inside snapsplit.zip):
-
-    snapsplit/
-        __init__.py
-        ops_split.py
-        ops_connectors.py
-        ui.py
-        prefs.py
-        utils.py
-        profiles.py
-
----------------------------
-
+Have fun splitting and printing.
+Fork and explore to contribute to the code with new functions.
 The project is made with AI assistance (GPT 5) and under the terms of the GNU General Public License.
-If you want to contribute, fork and explore the code. Have fun splitting and printing.
-CONTACT: info@betakontext.de
+CONTACT: dev@betakontext.de
