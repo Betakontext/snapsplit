@@ -117,4 +117,4 @@ The project is made with AI assistance and under the terms of the GNU General Pu
 
 Have fun splitting and printing.
 
-CONTACT: dev@betakontext.de
+CONTACT: Christoph Medicus | dev@betakontext.de
