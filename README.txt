@@ -7,30 +7,33 @@ Its goal is to integrate into a 3D printing workflow and uses robust booleans, a
 
 For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test it on other Blender versions. Lets update version compatabilities.
 
-Blender setup:  
-
-    Unit system: Metric, Unit scale: 1.000, Length: Adaptive
-
 Installation:
     -> Download snapsplit.zip
     -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
 
+Blender setup:
+    *   Unit system: Metric, Unit scale: 1.000, Length: Adaptive
+
 Quality assurance and error prevention:
+    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
     - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
+    - Ctrl + A -> Apply all transforms = important if you f.e. rotate or change the size the object.
     - After splitting: visually check that all parts contain polygons.
-    - If booleans fail: try a moderate voxel remesh, remove doubles, recalc normals.
     - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
 
 -------------------------
 -------------------------
 
-Cut / Split options:
+Cut / Split workflow:
 
     - Select a watertight (manifold) mesh.
-    - Apply scale (Ctrl+A → Scale).
-    - Scale Unit 1.000, Millimeters
+    - Apply all transformations (Ctrl+A → All transforms).
+    - Scale Unit = 1.000, Millimeters
     - N-Panel → SnapSplit:
         Choose desired number of parts and split axis.
+    - for larger part numbers you can deselect "cap seams" and create the caps afterwards
+    - Set an individualized split axis per mousewheel or offset adjustment
+    - Adjust split axis
 
     -> Run "Planar Split".
 
