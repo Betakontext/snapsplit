@@ -135,7 +135,7 @@ class SnapSplitProps(PropertyGroup):
         name="Nähte beim Schnitt kappen (langsamer)" if _DE else "Cap seams during split (slower)",
         description=("Füllt Schnittöffnungen während des Splits. Kann die Laufzeit stark erhöhen."
                      if _DE else "Fills open boundaries during split. Can be significantly slower."),
-        default=False,
+        default=True,
     )
 
     # Connectors

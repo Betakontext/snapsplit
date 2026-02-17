@@ -660,6 +660,70 @@ class SNAP_OT_planar_split(Operator):
         return {'FINISHED'}
 
 # ---------------------------
+# Cap open seams / Seams closing hanlder
+# ---------------------------
+
+class SNAP_OT_cap_open_seams_now(Operator):
+    bl_idname = "snapsplit.cap_open_seams_now"
+    bl_label = "Cap seams now" if not is_lang_de() else "Nähte jetzt schließen"
+    bl_description = ("Fill open boundary loops on selected parts (faster than capping during split)"
+                      if not is_lang_de() else
+                      "Offene Randkanten auf ausgewählten Teilen schließen (schneller als beim Schneiden)")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    only_selected: bpy.props.BoolProperty(
+        name="Only selected objects" if not is_lang_de() else "Nur ausgewählte Objekte",
+        default=True
+    )
+
+    def execute(self, context):
+        # Collect targets
+        if self.only_selected:
+            targets = [o for o in context.selected_objects if o.type == 'MESH']
+        else:
+            # Optionally scan a parts collection
+            parts_coll = bpy.data.collections.get("_SnapSplit_Parts")
+            targets = list(parts_coll.objects) if parts_coll else []
+            targets = [o for o in targets if o and o.type == 'MESH']
+
+        if not targets:
+            report_user(self, 'ERROR',
+                        "No mesh objects to cap. Select split parts or use the parts collection.",
+                        "Keine Mesh-Objekte gefunden. Teile auswählen oder die Teile-Sammlung nutzen.")
+            return {'CANCELLED'}
+
+        capped = 0
+        for obj in targets:
+            try:
+                me = obj.data
+                bm = bmesh.new()
+                bm.from_mesh(me)
+
+                boundary_edges = [e for e in bm.edges if e.is_boundary]
+                if boundary_edges:
+                    try:
+                        bmesh.ops.holes_fill(bm, edges=boundary_edges, sides=0)
+                        bm.normal_update()
+                        bm.to_mesh(me)
+                        me.update()
+                        capped += 1
+                    except Exception as e:
+                        report_user(self, 'WARNING',
+                                    f"Cap failed on '{obj.name}': {e}",
+                                    f"Schließen fehlgeschlagen bei '{obj.name}': {e}")
+                bm.free()
+            except Exception as e:
+                report_user(self, 'WARNING',
+                            f"Processing failed on '{obj.name}': {e}",
+                            f"Verarbeitung fehlgeschlagen bei '{obj.name}': {e}")
+
+        report_user(self, 'INFO',
+                    f"Capped seams on {capped} object(s).",
+                    f"Nähte bei {capped} Objekt(en) geschlossen.")
+        return {'FINISHED'}
+
+
+# ---------------------------
 # Depsgraph handler (keeps preview in sync on active-object change)
 # ---------------------------
 
@@ -701,7 +765,7 @@ def _snapsplit_depsgraph_update(scene, depsgraph):
 # Registration
 # ---------------------------
 
-classes = (SNAP_OT_adjust_split_axis, SNAP_OT_planar_split)
+classes = (SNAP_OT_adjust_split_axis, SNAP_OT_planar_split, SNAP_OT_cap_open_seams_now)
 
 def register():
     for c in classes:
