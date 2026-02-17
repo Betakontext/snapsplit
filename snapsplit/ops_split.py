@@ -81,6 +81,68 @@ def size_on_tangential_axes(obj, axis):
     t2 = (ax + 2) % 3
     return (abs(max_v[t1] - min_v[t1]), abs(max_v[t2] - min_v[t2])), (t1, t2), (min_v, max_v)
 
+def warn_if_unapplied_transforms(obj, operator=None):
+    """
+    Prüft auf negative/non-uniforme Skalierung, nicht-null Location, nicht-Identitätsrotation.
+    Gibt eine user-freundliche Warnung aus, die 'Apply All Transforms (Ctrl+A)' vorschlägt.
+    """
+    if not obj or obj.type != 'MESH':
+        return
+
+    try:
+        # Location
+        loc = tuple(getattr(obj, "location", (0.0, 0.0, 0.0)))
+        has_loc = any(abs(v) > 1e-7 for v in loc)
+
+        # Rotation (Euler oder Quaternion)
+        has_rot = False
+        rot_mode = getattr(obj, "rotation_mode", "QUATERNION")
+        if rot_mode == 'QUATERNION':
+            q = getattr(obj, "rotation_quaternion", None)
+            if q is not None:
+                has_rot = (abs(q.w - 1.0) > 1e-7) or (abs(q.x) > 1e-7) or (abs(q.y) > 1e-7) or (abs(q.z) > 1e-7)
+        else:
+            e = getattr(obj, "rotation_euler", None)
+            if e is not None:
+                has_rot = any(abs(a) > 1e-7 for a in (e.x, e.y, e.z))
+
+        # Scale
+        sx, sy, sz = getattr(obj, "scale", (1.0, 1.0, 1.0))
+        non_uniform = (abs(sx - sy) > 1e-7) or (abs(sy - sz) > 1e-7) or (abs(sx - sz) > 1e-7)
+        det = obj.matrix_world.to_3x3().determinant()
+        negative_scale = det < 0.0
+
+        if has_loc or has_rot or non_uniform or negative_scale:
+            msg_en = "Object has unapplied transforms"
+            details_en = []
+            if has_loc: details_en.append("Location")
+            if has_rot: details_en.append("Rotation")
+            if non_uniform: details_en.append("Non-uniform Scale")
+            if negative_scale: details_en.append("Negative Scale")
+            details_str_en = ", ".join(details_en)
+
+            msg_de = "Objekt hat nicht angewendete Transformationen"
+            details_de = []
+            if has_loc: details_de.append("Position")
+            if has_rot: details_de.append("Rotation")
+            if non_uniform: details_de.append("nicht-uniforme Skalierung")
+            if negative_scale: details_de.append("negative Skalierung")
+            details_str_de = ", ".join(details_de)
+
+            hint_en = "Consider Apply All Transforms (Ctrl+A) for exact and predictable split results."
+            hint_de = "Für exakte und vorhersagbare Schnittergebnisse ggf. 'Apply All Transforms' (Strg+A) anwenden."
+
+            full_en = f"{msg_en}: {details_str_en}. {hint_en}"
+            full_de = f"{msg_de}: {details_str_de}. {hint_de}"
+
+            if operator is not None:
+                report_user(operator, 'INFO', full_en, full_de)
+            else:
+                print(f"[SnapSplit] {full_en} / {full_de}")
+    except Exception:
+        pass
+
+
 def build_orange_preview_material():
     name = PREVIEW_MAT_NAME
     mat = bpy.data.materials.get(name)
@@ -365,7 +427,7 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
 
     return o_pos, o_neg
 
-def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
+def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None, operator=None):
     if cuts_override is None:
         min_v, max_v = world_aabb(root_obj)
         ax = axis_index_for(axis)
@@ -397,12 +459,36 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
         for idx, (co_world, no_world) in enumerate(cuts, start=1):
             next_parts = []
             for part in current_parts:
-                M = part.matrix_world; M_inv = M.inverted()
+                # Robustheitscheck
+                if part is None or part.type != 'MESH' or part.data is None:
+                    continue
+
+                # Warnung: unapplied transforms (immer wenn nötig)
+                try:
+                    warn_if_unapplied_transforms(part, operator=operator)
+                except Exception:
+                    pass
+
+                # Welt -> Objekt-Raum transformieren (inverse-Transpose für Normalen)
+                M = part.matrix_world
+                M_inv = M.inverted()
                 co_obj = M_inv @ co_world
-                no_obj = (M_inv.to_3x3().transposed() @ no_world).normalized()
+                no_obj = (M_inv.to_3x3().transposed() @ no_world)
+                # Degenerate guard
+                if no_obj.length_squared == 0.0:
+                    continue
+                # Orientierungskorrektur bei negativer Determinante (Spiegelung)
+                if M.to_3x3().determinant() < 0.0:
+                    no_obj.negate()
+                no_obj.normalize()
+
                 a, b = split_mesh_bmesh_into_two(part, co_obj, no_obj, name_suffix=f"_S{idx}", do_fill=do_fill)
-                next_parts.extend([a, b])
-            current_parts = [p for p in next_parts if p and p.type == 'MESH']
+                if a and a.type == 'MESH':
+                    next_parts.append(a)
+                if b and b.type == 'MESH':
+                    next_parts.append(b)
+
+            current_parts = [p for p in next_parts if p and p.type == 'MESH' and p.data]
 
             wm.progress_update(idx)
             try:
@@ -413,6 +499,7 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
         return [o for o in current_parts if o and o.type == 'MESH' and o.data and len(o.data.polygons) > 0]
     finally:
         wm.progress_end()
+
 
 
 # ---------------------------
@@ -431,6 +518,8 @@ class SNAP_OT_adjust_split_axis(Operator):
                         "Please select a mesh object.",
                         "Bitte ein Mesh-Objekt auswählen.")
             return {'CANCELLED'}
+
+        warn_if_unapplied_transforms(obj, operator=self)
 
         self.obj = obj
         self.props = context.scene.snapsplit
@@ -612,6 +701,9 @@ class SNAP_OT_planar_split(Operator):
                         "Bitte ein Mesh-Objekt auswählen.")
             return {'CANCELLED'}
 
+        # Vorab-Warnung für nicht angewendete Transformationen
+        warn_if_unapplied_transforms(obj, operator=self)
+
         props = context.scene.snapsplit
         axis = props.split_axis
         count = max(2, int(props.parts_count))
@@ -626,7 +718,7 @@ class SNAP_OT_planar_split(Operator):
         # Build offset cuts once
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
 
-        parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts)
+        parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
 
         if len(parts) < count:
             report_user(self, 'WARNING',
