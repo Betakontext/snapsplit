@@ -386,8 +386,9 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
     else:
         cuts = cuts_override
 
-    # Decide if we fill seams (performance switch)
-    do_fill = _should_fill_seams(parts_count)
+    # EXPLICIT BEHAVIOR: fill strictly follows the UI toggle
+    props = getattr(bpy.context.scene, "snapsplit", None)
+    do_fill = bool(getattr(props, "fill_seams_during_split", False)) if props else False
 
     wm = bpy.context.window_manager
     wm.progress_begin(0, len(cuts))
@@ -403,7 +404,6 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
                 next_parts.extend([a, b])
             current_parts = [p for p in next_parts if p and p.type == 'MESH']
 
-            # Progress + keep UI responsive
             wm.progress_update(idx)
             try:
                 bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
@@ -413,6 +413,7 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None):
         return [o for o in current_parts if o and o.type == 'MESH' and o.data and len(o.data.polygons) > 0]
     finally:
         wm.progress_end()
+
 
 # ---------------------------
 # Interactive operator: Adjust split axis (preview as real object)

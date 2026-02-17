@@ -69,11 +69,11 @@ class SNAP_PT_panel(Panel):
             # Advanced segmentation controls
             adv = box.column(align=True)
             adv.prop(props, "parts_count",
-                    text=("Number of Parts" if not _DE else "Anzahl Teile"))
+                    text=("Number of parts" if not _DE else "Anzahl Teile"))
             try:
                 if int(props.parts_count) >= 12:
                     adv.label(icon='INFO',
-                            text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
+                            text=("High part count may be slow" if not _DE else "Hohe Anzahl Teile kann langsam sein"))
             except Exception:
                 pass
             adv.prop(props, "show_split_preview",
@@ -81,7 +81,7 @@ class SNAP_PT_panel(Panel):
             adv.prop(props, "split_offset_mm",
                     text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
             adv.prop(props, "fill_seams_during_split",
-                    text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt kappen (langsamer)"))
+                    text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt abdecken (langsamer)"))
 
         layout.separator()
 
