@@ -210,138 +210,67 @@ def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="
     obj = bpy.data.objects.new(name, me)
     return obj
 
-def create_rect_tenon(w_mm, depth_mm, chamfer_mm, name="RectTenon"):
+def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="SnapSplit_Tenon"):
+    """
+    Länglicher Quader: X=Breite, Y=Breite (quadratischer Querschnitt), Z=Länge (Steckrichtung).
+    Chamfer optional über Modifier (einfach, nicht destruktiv hier).
+    """
     mm = unit_mm()
     w = float(w_mm) * mm
-    d = float(depth_mm) * mm
-    ch = max(0.0, min(float(chamfer_mm), min(float(w_mm), float(depth_mm)) * 0.5)) * mm
+    L = float(length_mm) * mm
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
-    bmesh.ops.transform(bm, matrix=Matrix.Diagonal(Vector((w, w, d, 1.0))), verts=bm.verts)
+    # Skaliere auf w x w x L
+    bmesh.ops.transform(bm, matrix=Matrix.Diagonal(Vector((w, w, L, 1.0))), verts=bm.verts)
+    # Verschiebe, so dass Boden z=0, Spitze z=L (wie Pin)
+    bmesh.ops.transform(bm, matrix=Matrix.Translation((0, 0, L * 0.5)), verts=bm.verts)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me); bm.free()
     obj = bpy.data.objects.new(name, me)
-    if ch > 0.0:
-        mod = obj.modifiers.new("Bevel", 'BEVEL')
-        mod.width = ch; mod.segments = 1; mod.limit_method = 'NONE'
+    if chamfer_mm and chamfer_mm > 0.0:
+        bev = obj.modifiers.new("Bevel", 'BEVEL')
+        bev.width = float(chamfer_mm) * mm
+        bev.segments = 1
+        bev.limit_method = 'NONE'
     return obj
 
-# ---------------------------
-# Single-placement helpers (click)
-# ---------------------------
-
-def _orthonormal_frame_from_z(z: Vector):
-    z = z.normalized()
-    x = Vector((1, 0, 0))
-    if abs(z.dot(x)) > 0.99:
-        x = Vector((0, 1, 0))
-    y = z.cross(x); y.normalize()
-    x = y.cross(z); x.normalize()
-    return x, y, z
-
-def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click"):
-    """
-    Place exactly one cylindrical pin at point_world on the seam plane between (a,b),
-    oriented with Z along axis normal. Returns (pin_obj, socket_cutter_obj).
-    """
-    if props is None:
-        props = bpy.context.scene.snapsplit
-    z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
-    if frame_z is not None:
-        z = frame_z.normalized()
-    x, y, z = _orthonormal_frame_from_z(z)
-
-    L_scene = float(props.pin_length_mm) * unit_mm()
-    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
-    p_embed = point_world - z * (embed_pct * L_scene)
-
-    M = Matrix((
-        (x.x, y.x, z.x, p_embed.x),
-        (x.y, y.y, z.y, p_embed.y),
-        (x.z, y.z, z.z, p_embed.z),
-        (0,   0,   0,   1.0),
-    ))
-
-    seg = int(getattr(props, "pin_segments", 32))
-    cutters_coll = ensure_collection("_SnapSplit_Cutters")
-
-    pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
-                         segments=seg, name=f"{name_prefix}")
-    pin.matrix_world = M
-    cutters_coll.objects.link(pin)
-
-    um = a.modifiers.new(f"{name_prefix}_Union", 'BOOLEAN')
-    um.operation = 'UNION'; um.solver = 'EXACT'; um.object = pin
-    boolean_apply(a, um)
-
-    tol = float(props.effective_tolerance())
-    socket_d = float(props.pin_diameter_mm) + 2.0 * tol
-    socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"{name_prefix}_SocketCutter")
-    socket.matrix_world = M
-    cutters_coll.objects.link(socket)
-    cut_socket_with_cutter(b, socket)
-
-    return pin, socket
-
-def place_one_rect_tenon_at(a, b, axis, point_world, props=None, name_prefix="Tenon_Click"):
-    """
-    Place one rectangular tenon at point_world on the seam plane between (a,b).
-    Creates tenon (union into A) and socket cutter (difference in B). Returns (tenon, socket_cutter).
-    """
-    if props is None:
-        props = bpy.context.scene.snapsplit
-
-    z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
-    x, y, z = _orthonormal_frame_from_z(z)
-
-    L_scene = float(props.tenon_depth_mm) * unit_mm()
-    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
-    p_embed = point_world - z * (embed_pct * L_scene)
-
-    M = Matrix((
-        (x.x, y.x, z.x, p_embed.x),
-        (x.y, y.y, z.y, p_embed.y),
-        (x.z, y.z, z.z, p_embed.z),
-        (0,   0,   0,   1.0),
-    ))
-
-    cutters_coll = ensure_collection("_SnapSplit_Cutters")
-
-    tenon = create_rect_tenon(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm, name=f"{name_prefix}")
-    tenon.matrix_world = M
-    cutters_coll.objects.link(tenon)
-
-    for mod in list(tenon.modifiers):
-        if mod.type == 'BEVEL':
-            bpy.context.view_layer.objects.active = tenon
-            tenon.select_set(True)
-            try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
-            except Exception as e:
-                report_user(None, 'WARNING', f"Bevel apply failure: {e}")
-            tenon.select_set(False)
-
-    um = a.modifiers.new(f"{name_prefix}_Union", 'BOOLEAN')
-    um.operation = 'UNION'; um.solver = 'EXACT'; um.object = tenon
-    boolean_apply(a, um)
-
+def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     mm = unit_mm()
-    tol = float(props.effective_tolerance())
-    hx = max(tenon.dimensions.x * 0.5, 1e-9)
-    hy = max(tenon.dimensions.y * 0.5, 1e-9)
-    hz = max(tenon.dimensions.z * 0.5, 1e-9)
-    sx = 1.0 + (tol * mm) / hx
-    sy = 1.0 + (tol * mm) / hy
-    sz = 1.0 + (tol * mm) / hz
+    r = max(1e-9, float(d_mm) * 0.5 * mm)
 
-    socket = tenon.copy()
-    socket.data = tenon.data.copy()
-    socket.name = f"{name_prefix}_SocketCutter"
-    cutters_coll.objects.link(socket)
-    socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
-    cut_socket_with_cutter(b, socket)
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(
+        bm,
+        u_segments=max(8, int(segments)),
+        v_segments=max(6, int(rings)),
+        radius=r,
+        calc_uvs=False
+    )
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new(name, me)
+    return obj
 
-    return tenon, socket
+def create_uv_sphere_preview(d_mm=2.0, segments=12, rings=6, name="SnapSpherePreview"):
+    mm = unit_mm()
+    r = max(1e-9, float(d_mm) * 0.5 * mm)
+
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(
+        bm,
+        u_segments=max(8, int(segments)),
+        v_segments=max(6, int(rings)),
+        radius=r,
+        calc_uvs=False
+    )
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new(name, me)
+    obj.display_type = 'WIRE'
+    obj.hide_select = True
+    return obj
 
 # ---------------------------
 # Boolean helpers
@@ -369,14 +298,269 @@ def cut_socket_with_cutter(target_obj, cutter_obj):
     boolean_apply(target_obj, mod)
 
 # ---------------------------
+# Snap spheres (shared helpers)
+# ---------------------------
+
+def _ring_height_for_visible_half(length_scene, embed_pct):
+    """Mitte der herausstehenden Hälfte (B-seitig)."""
+    L_free = max(0.0, (1.0 - embed_pct) * length_scene)
+    return embed_pct * length_scene + 0.5 * L_free
+
+def _choose_visible_half_robust(base_matrix, zA, zB):
+    """Wähle robust die wirklich herausstehende Hälfte anhand der Frame-Z-Richtung."""
+    try:
+        z_axis_world = Vector((base_matrix[0][2], base_matrix[1][2], base_matrix[2][2])).normalized()
+        p0_w = Vector((base_matrix[0][3], base_matrix[1][3], base_matrix[2][3]))
+        pA_w = base_matrix @ Vector((0.0, 0.0, zA, 1.0))
+        pB_w = base_matrix @ Vector((0.0, 0.0, zB, 1.0))
+        dA = (Vector((pA_w.x, pA_w.y, pA_w.z)) - p0_w).dot(z_axis_world)
+        dB = (Vector((pB_w.x, pB_w.y, pB_w.z)) - p0_w).dot(z_axis_world)
+        return zB if dB >= dA else zA
+    except Exception:
+        return zB
+
+# ---------------------------
+# Sphere-placement (for cylindrical Pins)
+# ---------------------------
+
+def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * length_scene
+    zB = _ring_height_for_visible_half(length_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+
+    import math
+    created = []
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    r_center = pin_radius_scene + protrude_scene - sph_r_scene
+
+    for i in range(n_per_side):
+        ang = (2.0 * math.pi) * (i / n_per_side)
+        nx = math.cos(ang); ny = math.sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        # UNION in Teil B
+        um = part_b.modifiers.new(f"{name_prefix}_SnapU_{i}", 'BOOLEAN')
+        um.operation = 'UNION'; um.solver = 'EXACT'; um.object = sphere
+        boolean_apply(part_b, um)
+
+        # Cutter (mit Toleranz) für Teil A
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+        cut_socket_with_cutter(part_a, sph_cut)
+
+        created.append(sphere)
+    return created
+
+# ---------------------------
+# Sphere-placement (for rectangular Tenon-as-Quader)
+# ---------------------------
+
+def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
+    """
+    Ringförmige Sphären um Quader-Querschnitt (quadratisch w x w), analog zu zylindrischem Pin.
+    Wir approximieren den Radius mit half_w_scene.
+    """
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * length_scene
+    zB = _ring_height_for_visible_half(length_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    # Abstand vom Zentrum: half_w_scene + Überstand - Sphärenradius (radialisiert)
+    r_center = half_w_scene + protrude_scene - sph_r_scene
+
+    import math
+    created = []
+    for i in range(n_per_side):
+        ang = (2.0 * math.pi) * (i / n_per_side)
+        nx = math.cos(ang); ny = math.sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        # UNION in B
+        um = part_b.modifiers.new(f"{name_prefix}_SnapU_{i}", 'BOOLEAN')
+        um.operation = 'UNION'; um.solver = 'EXACT'; um.object = sphere
+        boolean_apply(part_b, um)
+
+        # DIFFERENCE in A (mit Toleranz)
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+        cut_socket_with_cutter(part_a, sph_cut)
+
+        created.append(sphere)
+
+    return created
+
+# ---------------------------
+# Single-placement helpers (click)
+# ---------------------------
+
+def _orthonormal_frame_from_z(z: Vector):
+    z = z.normalized()
+    x = Vector((1, 0, 0))
+    if abs(z.dot(x)) > 0.99:
+        x = Vector((0, 1, 0))
+    y = z.cross(x); y.normalize()
+    x = y.cross(z); x.normalize()
+    return x, y, z
+
+def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click"):
+    """
+    Place exactly one cylindrical pin at point_world on the seam plane between (a,b),
+    oriented with Z along axis normal. Returns (pin_obj, socket_cutter_obj).
+    Boolean-Policy: UNION in B (sichtbar), DIFFERENCE (Socket) in A.
+    """
+    if props is None:
+        props = bpy.context.scene.snapsplit
+    z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
+    if frame_z is not None:
+        z = frame_z.normalized()
+    x, y, z = _orthonormal_frame_from_z(z)
+
+    L_scene = float(props.pin_length_mm) * unit_mm()
+    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
+    p_embed = point_world - z * (embed_pct * L_scene)
+
+    M = Matrix((
+        (x.x, y.x, z.x, p_embed.x),
+        (x.y, y.y, z.y, p_embed.y),
+        (x.z, y.z, z.z, p_embed.z),
+        (0,   0,   0,   1.0),
+    ))
+
+    seg = int(getattr(props, "pin_segments", 32))
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+
+    pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
+                         segments=seg, name=f"{name_prefix}")
+    pin.matrix_world = M
+    cutters_coll.objects.link(pin)
+
+    # UNION in B
+    um = b.modifiers.new(f"{name_prefix}_Union", 'BOOLEAN')
+    um.operation = 'UNION'; um.solver = 'EXACT'; um.object = pin
+    boolean_apply(b, um)
+
+    # DIFFERENCE (Socket) in A
+    tol = float(props.effective_tolerance())
+    socket_d = float(props.pin_diameter_mm) + 2.0 * tol
+    socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"{name_prefix}_SocketCutter")
+    socket.matrix_world = M
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter(a, socket)
+
+    return pin, socket
+
+def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Tenon_Click"):
+    """
+    Place one rectangular tenon-as-quader at point_world (same logic as pins).
+    Boolean-Policy: UNION in B (sichtbar), DIFFERENCE (Socket) in A.
+    Returns (tenon, socket_cutter).
+    """
+    if props is None:
+        props = bpy.context.scene.snapsplit
+    z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
+    if frame_z is not None:
+        z = frame_z.normalized()
+    x, y, z = _orthonormal_frame_from_z(z)
+
+    L_scene = float(props.tenon_depth_mm) * unit_mm()
+    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
+    p_embed = point_world - z * (embed_pct * L_scene)
+
+    M = Matrix((
+        (x.x, y.x, z.x, p_embed.x),
+        (x.y, y.y, z.y, p_embed.y),
+        (x.z, y.z, z.z, p_embed.z),
+        (0,   0,   0,   1.0),
+    ))
+
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+
+    tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm, name=f"{name_prefix}")
+    tenon.matrix_world = M
+    cutters_coll.objects.link(tenon)
+
+    # Bevel ggf. anwenden
+    for mod in list(tenon.modifiers):
+        if mod.type == 'BEVEL':
+            bpy.context.view_layer.objects.active = tenon
+            tenon.select_set(True)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            except Exception as e:
+                report_user(None, 'WARNING', f"Bevel apply failure: {e}")
+            tenon.select_set(False)
+
+    # UNION in B
+    um = b.modifiers.new(f"{name_prefix}_Union", 'BOOLEAN')
+    um.operation = 'UNION'; um.solver = 'EXACT'; um.object = tenon
+    boolean_apply(b, um)
+
+    # DIFFERENCE (Socket) in A (skaliert mit Toleranz auf X/Y, volle Länge Z)
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    # Half-Extents des Tenon-Quaders
+    half_w = max(tenon.dimensions.x * 0.5, 1e-9)  # = y ebenfalls, da quadratisch
+    half_L = max(tenon.dimensions.z * 0.5, 1e-9)
+    sx = 1.0 + (tol * mm) / half_w
+    sy = 1.0 + (tol * mm) / half_w
+    sz = 1.0  # keine Toleranz in Längsrichtung nötig
+
+    socket = tenon.copy()
+    socket.data = tenon.data.copy()
+    socket.name = f"{name_prefix}_SocketCutter"
+    cutters_coll.objects.link(socket)
+    socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+    cut_socket_with_cutter(a, socket)
+
+    return tenon, socket
+
+# ---------------------------
 # Placement & connect (pairwise seam plane)
 # ---------------------------
 
 def place_connectors_between(parts, axis, count, ctype, props):
     """
     Connect adjacent parts along 'axis' with distribution per props.connector_distribution.
-    For each adjacent pair (A,B), compute a seam plane from the pair AABB midpoint plus split_offset_mm (clamped),
-    and place/connect on that plane. This keeps connectors aligned to actual seams even after offset changes.
+    Boolean-Policy: Geometrie (Pin/Tenon + Snap-Spheres) UNION in B, Socket/Cutter DIFFERENCE in A.
+    Tenon ist länglicher Quader analog zu Pin-Logik.
     """
     if not parts:
         return []
@@ -413,7 +597,13 @@ def place_connectors_between(parts, axis, count, ctype, props):
             y = z.cross(x); y.normalize()
             x = y.cross(z); x.normalize()
 
-            L_scene = float(props.pin_length_mm if getattr(props, "connector_type", "CYL_PIN") == "CYL_PIN" else props.tenon_depth_mm) * unit_mm()
+            ctype_cur = getattr(props, "connector_type", "CYL_PIN")
+
+            if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+                L_scene = float(props.pin_length_mm) * unit_mm()
+            else:
+                L_scene = float(props.tenon_depth_mm) * unit_mm()
+
             p_embed = p - z * (embed_pct * L_scene)
 
             M = Matrix((
@@ -423,27 +613,102 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 (0,   0,   0,   1.0),
             ))
 
-            if getattr(props, "connector_type", "CYL_PIN") == "CYL_PIN":
+            if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+                # Pin
                 seg = int(getattr(props, "pin_segments", 32))
                 pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
                                      segments=seg, name=f"Pin_{i}")
                 pin.matrix_world = M
                 cutters_coll.objects.link(pin)
 
-                um = a.modifiers.new(f"PinUnion_{i}", 'BOOLEAN')
+                # UNION in B
+                um = b.modifiers.new(f"PinUnion_{i}", 'BOOLEAN')
                 um.operation = 'UNION'; um.solver = 'EXACT'; um.object = pin
-                boolean_apply(a, um)
+                boolean_apply(b, um)
 
+                # DIFFERENCE (Socket) in A
+                mm = unit_mm()
                 socket_d = float(props.pin_diameter_mm) + 2.0 * tol
                 socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"SocketCutter_{i}")
                 socket.matrix_world = M
                 cutters_coll.objects.link(socket)
-                cut_socket_with_cutter(b, socket)
+                cut_socket_with_cutter(a, socket)
 
                 created.append(pin)
 
+                # Snap spheres für Pin
+                if ctype_cur == "SNAP_PIN":
+                    pin_radius_scene = 0.5 * float(props.pin_diameter_mm) * mm
+                    length_scene = float(props.pin_length_mm) * mm
+                    add_snap_spheres_for_cyl_pin(
+                        base_matrix=M,
+                        pin_radius_scene=pin_radius_scene,
+                        length_scene=length_scene,
+                        props=props,
+                        name_prefix=f"Pin_{i}",
+                        part_a=a,
+                        part_b=b,
+                        cutters_coll=cutters_coll
+                    )
+
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON"}:
+                # Tenon als Quader (analog zu Pin)
+                tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
+                                                 name=f"Tenon_{i}")
+                tenon.matrix_world = M
+                cutters_coll.objects.link(tenon)
+
+                # Bevel ggf. anwenden
+                for mod in list(tenon.modifiers):
+                    if mod.type == 'BEVEL':
+                        bpy.context.view_layer.objects.active = tenon
+                        tenon.select_set(True)
+                        try:
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                        except Exception as e:
+                            report_user(None, 'WARNING', f"Bevel apply failure: {e}")
+                        tenon.select_set(False)
+
+                # UNION in B
+                um = b.modifiers.new(f"TenonUnion_{i}", 'BOOLEAN')
+                um.operation = 'UNION'; um.solver = 'EXACT'; um.object = tenon
+                boolean_apply(b, um)
+
+                # DIFFERENCE (Socket) in A (X/Y aufgeweitet, Z unverändert)
+                mm = unit_mm()
+                half_w = max(tenon.dimensions.x * 0.5, 1e-9)
+                sx = 1.0 + (tol * mm) / half_w
+                sy = sx
+                sz = 1.0
+
+                socket = tenon.copy()
+                socket.data = tenon.data.copy()
+                socket.name = f"TenonSocketCutter_{i}"
+                cutters_coll.objects.link(socket)
+                socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+                cut_socket_with_cutter(a, socket)
+
+                created.append(tenon)
+
+                # Snap spheres für Snap-Tenon: ringförmig um Querschnitt (wie Pin)
+                if ctype_cur == "SNAP_TENON":
+                    half_w_scene = max(tenon.dimensions.x * 0.5, 1e-9)
+                    length_scene = float(props.tenon_depth_mm) * unit_mm()
+                    add_snap_spheres_for_rect_tenon_ring(
+                        base_matrix=M,
+                        half_w_scene=half_w_scene,
+                        length_scene=length_scene,
+                        props=props,
+                        name_prefix=f"Tenon_{i}",
+                        part_a=a,
+                        part_b=b,
+                        cutters_coll=cutters_coll
+                    )
+
             else:
-                tenon = create_rect_tenon(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm)
+                # Fallback: behandle wie Tenon-Quader
+                tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
+                                                 name=f"Tenon_{i}")
                 tenon.matrix_world = M
                 cutters_coll.objects.link(tenon)
 
@@ -457,24 +722,24 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             report_user(None, 'WARNING', f"Bevel apply failure: {e}")
                         tenon.select_set(False)
 
-                um = a.modifiers.new(f"TenonUnion_{i}", 'BOOLEAN')
+                # UNION in B
+                um = b.modifiers.new(f"TenonUnion_{i}", 'BOOLEAN')
                 um.operation = 'UNION'; um.solver = 'EXACT'; um.object = tenon
-                boolean_apply(a, um)
+                boolean_apply(b, um)
 
+                # DIFFERENCE (Socket) in A
                 mm = unit_mm()
-                hx = max(tenon.dimensions.x * 0.5, 1e-9)
-                hy = max(tenon.dimensions.y * 0.5, 1e-9)
-                hz = max(tenon.dimensions.z * 0.5, 1e-9)
-                sx = 1.0 + (tol * mm) / hx
-                sy = 1.0 + (tol * mm) / hy
-                sz = 1.0 + (tol * mm) / hz
+                half_w = max(tenon.dimensions.x * 0.5, 1e-9)
+                sx = 1.0 + (tol * mm) / half_w
+                sy = sx
+                sz = 1.0
 
                 socket = tenon.copy()
                 socket.data = tenon.data.copy()
                 socket.name = f"TenonSocketCutter_{i}"
                 cutters_coll.objects.link(socket)
                 socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
-                cut_socket_with_cutter(b, socket)
+                cut_socket_with_cutter(a, socket)
 
                 created.append(tenon)
 
@@ -509,59 +774,225 @@ class SNAP_OT_place_connectors_click(Operator):
 
         # Preview object (wireframe) based on connector type
         try:
-            if getattr(props, "connector_type", "CYL_PIN") == "CYL_PIN":
-                seg = int(getattr(props, "pin_segments", 32))
-                self.preview_obj = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
-                                                  segments=seg, name="SnapSplit_Preview_Conn")
-            else:
-                self.preview_obj = create_rect_tenon(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
-                                                     name="SnapSplit_Preview_Conn")
+            ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             prev_coll = ensure_collection("_SnapSplit_Preview")
-            self.preview_obj.display_type = 'WIRE'
-            self.preview_obj.hide_select = True
-            prev_coll.objects.link(self.preview_obj)
+
+            self.preview_objs = []  # mehrere Objekte bei SNAP_PIN/SNAP_TENON
+            self.preview_obj = None
+
+            if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+                seg = int(getattr(props, "pin_segments", 32))
+                pin_prev = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
+                                          segments=seg, name="SnapSplit_Preview_Conn")
+                pin_prev.display_type = 'WIRE'
+                pin_prev.hide_select = True
+                prev_coll.objects.link(pin_prev)
+                self.preview_obj = pin_prev
+                self.preview_objs.append(pin_prev)
+
+                if ctype_cur == "SNAP_PIN":
+                    mm = unit_mm()
+                    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    pin_radius_scene = 0.5 * float(props.pin_diameter_mm) * mm
+                    length_scene = float(props.pin_length_mm) * mm
+
+                    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+                    L_free = max(0.0, (1.0 - embed_pct) * length_scene)
+                    zA = 0.5 * embed_pct * length_scene
+                    zB = embed_pct * length_scene + 0.5 * L_free
+
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_center = pin_radius_scene + protr_scene - sph_r_scene
+
+                    import math
+                    for i in range(n_per_side):
+                        ang = (2.0 * math.pi) * (i / n_per_side)
+                        nx = math.cos(ang); ny = math.sin(ang)
+
+                        local_A = (r_center * nx, r_center * ny, zA)
+                        local_B = (r_center * nx, r_center * ny, zB)
+
+                        sph_prev = create_uv_sphere_preview(d_mm=d_sph_mm, segments=12, rings=6,
+                                                            name=f"SnapSplit_Preview_Snap_{i}")
+                        sph_prev["_snapsplit_local_offset_A"] = local_A
+                        sph_prev["_snapsplit_local_offset_B"] = local_B
+                        prev_coll.objects.link(sph_prev)
+                        self.preview_objs.append(sph_prev)
+            else:
+                # Tenon-Quader
+                ten_prev = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
+                                                    name="SnapSplit_Preview_Conn")
+                ten_prev.display_type = 'WIRE'
+                ten_prev.hide_select = True
+                prev_coll.objects.link(ten_prev)
+                self.preview_obj = ten_prev
+                self.preview_objs.append(ten_prev)
+
+                if ctype_cur == "SNAP_TENON":
+                    # Vorschau-Sphären als Ring um Querschnitt, analog zu Pin
+                    mm = unit_mm()
+                    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+                    half_w_scene = 0.5 * float(props.tenon_width_mm) * mm
+                    length_scene = float(props.tenon_depth_mm) * mm
+
+                    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+                    L_free = max(0.0, (1.0 - embed_pct) * length_scene)
+                    zA = 0.5 * embed_pct * length_scene
+                    zB = embed_pct * length_scene + 0.5 * L_free
+
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_center = half_w_scene + protr_scene - sph_r_scene
+
+                    import math
+                    for i in range(n_per_side):
+                        ang = (2.0 * math.pi) * (i / n_per_side)
+                        nx = math.cos(ang); ny = math.sin(ang)
+
+                        local_A = (r_center * nx, r_center * ny, zA)
+                        local_B = (r_center * nx, r_center * ny, zB)
+
+                        sph_prev = create_uv_sphere_preview(d_mm=d_sph_mm, segments=12, rings=6,
+                                                            name=f"SnapSplit_Preview_SnapTen_{i}")
+                        sph_prev["_snapsplit_local_offset_A"] = local_A
+                        sph_prev["_snapsplit_local_offset_B"] = local_B
+                        prev_coll.objects.link(sph_prev)
+                        self.preview_objs.append(sph_prev)
+
         except Exception:
             self.preview_obj = None
+            self.preview_objs = []
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
         try:
-            if self.preview_obj:
+            if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
                 for coll in list(self.preview_obj.users_collection):
                     coll.objects.unlink(self.preview_obj)
                 bpy.data.objects.remove(self.preview_obj)
+
+            if getattr(self, "preview_objs", None):
+                for o in list(self.preview_objs):
+                    if o and o.name in bpy.data.objects:
+                        for coll in list(o.users_collection):
+                            try: coll.objects.unlink(o)
+                            except Exception: pass
+                        try: bpy.data.objects.remove(o)
+                        except Exception: pass
+                self.preview_objs.clear()
         except Exception:
             pass
         if cancelled:
             report_user(self, 'INFO', "Placement cancelled.", "Platzierung abgebrochen.")
 
     def modal(self, context, event):
-        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self.finish(context, cancelled=True)
-            return {'CANCELLED'}
+        try:
+            # Cancel
+            if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+                self.finish(context, cancelled=True)
+                return {'CANCELLED'}
 
-        if event.type == 'MOUSEMOVE':
-            hit = self._intersect_mouse_with_seam_plane(context, event)
-            if hit is not None and self.preview_obj:
-                self.preview_obj.matrix_world = self._build_frame_at(hit)
+            # Mouse move: Update preview transforms
+            if event.type == 'MOUSEMOVE':
+                try:
+                    hit = self._intersect_mouse_with_seam_plane(context, event)
+                    if hit is not None:
+                        M = self._build_frame_at(hit)
+                        if self.preview_obj:
+                            self.preview_obj.matrix_world = M
+                        # SNAP_PIN / SNAP_TENON previews
+                        if getattr(self, "preview_objs", None) and len(self.preview_objs) > 1:
+                            try:
+                                z_axis_world = Vector((M[0][2], M[1][2], M[2][2])).normalized()
+                            except Exception:
+                                z_axis_world = None
+                            for o in self.preview_objs:
+                                if o is self.preview_obj:
+                                    continue
+                                try:
+                                    if "_snapsplit_local_offset_B" in o:
+                                        # A/B-Offsets vorhanden -> robust wählen
+                                        oxA, oyA, ozA = o.get("_snapsplit_local_offset_A", (0.0, 0.0, 0.0))
+                                        oxB, oyB, ozB = o.get("_snapsplit_local_offset_B", (0.0, 0.0, 0.0))
+                                        if z_axis_world is not None:
+                                            pA_w_v = (M @ Vector((oxA, oyA, ozA, 1.0)))
+                                            pB_w_v = (M @ Vector((oxB, oyB, ozB, 1.0)))
+                                            dA = Vector((pA_w_v.x, pA_w_v.y, pA_w_v.z)).dot(z_axis_world)
+                                            dB = Vector((pB_w_v.x, pB_w_v.y, pB_w_v.z)).dot(z_axis_world)
+                                            use_B = dB >= dA
+                                        else:
+                                            use_B = True
+                                        o.matrix_world = M @ Matrix.Translation((oxB, oyB, ozB)) if use_B else M @ Matrix.Translation((oxA, oyA, ozA))
+                                    else:
+                                        # einfacher Offset
+                                        ox, oy, oz = o.get("_snapsplit_local_offset", (0.0, 0.0, 0.0))
+                                        o.matrix_world = M @ Matrix.Translation((ox, oy, oz))
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
+                return {'RUNNING_MODAL'}
+
+            # Left click: place connector
+            if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+                try:
+                    hit = self._intersect_mouse_with_seam_plane(context, event)
+                    if hit is not None:
+                        ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
+                        if ctype_cur == "CYL_PIN":
+                            place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
+                        elif ctype_cur == "RECT_TENON":
+                            place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
+                        elif ctype_cur == "SNAP_PIN":
+                            pin, socket = place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
+                            M = pin.matrix_world.copy()
+                            mm = unit_mm()
+                            pin_radius_scene = 0.5 * float(self.props.pin_diameter_mm) * mm
+                            length_scene = float(self.props.pin_length_mm) * mm
+                            cutters_coll = ensure_collection("_SnapSplit_Cutters")
+                            add_snap_spheres_for_cyl_pin(
+                                base_matrix=M,
+                                pin_radius_scene=pin_radius_scene,
+                                length_scene=length_scene,
+                                props=self.props,
+                                name_prefix="Pin_Click",
+                                part_a=self.a,  # A = DIFFERENCE
+                                part_b=self.b,  # B = UNION
+                                cutters_coll=cutters_coll
+                            )
+                        elif ctype_cur == "SNAP_TENON":
+                            tenon, socket = place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
+                            M = tenon.matrix_world.copy()
+                            half_w_scene = max(tenon.dimensions.x * 0.5, 1e-9)
+                            length_scene = float(self.props.tenon_depth_mm) * unit_mm()
+                            cutters_coll = ensure_collection("_SnapSplit_Cutters")
+                            add_snap_spheres_for_rect_tenon_ring(
+                                base_matrix=M,
+                                half_w_scene=half_w_scene,
+                                length_scene=length_scene,
+                                props=self.props,
+                                name_prefix="Tenon_Click",
+                                part_a=self.a,  # A = DIFFERENCE
+                                part_b=self.b,  # B = UNION
+                                cutters_coll=cutters_coll
+                            )
+                except Exception as e:
+                    report_user(self, 'ERROR', f"Placement failed: {e}",
+                                "Platzierung fehlgeschlagen.")
+                return {'RUNNING_MODAL'}
+
+            # Fallback
             return {'RUNNING_MODAL'}
 
-        if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
-            hit = self._intersect_mouse_with_seam_plane(context, event)
-            if hit is not None:
-                if getattr(self.props, "connector_type", "CYL_PIN") == "CYL_PIN":
-                    place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
-                else:
-                    place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
+        except Exception as e:
+            report_user(self, 'ERROR', f"Modal error: {e}", "Modal-Fehler.")
             return {'RUNNING_MODAL'}
-
-        if event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
-            self.finish(context, cancelled=False)
-            return {'FINISHED'}
-
-        return {'RUNNING_MODAL'}
 
     def _intersect_mouse_with_seam_plane(self, context, event):
         n = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[self.axis].normalized()
@@ -600,7 +1031,8 @@ class SNAP_OT_place_connectors_click(Operator):
         y = z.cross(x); y.normalize()
         x = y.cross(z); x.normalize()
 
-        if getattr(self.props, "connector_type", "CYL_PIN") == "CYL_PIN":
+        ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
+        if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
             L_scene = float(self.props.pin_length_mm) * unit_mm()
         else:
             L_scene = float(self.props.tenon_depth_mm) * unit_mm()

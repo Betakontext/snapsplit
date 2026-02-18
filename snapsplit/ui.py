@@ -60,6 +60,8 @@ class SNAP_PT_panel(Panel):
         col = box.column(align=True)
         col.prop(props, "split_axis", text=("Split Axis" if not _DE else "Schnittachse"))
 
+        col.prop(props, "show_split_preview", text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
+
         row = col.row(align=True)
         row.operator("snapsplit.adjust_split_axis",
                      icon="EMPTY_AXIS",
@@ -79,8 +81,6 @@ class SNAP_PT_panel(Panel):
                               text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
             except Exception:
                 pass
-            adv.prop(props, "show_split_preview",
-                     text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
             adv.prop(props, "split_offset_mm",
                      text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
             adv.prop(props, "fill_seams_during_split",
@@ -110,6 +110,14 @@ class SNAP_PT_panel(Panel):
         col = box.column(align=True)
         col.prop(props, "connector_type", text=("Connector Type" if not _DE else "Verbinder-Typ"))
         col.prop(props, "connector_distribution", text=("Distribution" if not _DE else "Verteilung"))
+        # ACTIONS
+        col = layout.column(align=True)
+        col.operator("snapsplit.add_connectors",
+                     icon="SNAP_FACE",
+                     text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
+        col.operator("snapsplit.place_connectors_click",
+                     icon="CURSOR",
+                     text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
 
         if props.ui_more_conn:
             # Advanced connection placement
@@ -127,9 +135,23 @@ class SNAP_PT_panel(Panel):
             adv.prop(props, "connector_margin_pct",
                      text=("Margin (%)" if not _DE else "Randabstand (%)"))
 
+            # SNAP specific (für SNAP_PIN und SNAP_TENON)
+            if props.connector_type in {"SNAP_PIN", "SNAP_TENON"}:
+                sbox = box.box()
+                sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
+                sbox.prop(props, "snap_spheres_per_side",
+                          text=("Spheres per side" if not _DE else "Sphären je Seite"))
+                sbox.prop(props, "snap_sphere_diameter_mm",
+                          text=("Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)"))
+                sbox.prop(props, "snap_sphere_protrusion_mm",
+                          text=("Protrusion (mm)" if not _DE else "Überstand (mm)"))
+
+
             # Geometry settings
             gbox = box.box()
-            if props.connector_type == "CYL_PIN":
+
+            # Pin-Parameter für CYL_PIN und SNAP_PIN
+            if props.connector_type in {"CYL_PIN", "SNAP_PIN"}:
                 gbox.prop(props, "pin_diameter_mm",
                           text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
                 gbox.prop(props, "pin_length_mm",
@@ -149,7 +171,9 @@ class SNAP_PT_panel(Panel):
                     sub.label(text=hint, icon='INFO')
                 except Exception:
                     pass
-            else:
+
+            # Tenon-Parameter für RECT_TENON und SNAP_TENON
+            elif props.connector_type in {"RECT_TENON", "SNAP_TENON"}:
                 gbox.prop(props, "tenon_width_mm",
                           text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
                 gbox.prop(props, "tenon_depth_mm",
@@ -157,8 +181,12 @@ class SNAP_PT_panel(Panel):
                 gbox.prop(props, "pin_embed_pct",
                           text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
 
+            else:
+                gbox.label(text=("Unsupported connector type" if not _DE else "Nicht unterstützter Verbinder-Typ"), icon='INFO')
+
             gbox.prop(props, "add_chamfer_mm",
                       text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
+
 
         layout.separator()
 
@@ -194,16 +222,7 @@ class SNAP_PT_panel(Panel):
 
         layout.separator()
 
-        # =========================
-        # ACTIONS (always visible)
-        # =========================
-        col = layout.column(align=True)
-        col.operator("snapsplit.add_connectors",
-                     icon="SNAP_FACE",
-                     text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
-        col.operator("snapsplit.place_connectors_click",
-                     icon="CURSOR",
-                     text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
+
 
 
 def register():
