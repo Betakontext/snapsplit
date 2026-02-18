@@ -148,18 +148,10 @@ class SnapSplitProps(PropertyGroup):
             ("RECT_TENON",
              "Rechteck-Zapfen" if _DE else "Rectangular Tenon",
              "Verdrehsicherer Zapfen" if _DE else "Anti-rotation joint"),
-            ("SNAP_PIN",
-             "Snap-Pin" if _DE else "Snap Pin",
-             "Zylinder-/Zapfen-Verbinder mit Schnappnoppen" if _DE else "Connector with snap spheres"),
-            ("SNAP_TENON",
-             "Snap-Zapfen" if _DE else "Snap Tenon",
-             "Rechteckiger Zapfen mit Schnapp-Sphären" if _DE else "Rectangular tenon with snap spheres"),
         ],
         default="CYL_PIN",
     )
 
-
-    # Placement distribution
     connector_distribution: EnumProperty(
         name="Verteilung" if _DE else "Distribution",
         description=("Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"
@@ -193,81 +185,6 @@ class SnapSplitProps(PropertyGroup):
         max=128,
     )
 
-    connector_margin_pct: FloatProperty(
-        name="Randabstand (%)" if _DE else "Margin (%)",
-        description=("Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"
-                     if _DE else "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"),
-        default=10.0,
-        min=0.0,
-        soft_max=40.0,
-        subtype='PERCENTAGE'
-    )
-
-    # Snap options (aktiv, wenn connector_type == 'SNAP_PIN')
-    snap_spheres_per_side: IntProperty(
-        name="Sphären je Seite" if _DE else "Spheres per side",
-        description=("Anzahl der Schnapp-Sphären je Seitenfläche/Umfang" if _DE else "Number of snap spheres per side/around"),
-        default=2,
-        min=1,
-        max=32,
-    )
-
-    snap_sphere_diameter_mm: FloatProperty(
-        name="Sphären-Ø (mm)" if _DE else "Sphere Ø (mm)",
-        description=("Durchmesser der Schnapp-Sphären" if _DE else "Diameter of snap spheres"),
-        default=2.0,
-        min=0.5,
-        soft_max=10.0,
-    )
-
-    snap_sphere_protrusion_mm: FloatProperty(
-        name="Überstand (mm)" if _DE else "Protrusion (mm)",
-        description=("Wie weit die Sphären aus der Seitenfläche herausstehen" if _DE else "How far spheres protrude from side surface"),
-        default=1.0,
-        min=0.0,
-        soft_max=5.0,
-    )
-
-    # Pin / Tenon dimensions (mm)
-    pin_diameter_mm: FloatProperty(
-        name="Pin-Durchmesser (mm)" if _DE else "Pin Diameter (mm)",
-        default=5.0,
-        min=0.5,
-        soft_max=50.0,
-    )
-
-    pin_length_mm: FloatProperty(
-        name="Pin-Länge (mm)" if _DE else "Pin Length (mm)",
-        default=8.0,
-        min=1.0,
-        soft_max=200.0,
-    )
-
-    pin_segments: IntProperty(
-        name="Segmente" if _DE else "Segments",
-        description=("Kreissegmente des Pins (nur Optik/Glätte)"
-                     if _DE else "Cylinder pin radial segments (visual smoothness)"),
-        default=32,
-        min=8,
-        max=128,
-    )
-
-    tenon_width_mm: FloatProperty(
-        name="Zapfen-Breite (mm)" if _DE else "Tenon Width (mm)",
-        default=6.0,
-        min=1.0,
-        soft_max=100.0,
-    )
-
-    tenon_depth_mm: FloatProperty(
-        name="Zapfen-Tiefe (mm)" if _DE else "Tenon Depth (mm)",
-        default=8.0,
-        min=1.0,
-        soft_max=200.0,
-    )
-
-
-
     # Pin / Tenon dimensions (mm)
     pin_diameter_mm: FloatProperty(
         name="Pin-Durchmesser (mm)" if _DE else "Pin Diameter (mm)",
@@ -296,14 +213,12 @@ class SnapSplitProps(PropertyGroup):
         min=1.0,
         soft_max=100.0,
     )
-
     tenon_depth_mm: FloatProperty(
         name="Zapfen-Tiefe (mm)" if _DE else "Tenon Depth (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
-
     add_chamfer_mm: FloatProperty(
         name="Fase (mm)" if _DE else "Chamfer (mm)",
         default=0.3,

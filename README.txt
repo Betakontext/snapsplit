@@ -1,6 +1,6 @@
-Addon for Blender that automates splitting / cutting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors.
+This is "SnapSplit" for Blender.
 
-Its goal is to integrate into a 3D printing workflow and uses robust booleans, adaptive tolerance models, and printer/material profiles.
+An Addon that automates splitting / cutting complex 3D models into printable parts and generates precise, glue-free snap-fit connectors. Its goal is to integrate into a 3D printing workflow and uses robust booleans, adaptive tolerance models, and printer/material profiles.
 
 ---------------------------
 ---------------------------
