@@ -1,20 +1,24 @@
-SnapSplit is an Addon for Blender and automates splitting / cutting complex 3D models into printable parts. It generates precise, glue-free snap-fit connectors.
+# SnapSplit 
+
+Addon for Blender to automate splitting / cutting complex 3D models, which are f.e. bigger than your printing bed, into printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
 ---------------------------
 
+## Setup:
+
 For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test it on other Blender versions. Lets update version compatabilities.
 
-Installation:
+### Installation:
     -> Download snapsplit.zip
     -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
 
-Blender setup:
+### Blender setup:
     ->   Unit system: Metric, Unit scale: 1.000, Length: Adaptive
 
-Quality assurance and error prevention:
+### Quality assurance and error prevention:
     - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
     - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
     - Ctrl + A -> Apply all transforms = important if you f.e. rotate or change the size the object.
@@ -24,7 +28,7 @@ Quality assurance and error prevention:
 -------------------------
 -------------------------
 
-Cut / Split workflow:
+## Cut / Split workflow:
 
     - Select a watertight (manifold) mesh.
     - Apply all transformations (Ctrl+A → All transforms).
@@ -39,7 +43,7 @@ Cut / Split workflow:
 
     Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
-Build Connections:
+## Build Connections:
 
     Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
@@ -52,12 +56,12 @@ Build Connections:
     ->  Choose "Place connectors (click)"
         to set individualized connectors with your mouse clicking at spots along the seems.
 
-Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
 -------------------------
 -------------------------
 
-The panel in the 3D View (N-Panel → “SnapSplit”) features:
+### The panel in the 3D View (N-Panel → “SnapSplit”) features:
 
     Property group with:
 
@@ -100,7 +104,7 @@ Necessary folder structure (inside snapsplit.zip):
         utils.py
         profiles.py
 
-Roadmap of ideas:
+### Roadmap of ideas:
 
     Determine seam curves precisely
     Overhang/wall-thickness–aware placement
