@@ -15,35 +15,45 @@ For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Plea
 ### Blender setup:
     ->   Unit system: Metric, Unit scale: 1.000, Length: Adaptive
 
+    ->  The UI is accessible over the N-Panel in Blender.
+
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
+
 ### Quality assurance and error prevention:
+    - - Scale Unit = 1.000, Metric: Adaptive
     - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
+    - Select a watertight (manifold) mesh.
     - Ctrl + A -> Apply all transforms
     - This is also important after each change, f.e. rotatations or scale.
     - After splitting: visually check that all parts contain polygons.
 
 -------------------------
--------------------------
-
 ### Cut / Split workflow:
 
--> Select a watertight (manifold) mesh.
--> Apply all transformations (Ctrl+A → All transforms).
--> Scale Unit = 1.000, Adaptive
--> N-Panel → SnapSplit:
-        Choose desired number of parts and the split axis.
--> Adjust split axis offset
+Unfold the segmentation part (More...) to get ready for the split.
+
+![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
+
+-> Choose desired number of parts and the asjust the split axis offset.
 -> For larger part numbers you can deselect "cap seams" and create the caps afterwards
+-> Push: "Adjust split axis"
+-> Run "Planar Split": Multiple parts will be temporarily be created in the “_SnapSplit_Parts” collection.
 
--> Run "Planar Split": Multiple parts will be created in the “_SnapSplit_Parts” collection.
-
+-------------------------
 ### Build Connections:
 
+Unfold the conections part (More...) to get ready to place connectors.
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_01)
+
 -> Select two or more adjacent parts (order does not matter)
--> Choose pins or tenons distributed along a seam line or spread across a grid
+-> Choose pins or tenons distributed along a seam line or spread across a grid, with or without Snap-Pins for glueless connection.
 -> Define tolerance profile (optional override) for your material.
 
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_02)
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
