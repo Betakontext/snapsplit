@@ -27,11 +27,11 @@ For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Plea
 -------------------------
 ### Cut / Split workflow:
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
 
 Unfold the segmentation part (More...) to get ready for the split.
 
-![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
+![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
 
 -> Choose desired number of parts and the asjust the split axis offset.
 -> For larger part numbers you can deselect "cap seams" and create the caps afterwards
