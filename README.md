@@ -5,11 +5,8 @@ Addon for Blender to automate splitting / cutting complex 3D models, which are f
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
----------------------------
 
-## Setup:
-
-For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test it on other Blender versions. Lets update version compatabilities.
+For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test other Blender versions. Lets update version compatabilities.
 
 ### Installation:
     -> Download snapsplit.zip
@@ -28,7 +25,7 @@ For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. P
 -------------------------
 -------------------------
 
-## Cut / Split workflow:
+### Cut / Split workflow:
 
     - Select a watertight (manifold) mesh.
     - Apply all transformations (Ctrl+A → All transforms).
@@ -43,7 +40,7 @@ For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. P
 
     Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
-## Build Connections:
+### Build Connections:
 
     Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
 
@@ -93,7 +90,7 @@ For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. P
 
 If you want to contribute, fork and explore the code.
 
-Necessary folder structure (inside snapsplit.zip):
+### Folder structure (inside snapsplit.zip):
 
     snapsplit/
         __init__.py
