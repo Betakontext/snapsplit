@@ -9,26 +9,25 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test other Blender versions. Lets update version compatabilities.
 
 ### Installation:
-    -> Download snapsplit.zip
-    -> In Blender: Edit → Preferences → Add-ons → Install… → select the ZIP → enable.
+- Download the whole repository or only snapsplit.zip
+- In Blender: Edit → Preferences → Add-ons → Install… → select the *.ZIP → enable.
 
 ### Blender setup:
-    ->   Unit system: Metric, Unit scale: 1.000, Length: Adaptive
-
-    ->  The UI is accessible over the N-Panel in Blender.
-
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
+- Unit system: Metric, Unit scale: 1.000, Length: Adaptive
+- The UI is accessible over the N-Panel in Blender.
 
 ### Quality assurance and error prevention:
-    - - Scale Unit = 1.000, Metric: Adaptive
-    - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
-    - Select a watertight (manifold) mesh.
-    - Ctrl + A -> Apply all transforms
-    - This is also important after each change, f.e. rotatations or scale.
-    - After splitting: visually check that all parts contain polygons.
+- Scale Unit = 1.000, Metric: Adaptive
+- Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
+- Select a watertight (manifold) mesh.
+- Ctrl + A -> Apply all transforms
+- This is also important after each change, f.e. rotatations or scale.
+- After splitting: visually check that all parts contain polygons.
 
 -------------------------
 ### Cut / Split workflow:
+
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
 
 Unfold the segmentation part (More...) to get ready for the split.
 
@@ -44,7 +43,7 @@ Unfold the segmentation part (More...) to get ready for the split.
 
 Unfold the conections part (More...) to get ready to place connectors.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_01)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_01.png)
 
 -> Select two or more adjacent parts (order does not matter)
 -> Choose pins or tenons distributed along a seam line or spread across a grid, with or without Snap-Pins for glueless connection.
@@ -53,7 +52,7 @@ Unfold the conections part (More...) to get ready to place connectors.
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_02)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_02.png)
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
