@@ -5,11 +5,8 @@ Addon for Blender to automate splitting / cutting complex 3D models, which are f
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
----------------------------
 
-## Setup:
-
-For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test it on other Blender versions. Lets update version compatabilities.
+For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test other Blender versions. Lets update version compatabilities.
 
 ### Installation:
     -> Download snapsplit.zip
@@ -19,42 +16,34 @@ For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. P
     ->   Unit system: Metric, Unit scale: 1.000, Length: Adaptive
 
 ### Quality assurance and error prevention:
-    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
     - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
-    - Ctrl + A -> Apply all transforms = important if you f.e. rotate or change the size the object.
+    - Ctrl + A -> Apply all transforms
+    - This is also important after each change, f.e. rotatations or scale.
     - After splitting: visually check that all parts contain polygons.
-    - Scaling: Work in mm values; the add-on converts correctly to Blender’s internal meters.
 
 -------------------------
 -------------------------
 
-## Cut / Split workflow:
+### Cut / Split workflow:
 
-    - Select a watertight (manifold) mesh.
-    - Apply all transformations (Ctrl+A → All transforms).
-    - Scale Unit = 1.000, Millimeters
-    - N-Panel → SnapSplit:
-        Choose desired number of parts and split axis.
-    - for larger part numbers you can deselect "cap seams" and create the caps afterwards
-    - Set an individualized split axis per mousewheel or offset adjustment
-    - Adjust split axis
+-> Select a watertight (manifold) mesh.
+-> Apply all transformations (Ctrl+A → All transforms).
+-> Scale Unit = 1.000, Adaptive
+-> N-Panel → SnapSplit:
+        Choose desired number of parts and the split axis.
+-> Adjust split axis offset
+-> For larger part numbers you can deselect "cap seams" and create the caps afterwards
 
-    -> Run "Planar Split".
+-> Run "Planar Split": Multiple parts will be created in the “_SnapSplit_Parts” collection.
 
-    Multiple parts will be created in the “_SnapSplit_Parts” collection.
+### Build Connections:
 
-## Build Connections:
+-> Select two or more adjacent parts (order does not matter)
+-> Choose pins or tenons distributed along a seam line or spread across a grid
+-> Define tolerance profile (optional override) for your material.
 
-    Pins/tenons are distributed along a seam line or spread across a grid on the seam surface: The pin/tenon is unioned into Part A, and a socket with tolerance is cut into Part B.
-
-    Select two or more adjacent parts (order does not matter) and choose connector type and tolerance profile (optional override).
-
-    ->  Click “Add Connectors”.
-
-    or
-
-    ->  Choose "Place connectors (click)"
-        to set individualized connectors with your mouse clicking at spots along the seems.
+->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
+or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -93,7 +82,7 @@ For now I tested it with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. P
 
 If you want to contribute, fork and explore the code.
 
-Necessary folder structure (inside snapsplit.zip):
+### Folder structure (inside snapsplit.zip):
 
     snapsplit/
         __init__.py
