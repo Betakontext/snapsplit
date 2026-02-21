@@ -197,8 +197,19 @@ def create_or_get_preview_plane(context, obj, axis, name):
 
     plane.hide_set(False)
     plane.hide_viewport = False
-    plane.show_in_front = True
-    plane.display_type = 'TEXTURED'
+    plane.show_in_front = False
+        # Viewport overlay: red outline in Wireframe and Solid (no in-front)
+    plane.display_type = 'TEXTURED'   # Solid shows faces as Blender’s grey; Material Preview shows your orange
+    plane.show_wire = True            # draw wire overlay on top of the object’s shading
+    plane.show_all_edges = True       # all edges, not only sharp
+    plane.hide_select = True          # prevent accidental selection
+
+    # Use object color for wire color (requires Overlays → Geometry → "Object Color" enabled)
+    try:
+        plane.color = (1.0, 0.1, 0.1, 1.0)  # red wire/outline in viewport
+    except Exception:
+        pass
+
     return plane
 
 # Object-scoped naming
@@ -285,7 +296,16 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
         plane.matrix_world = build_preview_matrix(obj, axis, pos)
         plane.hide_set(False)
         plane.hide_viewport = False
-        plane.show_in_front = True
+
+        # Ensure red outline overlay in viewport (no in-front)
+        plane.display_type = 'TEXTURED'
+        plane.show_wire = True
+        plane.show_all_edges = True
+        try:
+            plane.color = (1.0, 0.1, 0.1, 1.0)
+        except Exception:
+            pass
+
 
     # Cleanup excess planes of this object
     existing_scoped = [o for o in bpy.data.objects if o.name.startswith(f"{PREVIEW_PLANE_PREFIX}{obj_name}_")]
