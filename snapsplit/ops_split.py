@@ -327,6 +327,39 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
         except Exception:
             pass
 
+def _disable_split_preview_and_cleanup(context):
+    """Turn off the 'show_split_preview' toggle and remove all preview planes and the empty collection."""
+    # 1) Toggle off
+    try:
+        props = getattr(context.scene, "snapsplit", None)
+        if props and getattr(props, "show_split_preview", False):
+            props.show_split_preview = False
+    except Exception:
+        pass
+
+    # 2) Remove all preview plane objects
+    try:
+        for o in [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]:
+            for coll in list(o.users_collection):
+                try:
+                    coll.objects.unlink(o)
+                except Exception:
+                    pass
+            try:
+                bpy.data.objects.remove(o)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 3) Remove the (now) empty preview collection
+    try:
+        _remove_empty_preview_collection()
+    except Exception:
+        pass
+
+
+
 def _remove_empty_preview_collection():
     try:
         pc = bpy.data.collections.get(PREVIEW_COLL_NAME)
@@ -795,6 +828,15 @@ class SNAP_OT_planar_split(Operator):
             update_split_preview_plane(context)
         except Exception:
             pass
+
+                # Auto-disable split preview after the cut and clean up planes/collection
+        try:
+            _disable_split_preview_and_cleanup(context)
+        except Exception:
+            pass
+
+        return {'FINISHED'}
+
 
         return {'FINISHED'}
 
