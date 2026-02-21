@@ -307,6 +307,29 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
         except Exception:
             pass
 
+def _remove_empty_preview_collection():
+    try:
+        pc = bpy.data.collections.get(PREVIEW_COLL_NAME)
+        if not pc:
+            return
+        if len(pc.objects) > 0:
+            return  # still in use
+        # Unlink from all scene roots (in case it was linked)
+        for sc in bpy.data.scenes:
+            try:
+                if pc in sc.collection.children:
+                    sc.collection.children.unlink(pc)
+            except Exception:
+                pass
+        # Try removing it; ignore if still used somewhere
+        try:
+            bpy.data.collections.remove(pc)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 # ---------------------------
 # Top-level updater
 # ---------------------------
@@ -328,6 +351,8 @@ def update_split_preview_plane(context):
             except Exception: pass
         context.scene["_snapsplit_preview_last_obj"] = ""
         context.scene["_snapsplit_preview_last_axis"] = ""
+        # also remove the empty preview collection
+        _remove_empty_preview_collection()
         return
 
     last_obj_name = context.scene.get("_snapsplit_preview_last_obj", "")
@@ -586,6 +611,8 @@ class SNAP_OT_adjust_split_axis(Operator):
                     except Exception: pass
             except Exception:
                 pass
+            # also remove the empty preview collection
+            _remove_empty_preview_collection()
 
         if self._area: self._area.tag_redraw()
         if self._region:
