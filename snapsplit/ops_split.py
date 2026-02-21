@@ -658,7 +658,7 @@ class SNAP_OT_adjust_split_axis(Operator):
         if event.type == 'MOUSEMOVE':
             dy = event.mouse_prev_y - event.mouse_y
             if dy != 0:
-                self.t_norm = max(-1.0, min(1.0, self.t_norm + dy * 0.001))
+                self.t_norm = max(-1.0, min(1.0, self.t_norm - dy * 0.001))
                 self.current_world_pos, _ = world_pos_from_norm(self.obj, self.axis, self.t_norm)
                 scene_units_offset = self.current_world_pos - self.mid_world
                 self.props.split_offset_mm = float(scene_units_offset) * (1.0 / unit_mm())
