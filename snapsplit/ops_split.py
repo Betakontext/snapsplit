@@ -197,8 +197,19 @@ def create_or_get_preview_plane(context, obj, axis, name):
 
     plane.hide_set(False)
     plane.hide_viewport = False
-    plane.show_in_front = True
-    plane.display_type = 'TEXTURED'
+    plane.show_in_front = False
+        # Viewport overlay: red outline in Wireframe and Solid (no in-front)
+    plane.display_type = 'TEXTURED'   # Solid shows faces as Blender’s grey; Material Preview shows your orange
+    plane.show_wire = True            # draw wire overlay on top of the object’s shading
+    plane.show_all_edges = True       # all edges, not only sharp
+    plane.hide_select = True          # prevent accidental selection
+
+    # Use object color for wire color (requires Overlays → Geometry → "Object Color" enabled)
+    try:
+        plane.color = (1.0, 0.1, 0.1, 1.0)  # red wire/outline in viewport
+    except Exception:
+        pass
+
     return plane
 
 # Object-scoped naming
@@ -285,7 +296,16 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
         plane.matrix_world = build_preview_matrix(obj, axis, pos)
         plane.hide_set(False)
         plane.hide_viewport = False
-        plane.show_in_front = True
+
+        # Ensure red outline overlay in viewport (no in-front)
+        plane.display_type = 'TEXTURED'
+        plane.show_wire = True
+        plane.show_all_edges = True
+        try:
+            plane.color = (1.0, 0.1, 0.1, 1.0)
+        except Exception:
+            pass
+
 
     # Cleanup excess planes of this object
     existing_scoped = [o for o in bpy.data.objects if o.name.startswith(f"{PREVIEW_PLANE_PREFIX}{obj_name}_")]
@@ -306,6 +326,62 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
         try: bpy.data.objects.remove(o)
         except Exception:
             pass
+
+def _disable_split_preview_and_cleanup(context):
+    """Turn off the 'show_split_preview' toggle and remove all preview planes and the empty collection."""
+    # 1) Toggle off
+    try:
+        props = getattr(context.scene, "snapsplit", None)
+        if props and getattr(props, "show_split_preview", False):
+            props.show_split_preview = False
+    except Exception:
+        pass
+
+    # 2) Remove all preview plane objects
+    try:
+        for o in [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]:
+            for coll in list(o.users_collection):
+                try:
+                    coll.objects.unlink(o)
+                except Exception:
+                    pass
+            try:
+                bpy.data.objects.remove(o)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 3) Remove the (now) empty preview collection
+    try:
+        _remove_empty_preview_collection()
+    except Exception:
+        pass
+
+
+
+def _remove_empty_preview_collection():
+    try:
+        pc = bpy.data.collections.get(PREVIEW_COLL_NAME)
+        if not pc:
+            return
+        if len(pc.objects) > 0:
+            return  # still in use
+        # Unlink from all scene roots (in case it was linked)
+        for sc in bpy.data.scenes:
+            try:
+                if pc in sc.collection.children:
+                    sc.collection.children.unlink(pc)
+            except Exception:
+                pass
+        # Try removing it; ignore if still used somewhere
+        try:
+            bpy.data.collections.remove(pc)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 
 # ---------------------------
 # Top-level updater
@@ -328,6 +404,8 @@ def update_split_preview_plane(context):
             except Exception: pass
         context.scene["_snapsplit_preview_last_obj"] = ""
         context.scene["_snapsplit_preview_last_axis"] = ""
+        # also remove the empty preview collection
+        _remove_empty_preview_collection()
         return
 
     last_obj_name = context.scene.get("_snapsplit_preview_last_obj", "")
@@ -586,6 +664,8 @@ class SNAP_OT_adjust_split_axis(Operator):
                     except Exception: pass
             except Exception:
                 pass
+            # also remove the empty preview collection
+            _remove_empty_preview_collection()
 
         if self._area: self._area.tag_redraw()
         if self._region:
@@ -631,7 +711,7 @@ class SNAP_OT_adjust_split_axis(Operator):
         if event.type == 'MOUSEMOVE':
             dy = event.mouse_prev_y - event.mouse_y
             if dy != 0:
-                self.t_norm = max(-1.0, min(1.0, self.t_norm + dy * 0.001))
+                self.t_norm = max(-1.0, min(1.0, self.t_norm - dy * 0.001))
                 self.current_world_pos, _ = world_pos_from_norm(self.obj, self.axis, self.t_norm)
                 scene_units_offset = self.current_world_pos - self.mid_world
                 self.props.split_offset_mm = float(scene_units_offset) * (1.0 / unit_mm())
@@ -748,6 +828,15 @@ class SNAP_OT_planar_split(Operator):
             update_split_preview_plane(context)
         except Exception:
             pass
+
+                # Auto-disable split preview after the cut and clean up planes/collection
+        try:
+            _disable_split_preview_and_cleanup(context)
+        except Exception:
+            pass
+
+        return {'FINISHED'}
+
 
         return {'FINISHED'}
 
