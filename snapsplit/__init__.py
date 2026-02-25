@@ -24,7 +24,7 @@ This file is part of SnapSplit
 bl_info = {
     "name": "SnapSplit – Print-ready segmentation with connectors",
     "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
-    "version": (0, 1, 1),
+    "version": (0, 1, 2),
     "blender": (5, 0, 1),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
