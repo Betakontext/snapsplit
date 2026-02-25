@@ -83,11 +83,11 @@ class SNAP_PT_panel(Panel):
                 pass
             adv.prop(props, "split_offset_mm",
                      text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
-            adv.prop(props, "fill_seams_during_split",
+            adv.prop(props, "cap_seams_during_split",
                      text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt schließen (langsamer)"))
 
             # Direkt unter dem Toggle, nur wenn AUS
-            if not props.fill_seams_during_split:
+            if not props.cap_seams_during_split:
                 sub = adv.column(align=True)
                 sub.operator("snapsplit.cap_open_seams_now",
                              icon="OUTLINER_OB_SURFACE",

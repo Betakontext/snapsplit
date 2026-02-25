@@ -3,8 +3,6 @@ Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
 dev@betakontext.de
 
-Created by Christoph Medicus
-
 This file is part of SnapSplit
 
 SnapSplit is free software; you can redistribute it and/or
@@ -20,6 +18,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
+
 import bpy
 import bmesh
 from bpy.types import Operator
@@ -160,7 +159,42 @@ def warn_if_unapplied_transforms(obj, operator=None):
     except Exception:
         pass
 
+# ---------------------------
+# Depsgraph handler
+# ---------------------------
 
+_last_preview_active_obj = None
+
+def _snapsplit_depsgraph_update(scene, depsgraph):
+    # Schutz: falls update_split_preview_plane nicht verfügbar ist, still aussteigen
+    if 'update_split_preview_plane' not in globals():
+        return
+    global _last_preview_active_obj
+    props = getattr(scene, "snapsplit", None)
+    if not props or not getattr(props, "show_split_preview", False):
+        _last_preview_active_obj = None
+        return
+
+    ctx = bpy.context
+    obj = ctx.active_object
+
+    if obj is not _last_preview_active_obj:
+        try:
+            update_split_preview_plane(ctx)
+        except Exception:
+            pass
+        _last_preview_active_obj = obj
+        return
+
+    if obj:
+        try:
+            for up in depsgraph.updates:
+                id_orig = getattr(up.id, "original", None)
+                if id_orig is obj or id_orig is obj.data:
+                    update_split_preview_plane(ctx)
+                    break
+        except Exception:
+            pass
 
 # ---------------------------
 # Preview material/planes
@@ -345,12 +379,28 @@ def _disable_split_preview_and_cleanup(context):
         pass
 
 # ---------------------------
-# Hollow Preparation (modifier or separate inner object)
+# Hollow Preparation (modifier or separate inner/outer object)
 # ---------------------------
+
 
 def _is_hollow_like_modifier(m):
     n = (m.name or "").lower()
-    return (m.type == 'NODES') and ("hollow" in n or "print3d" in n or "print 3d" in n)
+    # Nodes-basierte Hollow/Print3D-Erkennung über Namen
+    if (m.type == 'NODES') and ("hollow" in n or "print3d" in n or "print 3d" in n):
+        return True
+    # Solidify explizit als Hollow-ähnlich behandeln
+    if m.type == 'SOLIDIFY':
+        return True
+    return False
+
+def _try_apply_hollow_modifier(obj):
+    # WICHTIG: SOLIDIFY möglichst zuletzt/als Außenhülle anwenden? Wir wenden einfach alle passenden Mods an.
+    mods = [m for m in obj.modifiers if _is_hollow_like_modifier(m)]
+    ok_any = False
+    for m in reversed(mods):  # reversed: erst späteste Modifier anwenden
+        ok_any |= _apply_modifier(obj, m)
+    return ok_any
+
 
 def _apply_modifier(obj, mod):
     _activate_single_object(obj)
@@ -361,14 +411,11 @@ def _apply_modifier(obj, mod):
         print(f"[SnapSplit] Apply modifier '{mod.name}' failed: {e}")
         return False
 
-def _try_apply_hollow_modifier(obj):
-    mods = [m for m in obj.modifiers if _is_hollow_like_modifier(m)]
-    ok_any = False
-    for m in reversed(mods):
-        ok_any |= _apply_modifier(obj, m)
-    return ok_any
-
 def _find_paired_inner_object_for(obj):
+    """
+    Heuristik: Inneres/äußeres Objekt als Duplikat mit ähnlichem Namen, gleicher Position,
+    ähnlichem Bounding-Box-Zentrum und etwas kleiner/größer.
+    """
     base = obj.name.lower()
     min_v, max_v = world_aabb(obj)
     diag = (max_v - min_v).length
@@ -380,7 +427,8 @@ def _find_paired_inner_object_for(obj):
         if base in n or n.replace(" ", "").startswith(base.replace(" ", "")):
             min_i, max_i = world_aabb(o)
             diag_i = (max_i - min_i).length
-            if 0.2 * diag < diag_i < 0.98 * diag:
+            # innen: 0.2*diag < diag_i < 0.98*diag, außen optional > 1.02*diag
+            if (0.2 * diag < diag_i < 0.98 * diag) or (diag_i > 1.02 * diag):
                 if (o.location - obj.location).length < max(1e-6, diag * 1e-4):
                     cand.append((abs(diag - diag_i), o))
     cand.sort(key=lambda t: t[0])
@@ -406,12 +454,25 @@ def _recalc_normals_outside(obj):
     _leave_edit_mode()
 
 def robust_prepare_hollow(obj, operator=None):
+    """
+    Vereinheitlicht 'Hollow'. Rückgabe:
+    - (obj, used_hollow=True), wenn entweder ein Hollow-Modifier angewendet wurde
+      oder ein inneres/äußeres Objekt gefunden+gejoint wurde.
+    - (obj, used_hollow=False), wenn nichts davon zutraf.
+    """
     if not obj or obj.type != 'MESH':
-        return obj
+        return obj, False
+
+    used_hollow = False
+
     applied = _try_apply_hollow_modifier(obj)
-    inner = _find_paired_inner_object_for(obj) if not applied else None
-    if inner is not None:
-        obj = _join_objects(obj, inner)
+    if applied:
+        used_hollow = True
+
+    partner = _find_paired_inner_object_for(obj) if not applied else None
+    if partner is not None:
+        used_hollow = True
+        obj = _join_objects(obj, partner)
         try:
             obj.data.validate(); obj.data.update()
         except Exception:
@@ -424,8 +485,9 @@ def robust_prepare_hollow(obj, operator=None):
             pass
         bmesh.update_edit_mesh(obj.data)
         _leave_edit_mode()
+
     _recalc_normals_outside(obj)
-    return obj
+    return obj, used_hollow
 
 # ---------------------------
 # Cuts with global offset
@@ -697,8 +759,165 @@ class SNAP_OT_adjust_split_axis(Operator):
         return {'RUNNING_MODAL'}
 
 # ---------------------------
-# Planar Split – prepare hollow, then split
+# Planar Split – prepare hollow, then split (+ optional auto-cap)
 # ---------------------------
+
+def _cap_single_object_simple_fill(obj) -> bool:
+    """
+    Ursprüngliche, schnelle Methode: boundary edges via holes_fill schließen.
+    """
+    try:
+        me = obj.data
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        boundary_edges = [e for e in bm.edges if e.is_boundary]
+        if boundary_edges:
+            bmesh.ops.holes_fill(bm, edges=boundary_edges, sides=0)
+            bm.normal_update()
+            bm.to_mesh(me)
+            me.update()
+            bm.free()
+            return True
+        bm.free()
+        return False
+    except Exception:
+        return False
+
+def cap_single_object_hollow_style(obj) -> bool:
+    """
+    Präzises Capping wie im Cap-Operator (Außen/Innen-Loop), aber ohne Operator-Instanz.
+    Nutzt die gleichen Kernschritte, beschränkt auf Automatikfall (keine Seeds, kein select_only).
+    """
+    _enter_edit_mode_edges(obj)
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
+
+    # Achse aus Szenenprops
+    props = getattr(bpy.context.scene, "snapsplit", None)
+    plane_axis = props.split_axis if props else "Z"
+
+    # Kanten sammeln: boundary + orthogonal zur Split-Achse
+    ax = axis_index_for(plane_axis)
+    axis_vecs = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))
+    split_no = axis_vecs[ax].normalized()
+    eps_dir = 0.12
+    cand = []
+    for e in bm.edges:
+        if not e.is_boundary:
+            continue
+        d = (e.verts[1].co - e.verts[0].co)
+        if d.length_squared == 0.0:
+            continue
+        d.normalize()
+        if abs(d.dot(split_no)) > eps_dir:
+            continue
+        cand.append(e)
+    if not cand:
+        _leave_edit_mode()
+        return False
+
+    # Ebenen clustern (Position entlang Split-Achse)
+    def _loops_from_edges_connected(edges):
+        rem = set(edges); comps = []
+        while rem:
+            start = rem.pop(); comp = {start}; stack = [start]
+            while stack:
+                e = stack.pop()
+                for v in e.verts:
+                    for e2 in v.link_edges:
+                        if e2 in rem:
+                            rem.remove(e2); comp.add(e2); stack.append(e2)
+            if len(comp) >= 3:
+                comps.append(list(comp))
+        return comps
+
+    def _perimeter_of_edges(loop):
+        p = 0.0
+        for e in loop:
+            v0, v1 = e.verts
+            p += (v0.co - v1.co).length
+        return p
+
+    eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
+    mvals = [(e, (0.5 * (e.verts[0].co + e.verts[1].co)).dot(split_no)) for e in cand]
+    mvals.sort(key=lambda t: t[1])
+    planes = []
+    for e, val in mvals:
+        matched = False
+        for pl in planes:
+            if abs(val - pl['v']) <= eps_plane:
+                pl['edges'].append(e)
+                pl['v'] = (pl['v'] * 0.9) + (val * 0.1)
+                matched = True
+                break
+        if not matched:
+            planes.append({'v': val, 'edges': [e]})
+    planes.sort(key=lambda d: len(d['edges']), reverse=True)
+    ring_groups = [pl['edges'] for pl in planes]
+    if not ring_groups:
+        _leave_edit_mode()
+        return False
+
+    # Planaritäts-/Loopprüfung und füllen
+    n_plane = split_no
+    eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
+
+    any_ok = False
+    for edges_on_plane in ring_groups:
+        comps = _loops_from_edges_connected(edges_on_plane)
+        # Grad-2-Zyklizität prüfen
+        def is_cyclic_deg2(loop_edges):
+            count = {}
+            for e in loop_edges:
+                for v in e.verts:
+                    count[v] = count.get(v, 0) + 1
+            return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
+        comps = [c for c in comps if is_cyclic_deg2(c)]
+        if len(comps) < 2:
+            continue
+
+        # Ebenenpunkt (Schwerpunkt) und Planaritätsfilter
+        mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
+        p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
+        def max_dist_to_plane(loop):
+            return max(abs((v.co - p_plane).dot(n_plane)) for e in loop for v in e.verts)
+        comps = [c for c in comps if max_dist_to_plane(c) <= eps_plane_loop]
+        if len(comps) < 2:
+            continue
+
+        comps.sort(key=_perimeter_of_edges, reverse=True)
+
+        i = 0
+        while i + 1 < len(comps):
+            loop_a, loop_b = comps[i], comps[i+1]
+            for e in bm.edges: e.select = False
+            for e in loop_a + loop_b: e.select = True
+            bmesh.update_edit_mesh(obj.data)
+            try:
+                bpy.ops.mesh.fill(use_beauty=True)
+            except Exception:
+                try:
+                    bpy.ops.mesh.fill_grid()
+                except Exception:
+                    pass
+            i += 2
+            any_ok = True
+
+    _leave_edit_mode()
+    if any_ok:
+        try:
+            _enter_edit_mode_edges(obj)
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+        except Exception:
+            pass
+        _leave_edit_mode()
+        try:
+            obj.data.validate(); obj.data.update()
+        except Exception:
+            pass
+    return any_ok
+
 
 class SNAP_OT_planar_split(Operator):
     bl_idname = "snapsplit.planar_split"
@@ -713,14 +932,18 @@ class SNAP_OT_planar_split(Operator):
 
         warn_if_unapplied_transforms(obj, operator=self)
 
-        # Hollow vereinheitlichen
+        # Hollow vereinheitlichen und Flag erhalten
+        used_hollow = False
         try:
-            obj = robust_prepare_hollow(obj, operator=self)
+            obj, used_hollow = robust_prepare_hollow(obj, operator=self)
             obj.data.validate(); obj.data.update()
         except Exception as e:
             print(f"[SnapSplit] Hollow prepare failed: {e}")
 
         props = context.scene.snapsplit
+        # cap_seams_during_split standardmäßig in deinen Profiles auf True setzen, wenn du 2) willst.
+        auto_cap = bool(getattr(props, "cap_seams_during_split", False))
+
         axis = props.split_axis
         count = max(2, int(props.parts_count))
         if count >= 12:
@@ -730,6 +953,33 @@ class SNAP_OT_planar_split(Operator):
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
 
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
+
+         # Auto-Cap nach dem Split falls gewünscht:
+        if auto_cap and parts:
+            capped_cnt = 0
+            if used_hollow:
+                # Präzise Cap-Logik ohne Operator-Instanz
+                for p in parts:
+                    try:
+                        if cap_single_object_hollow_style(p):
+                            capped_cnt += 1
+                    except Exception:
+                        pass
+            else:
+                # Fallback: alte, schnelle Logik
+                for p in parts:
+                    if _cap_single_object_simple_fill(p):
+                        capped_cnt += 1
+
+            if capped_cnt == 0:
+                report_user(self, 'WARNING',
+                            "Auto-cap during split did not find valid loops to fill.",
+                            "Automatisches Schließen beim Schnitt fand keine gültigen Loops.")
+            else:
+                report_user(self, 'INFO',
+                            f"Auto-capped seams on {capped_cnt} part(s).",
+                            f"Nähte automatisch bei {capped_cnt} Teil(en) geschlossen.")
+
 
         if len(parts) < count:
             report_user(self, 'WARNING',
@@ -760,7 +1010,7 @@ class SNAP_OT_planar_split(Operator):
         return {'FINISHED'}
 
 # ---------------------------
-# Cap seams now – exakt die Schnitt-Edge-Loops (Außen+Innen) je Ebene
+# Cap seams now – präzise Außen/Innen-Loop-Erkennung (manuell)
 # ---------------------------
 
 def _loops_from_edges_connected(edges):
@@ -816,8 +1066,6 @@ class SNAP_OT_cap_open_seams_now(Operator):
         default=False
     )
 
-    # --- Helpers reused from your file (loops, perimeter, axis helpers exist above) ---
-
     def _plane_axis_for_object(self, obj):
         props = getattr(bpy.context.scene, "snapsplit", None)
         return props.split_axis if props else "Z"
@@ -827,7 +1075,6 @@ class SNAP_OT_cap_open_seams_now(Operator):
         return sel_edges if len(sel_edges) == 2 else None
 
     def _expand_edge_to_full_loop(self, obj, bm, edge):
-        # Selektiere nur diese eine Edge, expandiere zu Loop, lese die Loop-Kanten aus, gebe sie zurück
         for e in bm.edges:
             e.select = False
         edge.select = True
@@ -836,7 +1083,6 @@ class SNAP_OT_cap_open_seams_now(Operator):
             bpy.ops.mesh.loop_multi_select(ring=False)
         except Exception:
             pass
-        # Loop-Kanten kopieren
         loop_edges = [e for e in bm.edges if e.select]
         return loop_edges
 
@@ -864,7 +1110,7 @@ class SNAP_OT_cap_open_seams_now(Operator):
         split_no = axis_vecs[ax].normalized()
 
         eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
-        eps_dir = 0.12  # strenger als vorher
+        eps_dir = 0.12
 
         cand = []
         for e in bm.edges:
@@ -904,15 +1150,13 @@ class SNAP_OT_cap_open_seams_now(Operator):
         bm = bmesh.from_edit_mesh(obj.data)
         bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
 
-        # 1) Seed-Only-Modus (optional, wenn genau 2 Kanten selektiert sind)
+        # 1) Seeds-strict (genau 2 Kanten)
         if self.require_two_seeds:
             seeds = self._seeds_exact_two_edges(bm)
             if seeds:
                 loop_a = self._expand_edge_to_full_loop(obj, bm, seeds[0])
                 loop_b = self._expand_edge_to_full_loop(obj, bm, seeds[1])
-                # strikte Prüfung
                 if self._loop_is_cyclic_degree2(loop_a) and self._loop_is_cyclic_degree2(loop_b):
-                    # final selektieren: nur diese zwei Loops
                     for e in bm.edges: e.select = False
                     for e in loop_a + loop_b: e.select = True
                     bmesh.update_edit_mesh(obj.data)
@@ -920,31 +1164,28 @@ class SNAP_OT_cap_open_seams_now(Operator):
                         ok = self._fill_like_altf()
                         _leave_edit_mode()
                         if ok:
-                            self._fix_normals_after_fill(obj)
+                            try:
+                                _enter_edit_mode_edges(obj)
+                                bpy.ops.mesh.select_all(action='SELECT')
+                                bpy.ops.mesh.normals_make_consistent(inside=False)
+                            except Exception:
+                                pass
+                            _leave_edit_mode()
                         return ok
                     else:
                         _leave_edit_mode()
                         return True
-                else:
-                    # Seeds ungeeignet → abbrechen (keine Heuristik in diesem Modus)
-                    _leave_edit_mode()
-                    return False
-            # Wenn require_two_seeds=True, aber nicht exakt zwei Seeds da sind → abbrechen
             _leave_edit_mode()
             return False
 
-        # 2) Seeds bevorzugt (>=2 selektierte Edges → nehme die zwei größten Loops)
+        # 2) Seeds preferred (>=2 Kanten): nimm zwei größten Loops
         sel_edges = [e for e in bm.edges if e.select]
-        used_seed_paths = False
         if len(sel_edges) >= 2:
-            # Sammle Loop-Kandidaten aus allen selektierten Edges (bis 4 Seeds robust)
             loops = []
-            tested = set()
+            seen = set()
             for e in sel_edges[:4]:
-                if e in tested: continue
-                loops.append(self._expand_edge_to_full_loop(obj, bm, e))
-                tested.add(e)
-            # wähle zwei größten Zyklen
+                if e in seen: continue
+                loops.append(self._expand_edge_to_full_loop(obj, bm, e)); seen.add(e)
             loops = [lp for lp in loops if self._loop_is_cyclic_degree2(lp)]
             loops.sort(key=lambda lp: _perimeter_of_edges(lp), reverse=True)
             if len(loops) >= 2:
@@ -952,32 +1193,36 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 for e in bm.edges: e.select = False
                 for e in loop_a + loop_b: e.select = True
                 bmesh.update_edit_mesh(obj.data)
-                used_seed_paths = True
                 if not select_only:
                     ok = self._fill_like_altf()
                     _leave_edit_mode()
                     if ok:
-                        self._fix_normals_after_fill(obj)
+                        try:
+                            _enter_edit_mode_edges(obj)
+                            bpy.ops.mesh.select_all(action='SELECT')
+                            bpy.ops.mesh.normals_make_consistent(inside=False)
+                        except Exception:
+                            pass
+                        _leave_edit_mode()
                     return ok
                 else:
                     _leave_edit_mode()
                     return True
 
-        # 3) Automatik – nur echte Schnitt-Ringe
+        # 3) Automatik – “echte” Schnitt-Ringe pro Ebene
         plane_axis = self._plane_axis_for_object(obj)
         ring_groups = self._cluster_split_ring_edges(obj, bm, plane_axis)
         if not ring_groups:
             _leave_edit_mode()
             return False
 
-        processed = 0
-        any_selected = False
-        all_ok = True
-
-        # Ebenennormal und Planaritätsprüfung
         ax = axis_index_for(plane_axis)
         n_plane = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))[ax].normalized()
         eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
+
+        processed = 0
+        all_ok = True
+        any_selected = False
 
         for edges_on_plane in ring_groups:
             if max_planes and processed >= max_planes:
@@ -989,11 +1234,9 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 all_ok = False
                 continue
 
-            # Ebenenpunkt als Schwerpunkt der Ebene
             mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
             p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
 
-            # Planaritätsfilter
             comps = [c for c in comps if max(abs((v.co - p_plane).dot(n_plane)) for e in c for v in e.verts) <= eps_plane_loop]
             if len(comps) < 2:
                 all_ok = False
@@ -1001,7 +1244,6 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
             comps.sort(key=lambda lp: _perimeter_of_edges(lp), reverse=True)
 
-            # Nur paarweise füllen, und IMMER nur GENAU 2 Loops gleichzeitig selektieren
             i = 0
             plane_ok = True
             while i + 1 < len(comps):
@@ -1010,12 +1252,9 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 for e in loop_a + loop_b: e.select = True
                 bmesh.update_edit_mesh(obj.data)
                 any_selected = True
-
                 if not select_only:
                     ok = self._fill_like_altf()
                     plane_ok = plane_ok and ok
-                    # nach dem Fill kann die Edge-Topologie sich ändern; daher keine weitere Expansion hier
-
                 i += 2
 
             all_ok = all_ok and plane_ok
@@ -1023,7 +1262,13 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
         _leave_edit_mode()
         if not select_only and all_ok and processed > 0:
-            self._fix_normals_after_fill(obj)
+            try:
+                _enter_edit_mode_edges(obj)
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.normals_make_consistent(inside=False)
+            except Exception:
+                pass
+            _leave_edit_mode()
 
         try:
             obj.data.validate(); obj.data.update()
@@ -1078,44 +1323,6 @@ class SNAP_OT_cap_open_seams_now(Operator):
         return {'FINISHED'}
 
 # ---------------------------
-# Depsgraph handler
-# ---------------------------
-
-_last_preview_active_obj = None
-
-def _snapsplit_depsgraph_update(scene, depsgraph):
-    # Schutz: falls update_split_preview_plane nicht verfügbar ist, still aussteigen
-    if 'update_split_preview_plane' not in globals():
-        return
-    global _last_preview_active_obj
-    props = getattr(scene, "snapsplit", None)
-    if not props or not getattr(props, "show_split_preview", False):
-        _last_preview_active_obj = None
-        return
-
-    ctx = bpy.context
-    obj = ctx.active_object
-
-    if obj is not _last_preview_active_obj:
-        try:
-            update_split_preview_plane(ctx)
-        except Exception:
-            pass
-        _last_preview_active_obj = obj
-        return
-
-    if obj:
-        try:
-            for up in depsgraph.updates:
-                id_orig = getattr(up.id, "original", None)
-                if id_orig is obj or id_orig is obj.data:
-                    update_split_preview_plane(ctx)
-                    break
-        except Exception:
-            pass
-
-
-# ---------------------------
 # Registration
 # ---------------------------
 
@@ -1146,5 +1353,3 @@ def unregister():
         print(f"[SnapSplit] Could not remove depsgraph handler: {e}")
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-
-

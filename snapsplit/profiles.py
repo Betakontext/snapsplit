@@ -130,13 +130,14 @@ class SnapSplitProps(PropertyGroup):
         update=_snapsplit_update_preview,
     )
 
-    # Performance option: cap (fill) seams during split
-    fill_seams_during_split: BoolProperty(
-        name="Nähte beim Schnitt kappen (langsamer)" if _DE else "Cap seams during split (slower)",
-        description=("Füllt Schnittöffnungen während des Splits. Kann die Laufzeit stark erhöhen."
-                     if _DE else "Fills open boundaries during split. Can be significantly slower."),
+    # Performance/Workflow: Cap seams automatically during split
+    cap_seams_during_split: BoolProperty(
+        name="Nähte beim Schnitt schließen" if _DE else "Cap seams during split",
+        description=("Wendet nach dem Schnitt automatisch den Randverschluss an. Mit Hollow/Innenhülle: präzise Außen/Innen-Loop-Füllung; ohne Hollow: einfache Füllung. Kann die Laufzeit erhöhen."
+                     if _DE else "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."),
         default=True,
     )
+
 
     # Connectors
     connector_type: EnumProperty(
@@ -268,41 +269,7 @@ class SnapSplitProps(PropertyGroup):
 
 
 
-    # Pin / Tenon dimensions (mm)
-    pin_diameter_mm: FloatProperty(
-        name="Pin-Durchmesser (mm)" if _DE else "Pin Diameter (mm)",
-        default=5.0,
-        min=0.5,
-        soft_max=50.0,
-    )
-    pin_length_mm: FloatProperty(
-        name="Pin-Länge (mm)" if _DE else "Pin Length (mm)",
-        default=8.0,
-        min=1.0,
-        soft_max=200.0,
-    )
-    pin_segments: IntProperty(
-        name="Segmente" if _DE else "Segments",
-        description=("Kreissegmente des Pins (nur Optik/Glätte)"
-                     if _DE else "Cylinder pin radial segments (visual smoothness)"),
-        default=32,
-        min=8,
-        max=128,
-    )
 
-    tenon_width_mm: FloatProperty(
-        name="Zapfen-Breite (mm)" if _DE else "Tenon Width (mm)",
-        default=6.0,
-        min=1.0,
-        soft_max=100.0,
-    )
-
-    tenon_depth_mm: FloatProperty(
-        name="Zapfen-Tiefe (mm)" if _DE else "Tenon Depth (mm)",
-        default=8.0,
-        min=1.0,
-        soft_max=200.0,
-    )
 
     add_chamfer_mm: FloatProperty(
         name="Fase (mm)" if _DE else "Chamfer (mm)",
