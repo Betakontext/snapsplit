@@ -2,12 +2,11 @@
 
 Addon for Blender to automate splitting / cutting complex 3D models, which are f.e. bigger than your printing bed, into printable parts. It generates precise, glue-free snap-fit connectors.
 
-Its goal is to extend a given 3D printing workflow, f.e. given with print3d_toolbox extension, using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
+Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
 
-For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work.
-Please let me know if you test other Blender versions. Lets update version compatabilities.
+For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test other Blender versions. Lets update version compatabilities.
 
 ### Installation:
 - Download the whole repository or only snapsplit.zip
@@ -30,31 +29,41 @@ Please let me know if you test other Blender versions. Lets update version compa
 
 Unfold the segmentation part (More...) to get ready for the split.
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
-![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
 
--> Click "Show split preview" if you want to constantly see the split preview plane. Offset 0 is the middle of the selected part.
+![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png)
+
+-> Click "Show split preview" if you want to see the split preview plane. Offset 0 is the middle of the selected part.
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_01.png)
+
 -> Choose desired number of parts and adjust the split axis offset.
--> For larger part numbers you can deselect "cap seams" and create the caps afterwards. In versions < 5.0 you have to join meshes before splitting, f.e. after "hollow" within print3d_toolbox.
+-> For larger part numbers you can deselect "cap seams" and create the caps afterwards.
 -> Push: "Adjust split axis"
 
 -> Run "Planar Split"
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_02.png)
 
 -------------------------
 ### Build Connections:
 
 Unfold the conections part (More...) to choose and place your connectors.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_01.png)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png)
 
 -> Select two or more adjacent parts (order does not matter).
 -> Choose pins or tenons distributed along a seam line or spread across a grid, with or without Snap-Pins for glueless connection.
 -> Define your tolerance profile (under Connections UI) for your material.
 
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_02.png)
+
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_02.png)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_03.png)
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -65,19 +74,22 @@ or   ->  Choose "Place connectors (click)" to set individualized connectors with
 
 Property group with:
 
-- Segmentation: Split axis and preview, Number of parts. Cap seams, with hollow awareness. (Unclick "cap seams" for larger part numbers)
-- Connections: Connector types (Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon ...until now) with Diameter, Length and Depth adjustments, Grid / Line / Individual placement options
-- Tolerance: Material/Printer profiles suggestions (PLA, PETG, ABS, ASA, TPU, SLA) with derived tolerances (per side)
+- Number of parts. (Unclick "cap seams" for larger part numbers)
+- Connector types (Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon ...until now)
+- Material/Printer profile (PLA, PETG, ABS, ASA, TPU, SLA)
+- Derived tolerances (per side)
 
 Operators:
 
 - Planar Split along a global axis into the specified number of parts
-- Split preview with offset adjustments
-- Decap and cap seams option, full face / wall (hollow)
+- Split preview
+- Offset adjustment
+- Decap and cap seams option
 - Percentage-based edge margin for connector placement
 - Seam line connectors and Grid connectors on the cut face with rows and columns input
-- Pin and Snap-Pin adjustments, with adjustable insertion depth. Default: 50%
-- Individualized placements (per click) of connectors, with automatic placements considering the connector settings
+- Pin and Snap-Pin adjustments
+- Adjustable insertion depth. Default: 50%
+- Automatic placements and generation of individualized placements (per click) of connectors
 
 Tolerance profiles (guidelines, adjustable):
 
@@ -94,10 +106,14 @@ These are provided as presets and can be overridden by the user.
 
 ### Roadmap of ideas:
 
+-> Align tool to lay position parts on ground plane per click on a face
+-> Determine seam curves more precisely
 -> Overhang/wall-thickness–aware placement
+-> Automatic anti-rotation combinations
 -> Freeform/curvature-based seams
 -> Bayonet/dovetail connectors
 -> A calibration wizard for tolerances
+-> Support-aware features, etc.
 
 ---------------------------
 Master is the development branch building up on the latest stable version, which you can find as latest branch.
