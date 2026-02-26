@@ -27,13 +27,11 @@ For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Plea
 -------------------------
 ### Cut / Split workflow:
 
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
+
 Unfold the segmentation part (More...) to get ready for the split.
 
-
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
 -> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
 
@@ -52,6 +50,8 @@ Unfold the segmentation part (More...) to get ready for the split.
 
 -------------------------
 ### Build Connections:
+
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
 
 Unfold the conections part (More...) to choose and place your connectors.
 
@@ -93,6 +93,8 @@ Operators:
 - Adjustable insertion depth. Default: 50%
 
 Tolerance profiles (guidelines, adjustable):
+
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
 - PLA: 0.15–0.25 mm per side
 - PETG: 0.25–0.35 mm per side
