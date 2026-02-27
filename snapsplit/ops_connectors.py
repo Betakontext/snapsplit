@@ -1,5 +1,5 @@
 """
-Copyright ( C ) 2026 Christoph Medicus
+Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
 dev@betakontext.de
 
@@ -32,17 +32,21 @@ from .utils import ensure_collection, unit_mm, report_user
 # ---------------------------
 
 def _bb_world(obj):
+    """Return the world-space bounding box corner coordinates of an object."""
     return [obj.matrix_world @ Vector(c) for c in obj.bound_box]
 
 def _proj_interval(points, axis_dir, origin):
+    """Project points onto a direction (axis_dir) and return min/max distances from origin."""
     a = axis_dir.normalized()
     return (min((p - origin).dot(a) for p in points),
             max((p - origin).dot(a) for p in points))
 
 def _axis_index(axis):
+    """Return index 0/1/2 for X/Y/Z axis string."""
     return {"X": 0, "Y": 1, "Z": 2}[axis]
 
 def _axis_vectors(axis):
+    """Return normal and two tangential unit vectors for a given axis string."""
     if axis == "X":
         return Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))
     if axis == "Y":
@@ -50,7 +54,7 @@ def _axis_vectors(axis):
     return Vector((0,0,1)), Vector((1,0,0)), Vector((0,1,0))
 
 def _pair_seam_plane_pos(obj_a, obj_b, axis, props):
-    """World-space seam plane coordinate for a specific adjacent pair (A,B)."""
+    """Return world-space seam plane coordinate along axis for a specific adjacent pair (A,B)."""
     idx = _axis_index(axis)
     bb_a = _bb_world(obj_a); bb_b = _bb_world(obj_b)
     vals_a = [c[idx] for c in bb_a]; vals_b = [c[idx] for c in bb_b]
@@ -68,9 +72,7 @@ def _pair_seam_plane_pos(obj_a, obj_b, axis, props):
 # ---------------------------
 
 def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_pct=10.0):
-    """
-    Distribute 'count' points along the overlap of (A,B) on the given seam plane (world coord).
-    """
+    """Distribute 'count' points along the overlap line of (A,B) on the given seam plane."""
     n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
     bb_b = _bb_world(obj_b)
@@ -84,6 +86,7 @@ def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_p
     origin[oi] = seam_pos
 
     def overlap_len(a_min, a_max, b_min, b_max):
+        """Return length of 1D interval overlap."""
         return max(0.0, min(a_max, b_max) - max(a_min, b_min))
 
     t1_min_a, t1_max_a = _proj_interval(bb_a, t1, origin)
@@ -126,9 +129,7 @@ def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_p
     return pts
 
 def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, margin_pct=10.0):
-    """
-    Distribute cols*rows points across the 2D overlap of (A,B) on the given seam plane (world coord).
-    """
+    """Distribute cols*rows points over the 2D overlap of (A,B) on the given seam plane."""
     n_axis, t1, t2 = _axis_vectors(axis)
     bb_a = _bb_world(obj_a)
     bb_b = _bb_world(obj_b)
@@ -141,6 +142,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
     origin[oi] = seam_pos
 
     def interval_overlap(a_min, a_max, b_min, b_max):
+        """Return (lo, hi, length) of 1D interval overlap."""
         lo = max(a_min, b_min); hi = min(a_max, b_max)
         return lo, hi, max(0.0, hi - lo)
 
@@ -180,6 +182,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
 # ---------------------------
 
 def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="SnapSplit_Pin"):
+    """Create a cylindrical pin mesh object with optional top chamfer."""
     mm = unit_mm()
     d = float(d_mm) * mm
     L = float(length_mm) * mm
@@ -211,17 +214,14 @@ def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="
     return obj
 
 def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="SnapSplit_Tenon"):
-    """
-    Länglicher Quader: X=Breite, Y=Breite (quadratischer Querschnitt), Z=Länge (Steckrichtung).
-    Chamfer optional über Modifier.
-    """
+    """Create a rectangular tenon (elongated cube) with optional bevel modifier for chamfer."""
     mm = unit_mm()
     w = float(w_mm) * mm
     L = float(length_mm) * mm
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
     bmesh.ops.transform(bm, matrix=Matrix.Diagonal(Vector((w, w, L, 1.0))), verts=bm.verts)
-    # Boden z=0, Spitze z=L (analog Pin)
+    # Base at z=0, tip at z=L (analogous to pin)
     bmesh.ops.transform(bm, matrix=Matrix.Translation((0, 0, L * 0.5)), verts=bm.verts)
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me); bm.free()
@@ -234,6 +234,7 @@ def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="Sna
     return obj
 
 def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
+    """Create a UV sphere mesh object with given diameter and segment counts."""
     mm = unit_mm()
     r = max(1e-9, float(d_mm) * 0.5 * mm)
 
@@ -252,6 +253,7 @@ def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     return obj
 
 def create_uv_sphere_preview(d_mm=2.0, segments=12, rings=6, name="SnapSpherePreview"):
+    """Create a lightweight wireframe UV sphere for viewport previews."""
     mm = unit_mm()
     r = max(1e-9, float(d_mm) * 0.5 * mm)
 
@@ -276,6 +278,7 @@ def create_uv_sphere_preview(d_mm=2.0, segments=12, rings=6, name="SnapSpherePre
 # ---------------------------
 
 def boolean_apply(target_obj, mod):
+    """Apply a Boolean (or any) modifier on target_obj with validation and error handling."""
     bpy.context.view_layer.objects.active = target_obj
     target_obj.select_set(True)
     try:
@@ -290,6 +293,7 @@ def boolean_apply(target_obj, mod):
         pass
 
 def cut_socket_with_cutter(target_obj, cutter_obj):
+    """Apply a DIFFERENCE Boolean using cutter_obj on target_obj to create a socket."""
     mod = target_obj.modifiers.new("SnapSplit_Socket", 'BOOLEAN')
     mod.operation = 'DIFFERENCE'
     mod.solver = 'EXACT'
@@ -301,7 +305,7 @@ def cut_socket_with_cutter(target_obj, cutter_obj):
 # ---------------------------
 
 def _dispose_object(obj, remove_data=True):
-    """Remove an object completely: unlink from collections, optionally remove data, then remove object."""
+    """Unlink and remove an object; optionally remove and clear its data if orphaned."""
     if not obj:
         return
     try:
@@ -334,7 +338,7 @@ def _dispose_object(obj, remove_data=True):
         pass
 
 def cut_socket_with_cutter_and_dispose(target_obj, cutter_obj):
-    """Apply DIFFERENCE boolean and dispose cutter afterwards."""
+    """Apply DIFFERENCE Boolean and dispose the cutter object afterwards."""
     mod = target_obj.modifiers.new("SnapSplit_Socket", 'BOOLEAN')
     mod.operation = 'DIFFERENCE'
     mod.solver = 'EXACT'
@@ -343,7 +347,7 @@ def cut_socket_with_cutter_and_dispose(target_obj, cutter_obj):
     _dispose_object(cutter_obj, remove_data=True)
 
 def union_and_dispose(target_obj, union_obj, name="SnapSplit_Union"):
-    """Apply UNION boolean and dispose helper afterwards."""
+    """Apply UNION Boolean and dispose the helper object afterwards."""
     mod = target_obj.modifiers.new(name, 'BOOLEAN')
     mod.operation = 'UNION'
     mod.solver = 'EXACT'
@@ -356,12 +360,12 @@ def union_and_dispose(target_obj, union_obj, name="SnapSplit_Union"):
 # ---------------------------
 
 def _ring_height_for_visible_half(length_scene, embed_pct):
-    """Center Z of the protruding half (B side)."""
+    """Return the center Z of the protruding half (part B side) along the frame Z-axis."""
     L_free = max(0.0, (1.0 - embed_pct) * length_scene)
     return embed_pct * length_scene + 0.5 * L_free
 
 def _choose_visible_half_robust(base_matrix, zA, zB):
-    """Robustly choose the actually protruding half along frame Z."""
+    """Choose which local Z (A or B) protrudes in world coordinates using the frame Z-axis."""
     try:
         z_axis_world = Vector((base_matrix[0][2], base_matrix[1][2], base_matrix[2][2])).normalized()
         p0_w = Vector((base_matrix[0][3], base_matrix[1][3], base_matrix[2][3]))
@@ -378,6 +382,7 @@ def _choose_visible_half_robust(base_matrix, zA, zB):
 # ---------------------------
 
 def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
+    """Add a ring of snap spheres around a cylindrical pin; union to B, socket to A, and dispose helpers."""
     mm = unit_mm()
     n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
     d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
@@ -406,7 +411,7 @@ def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, pr
         sphere.matrix_world = M
         cutters_coll.objects.link(sphere)
 
-        # Wichtig: erst Cutter-Kopie erstellen, DANN Union+Dispose, DANN Difference+Dispose
+        # Important: duplicate cutter first, then union+dispose, then difference+dispose
         tol = float(props.effective_tolerance())
         scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
 
@@ -416,10 +421,10 @@ def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, pr
         cutters_coll.objects.link(sph_cut)
         sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
 
-        # UNION in Teil B, anschließend Original entsorgen
+        # UNION into part B, then dispose original
         union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
 
-        # DIFFERENCE in Teil A, Cutter entsorgen
+        # DIFFERENCE into part A, then dispose cutter
         cut_socket_with_cutter_and_dispose(part_a, sph_cut)
 
         created.append(None)
@@ -430,9 +435,7 @@ def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, pr
 # ---------------------------
 
 def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
-    """
-    Ring of spheres around square cross-section (half_w_scene as radius approximation), same as pin.
-    """
+    """Add a ring of snap spheres around a square-section tenon; union to B, socket to A, and dispose helpers."""
     mm = unit_mm()
     n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
     d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
@@ -461,7 +464,7 @@ def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene
         sphere.matrix_world = M
         cutters_coll.objects.link(sphere)
 
-        # Cutter-Kopie zuerst
+        # Duplicate cutter first
         tol = float(props.effective_tolerance())
         scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
 
@@ -471,10 +474,10 @@ def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene
         cutters_coll.objects.link(sph_cut)
         sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
 
-        # UNION in B, Original entsorgen
+        # UNION into B, then dispose original
         union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
 
-        # DIFFERENCE in A, Cutter entsorgen
+        # DIFFERENCE into A, then dispose cutter
         cut_socket_with_cutter_and_dispose(part_a, sph_cut)
 
         created.append(None)
@@ -485,6 +488,7 @@ def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene
 # ---------------------------
 
 def _orthonormal_frame_from_z(z: Vector):
+    """Build a stable orthonormal frame (x,y,z) from a given z-axis."""
     z = z.normalized()
     x = Vector((1, 0, 0))
     if abs(z.dot(x)) > 0.99:
@@ -494,10 +498,7 @@ def _orthonormal_frame_from_z(z: Vector):
     return x, y, z
 
 def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click"):
-    """
-    Place one cylindrical pin at point_world (seam plane), oriented with Z along axis normal.
-    Boolean-Policy: UNION in B, DIFFERENCE (socket) in A. All helpers disposed afterwards.
-    """
+    """Place one cylindrical pin at a world point; union into B and cut socket into A."""
     if props is None:
         props = bpy.context.scene.snapsplit
     z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
@@ -524,10 +525,10 @@ def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name
     pin.matrix_world = M
     cutters_coll.objects.link(pin)
 
-    # UNION in B und Pin entsorgen
+    # UNION into B and dispose pin
     union_and_dispose(b, pin, name=f"{name_prefix}_Union")
 
-    # DIFFERENCE (Socket) in A, Cutter entsorgen
+    # DIFFERENCE (socket) into A and dispose cutter
     tol = float(props.effective_tolerance())
     socket_d = float(props.pin_diameter_mm) + 2.0 * tol
     socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"{name_prefix}_SocketCutter")
@@ -538,10 +539,7 @@ def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name
     return None, None
 
 def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Tenon_Click"):
-    """
-    Place one rectangular tenon (elongated cube) at point_world (same logic as pins).
-    Boolean-Policy: UNION in B, DIFFERENCE in A. Dispose helpers afterwards.
-    """
+    """Place one rectangular tenon at a world point; union into B and cut socket into A."""
     if props is None:
         props = bpy.context.scene.snapsplit
     z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
@@ -566,7 +564,7 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
     tenon.matrix_world = M
     cutters_coll.objects.link(tenon)
 
-    # Bevel ggf. anwenden
+    # Apply bevel if present (visual chamfer)
     for mod in list(tenon.modifiers):
         if mod.type == 'BEVEL':
             bpy.context.view_layer.objects.active = tenon
@@ -577,10 +575,10 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
                 report_user(None, 'WARNING', f"Bevel apply failure: {e}")
             tenon.select_set(False)
 
-    # UNION in B und Tenon entsorgen
+    # UNION into B and dispose tenon
     union_and_dispose(b, tenon, name=f"{name_prefix}_Union")
 
-    # DIFFERENCE (Socket) in A (X/Y toleranzskaliert, Z=1), Cutter entsorgen
+    # DIFFERENCE (socket) into A with XY tolerance scale, dispose cutter
     mm = unit_mm()
     tol = float(props.effective_tolerance())
     half_w = max(0.5 * float(props.tenon_width_mm) * mm, 1e-9)
@@ -600,11 +598,7 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
 # ---------------------------
 
 def place_connectors_between(parts, axis, count, ctype, props):
-    """
-    Connect adjacent parts along 'axis' with distribution per props.connector_distribution.
-    Boolean-Policy: Geometrie (Pin/Tenon + Snap-Spheres) UNION in B, Socket/Cutter DIFFERENCE in A.
-    All temporary helpers are disposed after use. Service-Collections remain (empty).
-    """
+    """Place connectors between adjacent parts along axis using LINE or GRID distribution."""
     if not parts:
         return []
 
@@ -662,10 +656,10 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 pin.matrix_world = M
                 cutters_coll.objects.link(pin)
 
-                # UNION in B und entsorgen
+                # UNION into B and dispose
                 union_and_dispose(b, pin, name=f"PinUnion_{i}")
 
-                # DIFFERENCE (Socket) in A und entsorgen
+                # DIFFERENCE (socket) into A and dispose
                 mm = unit_mm()
                 socket_d = float(props.pin_diameter_mm) + 2.0 * tol
                 socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"SocketCutter_{i}")
@@ -675,7 +669,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 created.append(None)
 
-                # Snap spheres für Pin
+                # Snap spheres for snap pin
                 if ctype_cur == "SNAP_PIN":
                     pin_radius_scene = 0.5 * float(props.pin_diameter_mm) * mm
                     length_scene = float(props.pin_length_mm) * mm
@@ -685,8 +679,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         length_scene=length_scene,
                         props=props,
                         name_prefix=f"Pin_{i}",
-                        part_a=a,
-                        part_b=b,
+                        part_a=a,  # A = DIFFERENCE
+                        part_b=b,  # B = UNION
                         cutters_coll=cutters_coll
                     )
 
@@ -696,7 +690,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 tenon.matrix_world = M
                 cutters_coll.objects.link(tenon)
 
-                # Bevel ggf. anwenden
+                # Apply bevel if present
                 for mod in list(tenon.modifiers):
                     if mod.type == 'BEVEL':
                         bpy.context.view_layer.objects.active = tenon
@@ -707,10 +701,10 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             report_user(None, 'WARNING', f"Bevel apply failure: {e}")
                         tenon.select_set(False)
 
-                # UNION in B und entsorgen
+                # UNION into B and dispose
                 union_and_dispose(b, tenon, name=f"TenonUnion_{i}")
 
-                # DIFFERENCE (Socket) in A, X/Y toleranzskaliert, entsorgen
+                # DIFFERENCE (socket) into A with XY tolerance scale, dispose
                 mm = unit_mm()
                 half_w = max(0.5 * float(props.tenon_width_mm) * mm, 1e-9)
                 sx = 1.0 + (tol * mm) / half_w
@@ -724,7 +718,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 created.append(None)
 
-                # Snap spheres für Snap-Tenon
+                # Snap spheres for snap tenon
                 if ctype_cur == "SNAP_TENON":
                     half_w_scene = max(0.5 * float(props.tenon_width_mm) * mm, 1e-9)
                     length_scene = float(props.tenon_depth_mm) * mm
@@ -734,12 +728,12 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         length_scene=length_scene,
                         props=props,
                         name_prefix=f"Tenon_{i}",
-                        part_a=a,
-                        part_b=b,
+                        part_a=a,  # A = DIFFERENCE
+                        part_b=b,  # B = UNION
                         cutters_coll=cutters_coll
                     )
             else:
-                # Fallback -> wie Tenon
+                # Fallback -> behave like tenon
                 tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                  name=f"Tenon_{i}")
                 tenon.matrix_world = M
@@ -766,11 +760,13 @@ def place_connectors_between(parts, axis, count, ctype, props):
 # ---------------------------
 
 class SNAP_OT_place_connectors_click(Operator):
+    """Interactively place a connector (pin/tenon) by clicking on the seam plane between two parts."""
     bl_idname = "snapsplit.place_connectors_click"
     bl_label = "Place connectors (click)"
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
 
     def invoke(self, context, event):
+        """Start modal placement with live preview for two selected mesh parts."""
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) != 2:
@@ -793,7 +789,7 @@ class SNAP_OT_place_connectors_click(Operator):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             prev_coll = ensure_collection("_SnapSplit_Preview")
 
-            self.preview_objs = []  # mehrere Objekte bei SNAP_PIN/SNAP_TENON
+            self.preview_objs = []  # multiple preview objects for SNAP_PIN/SNAP_TENON
             self.preview_obj = None
 
             if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
@@ -837,7 +833,7 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
             else:
-                # Tenon-Quader
+                # Rectangular tenon preview
                 ten_prev = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                     name="SnapSplit_Preview_Conn")
                 ten_prev.display_type = 'WIRE'
@@ -847,7 +843,7 @@ class SNAP_OT_place_connectors_click(Operator):
                 self.preview_objs.append(ten_prev)
 
                 if ctype_cur == "SNAP_TENON":
-                    # Vorschau-Sphären als Ring um Querschnitt (wie Pin)
+                    # Preview spheres as a ring around the square cross-section (like pin)
                     mm = unit_mm()
                     n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
                     d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
@@ -887,6 +883,7 @@ class SNAP_OT_place_connectors_click(Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
+        """Tear down preview objects and optionally report cancellation."""
         try:
             if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
                 for coll in list(self.preview_obj.users_collection):
@@ -909,6 +906,7 @@ class SNAP_OT_place_connectors_click(Operator):
             report_user(self, 'INFO', "Placement cancelled.", "Platzierung abgebrochen.")
 
     def modal(self, context, event):
+        """Handle mouse movement for preview updates and left-click for placement."""
         try:
             # Cancel
             if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
@@ -934,7 +932,7 @@ class SNAP_OT_place_connectors_click(Operator):
                                     continue
                                 try:
                                     if "_snapsplit_local_offset_B" in o:
-                                        # A/B-Offsets vorhanden -> robust wählen (SNAP_PIN, SNAP_TENON)
+                                        # Choose A/B offsets robustly (SNAP_PIN, SNAP_TENON)
                                         oxA, oyA, ozA = o.get("_snapsplit_local_offset_A", (0.0, 0.0, 0.0))
                                         oxB, oyB, ozB = o.get("_snapsplit_local_offset_B", (0.0, 0.0, 0.0))
                                         if z_axis_world is not None:
@@ -963,7 +961,7 @@ class SNAP_OT_place_connectors_click(Operator):
                         elif ctype_cur == "RECT_TENON":
                             place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
                         elif ctype_cur == "SNAP_PIN":
-                            # Pin + Sphären (Sphären per Frame)
+                            # Pin + spheres (spheres added using the same frame)
                             place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
                             M = self._build_frame_at(hit)
                             mm = unit_mm()
@@ -1010,6 +1008,7 @@ class SNAP_OT_place_connectors_click(Operator):
             return {'RUNNING_MODAL'}
 
     def _intersect_mouse_with_seam_plane(self, context, event):
+        """Raycast from mouse into the seam plane and return the hit point in world space."""
         n = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[self.axis].normalized()
 
         ca = sum([self.a.matrix_world @ Vector(c) for c in self.a.bound_box], Vector()) / 8.0
@@ -1039,6 +1038,7 @@ class SNAP_OT_place_connectors_click(Operator):
         return ray_origin + ray_dir * t
 
     def _build_frame_at(self, point_world):
+        """Build a local placement frame (Matrix) at a world point based on axis and embed depth."""
         z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[self.axis].normalized()
         x = Vector((1,0,0))
         if abs(z.dot(x)) > 0.99:
@@ -1067,11 +1067,13 @@ class SNAP_OT_place_connectors_click(Operator):
 # ---------------------------
 
 class SNAP_OT_add_connectors(Operator):
+    """Batch-place connectors between all adjacent selected parts using current settings."""
     bl_idname = "snapsplit.add_connectors"
     bl_label = "Add connectors"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
+        """Execute batch placement for selected mesh parts."""
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) < 2:
@@ -1097,9 +1099,11 @@ class SNAP_OT_add_connectors(Operator):
 classes = (SNAP_OT_add_connectors, SNAP_OT_place_connectors_click)
 
 def register():
+    """Register operators for connector placement."""
     for c in classes:
         bpy.utils.register_class(c)
 
 def unregister():
+    """Unregister operators for connector placement."""
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

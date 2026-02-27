@@ -5,21 +5,19 @@ dev@betakontext.de
 
 This file is part of SnapSplit
 
-    SnapSplit is free software; you can redistribute it and/or
-    modify it under the terms of the GNU General Public License
-    as published by the Free Software Foundation; either version 3
-    of the License, or (at your option) any later version.
+SnapSplit is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 3
+of the License, or (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, see <https://www.gnu.org
-/licenses>.
+You should have received a copy of the GNU General Public License
+along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
-
 
 bl_info = {
     "name": "SnapSplit – Print-ready segmentation with connectors",
@@ -50,7 +48,8 @@ from . import ui
 _modules = [utils, profiles, prefs, ops_split, ops_connectors, ui]
 
 def register():
-    # Reload modules during dev to pick up edits without Blender restart
+    """Register all SnapSplit submodules (with hot-reload support during development)."""
+    # Reload modules during development to pick up edits without restarting Blender
     for m in _modules:
         try:
             importlib.reload(m)
@@ -63,6 +62,7 @@ def register():
             m.register()
 
 def unregister():
+    """Unregister all SnapSplit submodules in reverse order."""
     for m in reversed(_modules):
         if hasattr(m, "unregister"):
             m.unregister()

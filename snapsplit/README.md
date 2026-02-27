@@ -1,4 +1,4 @@
-# SnapSplit 
+# SnapSplit
 
 Addon for Blender to automate splitting / cutting complex 3D models, which are f.e. bigger than your printing bed, into printable parts. It generates precise, glue-free snap-fit connectors.
 
@@ -29,31 +29,43 @@ For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Plea
 
 Unfold the segmentation part (More...) to get ready for the split.
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png)
-![Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
 
--> Click "Show split preview" if you want to see the split preview plane. Offset 0 is the middle of the selected part.
+-> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
+
+![F.e. Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_01.png?cache=1)
+
 -> Choose desired number of parts and adjust the split axis offset.
--> For larger part numbers you can deselect "cap seams" and create the caps afterwards.
 -> Push: "Adjust split axis"
 
+-> For larger part numbers you can deselect "cap seams" and create the caps afterwards.
+-> Cap seams closes walls, if hollow or solidify is detected. If none it closes the whole cut area. You can also use it per part afterwards if "Cap seams" is deselected
+
+
 -> Run "Planar Split"
+
+![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_02.png?cache=1)
 
 -------------------------
 ### Build Connections:
 
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
+
 Unfold the conections part (More...) to choose and place your connectors.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_01.png)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png?cache=1)
 
 -> Select two or more adjacent parts (order does not matter).
 -> Choose pins or tenons distributed along a seam line or spread across a grid, with or without Snap-Pins for glueless connection.
 -> Define your tolerance profile (under Connections UI) for your material.
 
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_02.png?cache=1)
+
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_connections_02.png)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_03.png?cache=1)
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -72,16 +84,16 @@ Property group with:
 Operators:
 
 - Planar Split along a global axis into the specified number of parts
-- Split preview
-- Offset adjustment
+- Split preview and adjustment
 - Decap and cap seams option
 - Percentage-based edge margin for connector placement
-- Seam line connectors and Grid connectors on the cut face with rows and columns input
+- Seam line connectors, Grid connectors and individual Connectors on the cut face with rows and columns input
 - Pin and Snap-Pin adjustments
 - Adjustable insertion depth. Default: 50%
-- Automatic placements and generation of individualized placements (per click) of connectors
 
 Tolerance profiles (guidelines, adjustable):
+
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
 - PLA: 0.15–0.25 mm per side
 - PETG: 0.25–0.35 mm per side
@@ -96,14 +108,11 @@ These are provided as presets and can be overridden by the user.
 
 ### Roadmap of ideas:
 
--> Align tool to lay position parts on ground plane per click on a face
 -> Determine seam curves more precisely
--> Overhang/wall-thickness–aware placement
--> Automatic anti-rotation combinations
 -> Freeform/curvature-based seams
 -> Bayonet/dovetail connectors
 -> A calibration wizard for tolerances
--> Support-aware features, etc.
+
 
 ---------------------------
 Master is the development branch building up on the latest stable version, which you can find as latest branch.

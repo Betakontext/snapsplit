@@ -46,7 +46,7 @@ MATERIAL_PROFILES = {
 }
 
 def _snapsplit_update_preview(self, context):
-    """Update hook to keep split preview planes in sync."""
+    """Property update callback to refresh or clear split preview planes."""
     try:
         from . import ops_split
         ops_split.update_split_preview_plane(context)
@@ -54,6 +54,7 @@ def _snapsplit_update_preview(self, context):
         pass
 
 def _is_de():
+    """Return True if current UI language is German (best-effort)."""
     try:
         return current_language().lower().startswith("de")
     except Exception:
@@ -61,26 +62,27 @@ def _is_de():
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
-    Heuristic recommendation for cylindrical pin radial segments based on diameter in mm.
-    Tuned for 3D printing: round enough without overloading mesh.
+    Return a heuristic segment count for cylindrical pins from diameter in mm.
+    Aims for visually round pins suitable for 3D printing without heavy meshes.
     """
     if d_mm <= 0:
         return 16
-    # Proportional to circumference / divisor; adjust divisor to your taste
+    # Proportional to circumference; adjust divisor to taste
     base = int(round(math.pi * d_mm / 1.8))
     # Practical clamps
     lo, hi = 12, 64
     if d_mm < 3.0:
-        lo = 16  # tiny pins still need enough segments to avoid flats
+        lo = 16  # very small pins still need enough segments to avoid visible flats
     return max(lo, min(hi, base))
 
 def _mat_item_desc(key: str, val: float) -> str:
+    """Build a localized tooltip text for a material profile entry."""
     if _is_de():
-        return f"Empfohlene Toleranz pro Seite: {val:.2f} mm"
+        return f"Recommended tolerance per side: {val:.2f} mm"
     return f"Recommended tolerance per side: {val:.2f} mm"
 
 def _material_items():
-    # Localized tooltips for material list
+    """Return EnumProperty items for material profiles with localized tooltips."""
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
 
 # ---------------------------
@@ -88,13 +90,14 @@ def _material_items():
 # ---------------------------
 
 class SnapSplitProps(PropertyGroup):
+    """Scene-level settings for segmentation, preview, connectors, and tolerances."""
     _DE = _is_de()
 
     # Split / Preview
     split_offset_mm: FloatProperty(
-        name="Schnitt-Offset (mm)" if _DE else "Split Offset (mm)",
-        description=("Verschiebung der Schnittebene entlang der Achse (positiv in Achsrichtung)"
-                    if _DE else "Offset of the cutting plane along the split axis (positive in axis direction)"),
+        name="Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)",
+        description=("Offset of the cutting plane along the split axis (positive in axis direction)"
+                     if not _DE else "Verschiebung der Schnittebene entlang der Achse (positiv in Achsrichtung)"),
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
@@ -102,128 +105,129 @@ class SnapSplitProps(PropertyGroup):
     )
 
     split_axis: EnumProperty(
-        name="Schnittachse" if _DE else "Split Axis",
+        name="Split Axis" if not _DE else "Schnittachse",
         items=[
-            ("X", "X", "Entlang X schneiden" if _DE else "Split along X"),
-            ("Y", "Y", "Entlang Y schneiden" if _DE else "Split along Y"),
-            ("Z", "Z", "Entlang Z schneiden" if _DE else "Split along Z"),
+            ("X", "X", "Split along X" if not _DE else "Entlang X schneiden"),
+            ("Y", "Y", "Split along Y" if not _DE else "Entlang Y schneiden"),
+            ("Z", "Z", "Split along Z" if not _DE else "Entlang Z schneiden"),
         ],
         default="Z",
         update=_snapsplit_update_preview,
     )
 
     show_split_preview: BoolProperty(
-        name="Schnittvorschau anzeigen" if _DE else "Show split preview",
-        description=("Temporäre orange Ebenen als geplante Schnittpositionen anzeigen"
-                     if _DE else "Show temporary orange planes at planned cut positions"),
+        name="Show split preview" if not _DE else "Schnittvorschau anzeigen",
+        description=("Show temporary orange planes at planned cut positions"
+                     if not _DE else "Temporäre orange Ebenen als geplante Schnittpositionen anzeigen"),
         default=False,
         update=_snapsplit_update_preview,
     )
 
     parts_count: IntProperty(
-        name="Anzahl Teile" if _DE else "Number of Parts",
+        name="Number of Parts" if not _DE else "Anzahl Teile",
         default=2,
         min=2,
         max=64,
-        description=("Anzahl gewünschter Segmente (Schnittebenen = Teile - 1)"
-                     if _DE else "Number of desired segments (cut planes = parts - 1)"),
+        description=("Number of desired segments (cut planes = parts - 1)"
+                     if not _DE else "Anzahl gewünschter Segmente (Schnittebenen = Teile - 1)"),
         update=_snapsplit_update_preview,
     )
 
     # Performance/Workflow: Cap seams automatically during split
     cap_seams_during_split: BoolProperty(
-        name="Nähte beim Schnitt schließen" if _DE else "Cap seams during split",
-        description=("Wendet nach dem Schnitt automatisch den Randverschluss an. Mit Hollow/Innenhülle: präzise Außen/Innen-Loop-Füllung; ohne Hollow: einfache Füllung. Kann die Laufzeit erhöhen."
-                     if _DE else "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."),
+        name="Cap seams during split" if not _DE else "Nähte beim Schnitt schließen",
+        description=("Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."
+                     if not _DE else "Wendet nach dem Schnitt automatisch den Randverschluss an. Mit Hollow/Innenhülle: präzise Außen/Innen-Loop-Füllung; ohne Hollow: einfache Füllung. Kann die Laufzeit erhöhen."),
         default=True,
     )
 
-
     # Connectors
     connector_type: EnumProperty(
-        name="Verbinder-Typ" if _DE else "Connector Type",
+        name="Connector Type" if not _DE else "Verbinder-Typ",
         items=[
             ("CYL_PIN",
-             "Zylinder-Pin" if _DE else "Cylinder Pin",
-             "Holzdübel + Buchse" if _DE else "Dowel pin + socket"),
+             "Cylinder Pin" if not _DE else "Zylinder-Pin",
+             "Dowel pin + socket" if not _DE else "Holzdübel + Buchse"),
             ("RECT_TENON",
-             "Rechteck-Zapfen" if _DE else "Rectangular Tenon",
-             "Verdrehsicherer Zapfen" if _DE else "Anti-rotation joint"),
+             "Rectangular Tenon" if not _DE else "Rechteck-Zapfen",
+             "Anti-rotation joint" if not _DE else "Verdrehsicherer Zapfen"),
             ("SNAP_PIN",
-             "Snap-Pin" if _DE else "Snap Pin",
-             "Zylinder-/Zapfen-Verbinder mit Schnappnoppen" if _DE else "Connector with snap spheres"),
+             "Snap Pin" if not _DE else "Snap-Pin",
+             "Connector with snap spheres" if not _DE else "Zylinder-/Zapfen-Verbinder mit Schnappnoppen"),
             ("SNAP_TENON",
-             "Snap-Zapfen" if _DE else "Snap Tenon",
-             "Rechteckiger Zapfen mit Schnapp-Sphären" if _DE else "Rectangular tenon with snap spheres"),
+             "Snap Tenon" if not _DE else "Snap-Zapfen",
+             "Rectangular tenon with snap spheres" if not _DE else "Rechteckiger Zapfen mit Schnapp-Sphären"),
         ],
         default="CYL_PIN",
     )
 
-
     # Placement distribution
     connector_distribution: EnumProperty(
-        name="Verteilung" if _DE else "Distribution",
-        description=("Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"
-                     if _DE else "Distribute connectors along a line or a grid across the seam face"),
+        name="Distribution" if not _DE else "Verteilung",
+        description=("Distribute connectors along a line or a grid across the seam face"
+                     if not _DE else "Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"),
         items=[
             ("LINE",
-             "Linie" if _DE else "Line",
-             "Verbinder entlang einer Linie in der Nahtfläche platzieren"
-             if _DE else "Place connectors along a line in the seam face"),
+             "Line" if not _DE else "Linie",
+             "Place connectors along a line in the seam face"
+             if not _DE else "Verbinder entlang einer Linie in der Nahtfläche platzieren"),
             ("GRID",
-             "Raster" if _DE else "Grid",
-             "Verbinder als Raster über die Nahtfläche verteilen"
-             if _DE else "Distribute connectors in a grid over the seam face"),
+             "Grid" if not _DE else "Raster",
+             "Distribute connectors in a grid over the seam face"
+             if not _DE else "Verbinder als Raster über die Nahtfläche verteilen"),
         ],
         default="LINE",
     )
 
     connectors_per_seam: IntProperty(
-        name="Verbinder pro Naht" if _DE else "Connectors per Seam",
+        name="Connectors per Seam" if not _DE else "Verbinder pro Naht",
         default=3,
         min=1,
         max=128,
     )
 
     connectors_rows: IntProperty(
-        name="Reihen (RASTER)" if _DE else "Rows (GRID)",
-        description=("Anzahl der Reihen bei Raster-Verteilung"
-                     if _DE else "Number of rows in grid distribution"),
+        name="Rows (GRID)" if not _DE else "Reihen (RASTER)",
+        description=("Number of rows for grid distribution"
+                     if not _DE else "Anzahl der Reihen bei Raster-Verteilung"),
         default=2,
         min=1,
         max=128,
     )
 
     connector_margin_pct: FloatProperty(
-        name="Randabstand (%)" if _DE else "Margin (%)",
-        description=("Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"
-                     if _DE else "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"),
+        name="Margin (%)" if not _DE else "Randabstand (%)",
+        description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
+                     if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
         default=10.0,
         min=0.0,
         soft_max=40.0,
         subtype='PERCENTAGE'
     )
 
-    # Snap options (aktiv, wenn connector_type == 'SNAP_PIN')
+    # Snap options (active when connector_type == 'SNAP_PIN')
     snap_spheres_per_side: IntProperty(
-        name="Sphären je Seite" if _DE else "Spheres per side",
-        description=("Anzahl der Schnapp-Sphären je Seitenfläche/Umfang" if _DE else "Number of snap spheres per side/around"),
+        name="Spheres per side" if not _DE else "Sphären je Seite",
+        description=("Number of snap spheres per side/around"
+                     if not _DE else "Anzahl der Schnapp-Sphären je Seitenfläche/Umfang"),
         default=2,
         min=1,
         max=32,
     )
 
     snap_sphere_diameter_mm: FloatProperty(
-        name="Sphären-Ø (mm)" if _DE else "Sphere Ø (mm)",
-        description=("Durchmesser der Schnapp-Sphären" if _DE else "Diameter of snap spheres"),
+        name="Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)",
+        description=("Diameter of snap spheres"
+                     if not _DE else "Durchmesser der Schnapp-Sphären"),
         default=2.0,
         min=0.5,
         soft_max=10.0,
     )
 
     snap_sphere_protrusion_mm: FloatProperty(
-        name="Überstand (mm)" if _DE else "Protrusion (mm)",
-        description=("Wie weit die Sphären aus der Seitenfläche herausstehen" if _DE else "How far spheres protrude from side surface"),
+        name="Protrusion (mm)" if not _DE else "Überstand (mm)",
+        description=("How far spheres protrude from side surface"
+                     if not _DE else "Wie weit die Sphären aus der Seitenfläche herausstehen"),
         default=1.0,
         min=0.0,
         soft_max=5.0,
@@ -231,48 +235,44 @@ class SnapSplitProps(PropertyGroup):
 
     # Pin / Tenon dimensions (mm)
     pin_diameter_mm: FloatProperty(
-        name="Pin-Durchmesser (mm)" if _DE else "Pin Diameter (mm)",
+        name="Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)",
         default=5.0,
         min=0.5,
         soft_max=50.0,
     )
 
     pin_length_mm: FloatProperty(
-        name="Pin-Länge (mm)" if _DE else "Pin Length (mm)",
+        name="Pin Length (mm)" if not _DE else "Pin-Länge (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
     pin_segments: IntProperty(
-        name="Segmente" if _DE else "Segments",
-        description=("Kreissegmente des Pins (nur Optik/Glätte)"
-                     if _DE else "Cylinder pin radial segments (visual smoothness)"),
+        name="Segments" if not _DE else "Segmente",
+        description=("Cylinder pin radial segments (visual smoothness)"
+                     if not _DE else "Kreissegmente des Pins (nur Optik/Glätte)"),
         default=32,
         min=8,
         max=128,
     )
 
     tenon_width_mm: FloatProperty(
-        name="Zapfen-Breite (mm)" if _DE else "Tenon Width (mm)",
+        name="Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)",
         default=6.0,
         min=1.0,
         soft_max=100.0,
     )
 
     tenon_depth_mm: FloatProperty(
-        name="Zapfen-Tiefe (mm)" if _DE else "Tenon Depth (mm)",
+        name="Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
-
-
-
-
     add_chamfer_mm: FloatProperty(
-        name="Fase (mm)" if _DE else "Chamfer (mm)",
+        name="Chamfer (mm)" if not _DE else "Fase (mm)",
         default=0.3,
         min=0.0,
         soft_max=2.0,
@@ -280,20 +280,20 @@ class SnapSplitProps(PropertyGroup):
 
     # Insert depth
     pin_embed_pct: FloatProperty(
-        name="Einstecktiefe (%)" if _DE else "Insert Depth (%)",
-        description=("Prozentualer Anteil der Verbinderlänge, die in Teil A steckt"
-                     if _DE else "Percentage of connector length recessed into part A"),
+        name="Insert Depth (%)" if not _DE else "Einstecktiefe (%)",
+        description=("Percentage of connector length recessed into part A"
+                     if not _DE else "Prozentualer Anteil der Verbinderlänge, die in Teil A steckt"),
         default=50.0,
         min=0.0,
         max=100.0,
         subtype='PERCENTAGE'
     )
 
-    # Distribution margin
+    # Distribution margin (duplicate kept if intentionally needed elsewhere)
     connector_margin_pct: FloatProperty(
-        name="Randabstand (%)" if _DE else "Margin (%)",
-        description=("Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"
-                     if _DE else "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"),
+        name="Margin (%)" if not _DE else "Randabstand (%)",
+        description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
+                     if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
         default=10.0,
         min=0.0,
         soft_max=40.0,
@@ -302,23 +302,24 @@ class SnapSplitProps(PropertyGroup):
 
     # Tolerances / material profile
     material_profile: EnumProperty(
-        name="Material-Profile" if _DE else "Material Profiles",
+        name="Material Profiles" if not _DE else "Material-Profile",
         items=_material_items(),
         default="PLA",
-        description=("Materialprofil wählen, um die Toleranz pro Seite zu setzen"
-                     if _DE else "Select a material profile to auto-fill tolerance per side"),
+        description=("Select a material profile to auto-fill tolerance per side"
+                     if not _DE else "Materialprofil wählen, um die Toleranz pro Seite zu setzen"),
     )
 
     tol_override: FloatProperty(
-        name="Toleranz pro Fläche (mm)" if _DE else "Tolerance per Face (mm)",
-        description=("Überschreibt das Materialprofil (0 = Profilwert verwenden)"
-                     if _DE else "Overrides material profile (0 = use profile value)"),
+        name="Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)",
+        description=("Overrides material profile (0 = use profile value)"
+                     if not _DE else "Überschreibt das Materialprofil (0 = Profilwert verwenden)"),
         default=0.0,
         min=0.0,
         soft_max=0.6,
     )
 
     def effective_tolerance(self) -> float:
+        """Return the active tolerance per side, considering the override if set."""
         prof = MATERIAL_PROFILES.get(self.material_profile, 0.2)
         return prof if self.tol_override <= 0.0 else self.tol_override
 
@@ -348,11 +349,13 @@ class SnapSplitProps(PropertyGroup):
 classes = (SnapSplitProps,)
 
 def register():
+    """Register property classes and attach to bpy.types.Scene."""
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.snapsplit = PointerProperty(type=SnapSplitProps)
 
 def unregister():
+    """Unregister property classes and detach from bpy.types.Scene."""
     if hasattr(bpy.types.Scene, "snapsplit"):
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
