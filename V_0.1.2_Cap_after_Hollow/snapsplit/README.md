@@ -131,9 +131,8 @@ If you want to join the development, fork and explore the code.
 
 
 The project is made with AI assistance and under the terms of the GNU General Public License.
-If you like it and can, buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
+If you want to support the project you can buy it on Gumroad: https://betadev.gumroad.com/l/snapsplit
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+Have fun splitting and printing.
 
-CONTACT: dev@betakontext.de | https://dev.betakontext.de
-
+CONTACT: Christoph Medicus | dev@betakontext.de
