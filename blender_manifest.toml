@@ -1,0 +1,10 @@
+schema_version = "1.0.0"
+
+id = "snapsplit"
+version = "0.1.2"
+name = "SnapSplit"
+tagline = "Cut and automate connection building for 3D prints."
+maintainer = "Christoph Medicus https://dev.betakontext.de dev@betakontext.de"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
