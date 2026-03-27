@@ -131,7 +131,18 @@ If you want to join the development, fork and explore the code.
 
 
 The project is made with AI assistance and under the terms of the GNU General Public License.
-If you like it and can, buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
+
+Please try it out.
+
+If you like SnapSplit and continue using it:
+
+Buy me a drink on Gumroad:
+https://betakontext.gumroad.com/l/snapsplit
+
+and/or support me on Superhive:
+https://superhivemarket.com/products/snapsplit
+
+Actually I'm happy for any feedback, f.e. further needs and dev options and further version experiences, concerning the addon.
 
 Have fun splitting and printing, and feel free to fork and join in to further developments.
 
