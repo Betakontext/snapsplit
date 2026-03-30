@@ -26,7 +26,7 @@ from .utils import is_lang_de
 
 
 class SNAP_PT_panel(Panel):
-    """Main SnapSplit UI panel in the 3D Viewport sidebar."""
+    """Main SnapSplit UI panel in the N-Panel 3D Viewport sidebar."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "SnapSplit"
@@ -63,14 +63,14 @@ class SNAP_PT_panel(Panel):
         col = box.column(align=True)
         col.prop(props, "split_axis", text=("Split Axis" if not _DE else "Schnittachse"))
 
-        # One row: Show split preview + Adjust
+        # Show split preview + Adjust
         row = col.row(align=True)
         row.prop(props, "show_split_preview", text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
         row.operator("snapsplit.adjust_split_axis",
                     icon="EMPTY_AXIS",
                     text=("Adjust" if not _DE else "Anpassen"))
 
-        # Advanced segmentation controls (layout only; no logic changes)
+        # Advanced segmentation controls
         if props.ui_more_seg:
             adv = box.column(align=True)
             adv.prop(props, "parts_count",
@@ -96,7 +96,7 @@ class SNAP_PT_panel(Panel):
                                 if not _DE else "Bestehende Nähte mit 'Nähte jetzt schließen' füllen."),
                         icon='INFO')
 
-        # Planar Split at the bottom of the section
+        # Planar Split
         col_bottom = box.column(align=True)
         col_bottom.operator("snapsplit.planar_split",
                             icon="MOD_BOOLEAN",
@@ -142,16 +142,6 @@ class SNAP_PT_panel(Panel):
             adv.prop(props, "connector_margin_pct",
                      text=("Margin (%)" if not _DE else "Randabstand (%)"))
 
-            # SNAP-specific (for SNAP_PIN and SNAP_TENON)
-            if props.connector_type in {"SNAP_PIN", "SNAP_TENON"}:
-                sbox = box.box()
-                sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
-                sbox.prop(props, "snap_spheres_per_side",
-                          text=("Spheres per side" if not _DE else "Sphären je Seite"))
-                sbox.prop(props, "snap_sphere_diameter_mm",
-                          text=("Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)"))
-                sbox.prop(props, "snap_sphere_protrusion_mm",
-                          text=("Protrusion (mm)" if not _DE else "Überstand (mm)"))
 
             # Geometry settings
             gbox = box.box()
@@ -192,6 +182,17 @@ class SNAP_PT_panel(Panel):
 
             gbox.prop(props, "add_chamfer_mm",
                       text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
+
+            # SNAP-specific (for SNAP_PIN and SNAP_TENON)
+            if props.connector_type in {"SNAP_PIN", "SNAP_TENON"}:
+                sbox = box.box()
+                sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
+                sbox.prop(props, "snap_spheres_per_side",
+                          text=("Spheres per side" if not _DE else "Sphären je Seite"))
+                sbox.prop(props, "snap_sphere_diameter_mm",
+                          text=("Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)"))
+                sbox.prop(props, "snap_sphere_protrusion_mm",
+                          text=("Protrusion (mm)" if not _DE else "Überstand (mm)"))
 
         layout.separator()
 
