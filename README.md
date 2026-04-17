@@ -139,10 +139,15 @@ If you like SnapSplit and continue using it:
 Buy me a drink on Gumroad:
 https://betakontext.gumroad.com/l/snapsplit
 
+or on buymeacoffee.com
+https://buymeacoffee.com/betakontext
+
 and/or support me on Superhive:
 https://superhivemarket.com/products/snapsplit
 
-Actually I'm happy for any feedback, f.e. further needs and dev options and further version experiences, concerning the addon.
+If you don't like
+
+Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences.
 
 Have fun splitting and printing, and feel free to fork and join in to further developments.
 
