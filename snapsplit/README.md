@@ -138,11 +138,9 @@ If you like SnapSplit and continue using it:
 
 Buy me a drink on Gumroad:
 https://betakontext.gumroad.com/l/snapsplit
-
 and/or support me on Superhive:
 https://superhivemarket.com/products/snapsplit
-
-If you don't use any of these platforms you can buy me a coffee on
+You can also buy me a coffee on
 https://buymeacoffee.com/betakontext
 
 
