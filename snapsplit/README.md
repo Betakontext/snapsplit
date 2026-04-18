@@ -1,12 +1,12 @@
 # SnapSplit
 
-Addon for Blender to automate splitting / cutting complex 3D models, which are f.e. bigger than your printing bed, into printable parts. It generates precise, glue-free snap-fit connectors.
+Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
 
-For now I tested with Blender 5.0.1 and Blender 4.5.3 LTS, which both work. Please let me know if you test other Blender versions. Lets update version compatabilities.
+For now I tested it with Blender 4.5.3 LTS, 5.0.1 and 5.1.0 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
 - Download the whole repository or only snapsplit.zip
@@ -131,9 +131,22 @@ If you want to join the development, fork and explore the code.
 
 
 The project is made with AI assistance and under the terms of the GNU General Public License.
-If you like it and can, buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+Please try it out.
+
+If you like SnapSplit and continue using it:
+
+Buy me a drink on Gumroad:
+https://betakontext.gumroad.com/l/snapsplit
+
+and/or support me on Superhive:
+https://superhivemarket.com/products/snapsplit
+
+If you don't use any of these platforms you can buy me a coffee on
+https://buymeacoffee.com/betakontext
+
+
+Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de
 
