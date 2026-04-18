@@ -139,17 +139,14 @@ If you like SnapSplit and continue using it:
 Buy me a drink on Gumroad:
 https://betakontext.gumroad.com/l/snapsplit
 
-or on buymeacoffee.com
-https://buymeacoffee.com/betakontext
-
 and/or support me on Superhive:
 https://superhivemarket.com/products/snapsplit
 
-If you don't like
+If you don't use any of these platforms you can buy me a coffee on
+https://buymeacoffee.com/betakontext
 
-Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences.
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de
 
