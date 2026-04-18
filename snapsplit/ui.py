@@ -226,6 +226,16 @@ class SNAP_PT_panel(Panel):
             except Exception:
                 pass
 
+        # Donate button
+        col = layout.column(align=True)
+        col.separator()
+        col.operator(
+            "wm.url_open",
+            text=("Buy me a coffee ❤️"),
+            icon='FUND'
+        ).url = "https://buymeacoffee.com/betakontext"
+
+
         layout.separator()
 
 
