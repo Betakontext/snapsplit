@@ -134,16 +134,18 @@ The project is made with AI assistance and under the terms of the GNU General Pu
 
 Please try it out.
 
-If you like SnapSplit and continue using it:
+If you like SnapSplit and continue using it
 
-Buy me a drink on Gumroad:
+buy me a coffee on
+https://buymeacoffee.com/betakontext
+
+or buy me a drink on Gumroad.
 https://betakontext.gumroad.com/l/snapsplit
 
-and/or support me on Superhive:
+If you support on Superhive, 10% goes to Blender development fund.
 https://superhivemarket.com/products/snapsplit
 
-If you don't use any of these platforms you can buy me a coffee on
-https://buymeacoffee.com/betakontext
+
 
 
 Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
