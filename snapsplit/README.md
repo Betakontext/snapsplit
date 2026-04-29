@@ -136,10 +136,9 @@ Please try it out.
 
 If you like SnapSplit and continue using it
 
--> buy me a drink on Gumroad:
-https://betakontext.gumroad.com/l/snapsplit
--> and/or support me on Superhive:
-https://superhivemarket.com/products/snapsplit
+-> buy me a drink on Gumrpad: https://betakontext.gumroad.com/l/snapsplit
+-> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
+-> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
 Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
 
