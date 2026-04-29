@@ -136,7 +136,7 @@ Please try it out.
 
 If you like SnapSplit and continue using it
 
--> buy me a drink on Gumrpad: https://betakontext.gumroad.com/l/snapsplit
+-> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
 -> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
