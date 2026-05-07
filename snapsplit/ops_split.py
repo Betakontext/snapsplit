@@ -23,6 +23,7 @@ import bpy
 import bmesh
 from bpy.types import Operator
 from mathutils import Vector, Matrix
+from datetime import datetime
 
 from .utils import (
     ensure_collection,
@@ -417,6 +418,87 @@ def _disable_split_preview_and_cleanup(context):
             except Exception: pass
     except Exception:
         pass
+
+# ---------------------------
+# Job collection management (Parts / Helpers)
+# ---------------------------
+
+def _ensure_root_collection(name, hide=False):
+    """Ensure a top-level root collection exists (optionally hidden in viewport)."""
+    coll = bpy.data.collections.get(name)
+    if coll is None:
+        coll = bpy.data.collections.new(name)
+        bpy.context.scene.collection.children.link(coll)
+    # Best-effort: set viewport hidden state on the LayerCollection
+    try:
+        for sc in bpy.data.scenes:
+            lay = sc.view_layers[0] if sc.view_layers else None
+            if not lay:
+                continue
+            def _mark(layer_coll, target, hide_flag):
+                if layer_coll.collection == target:
+                    layer_coll.hide_viewport = hide_flag
+                    return True
+                for ch in layer_coll.children:
+                    if _mark(ch, target, hide_flag):
+                        return True
+                return False
+            _mark(lay.layer_collection, coll, hide)
+    except Exception:
+        pass
+    return coll
+
+def _ensure_job_collections(source_name):
+    """Create per-job Parts and Helpers collections under SnapSplit_Parts and SnapSplit_Helpers roots."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    parts_root   = _ensure_root_collection("SnapSplit_Parts",   hide=False)
+    helpers_root = _ensure_root_collection("SnapSplit_Helpers", hide=True)
+
+    parts_job   = bpy.data.collections.new(f"{source_name}_{ts}")
+    helpers_job = bpy.data.collections.new(f"{source_name}_{ts}")
+
+    parts_root.children.link(parts_job)
+    helpers_root.children.link(helpers_job)
+
+    # Ensure visibility flags: parts visible, helpers hidden
+    try:
+        for sc in bpy.data.scenes:
+            lay = sc.view_layers[0] if sc.view_layers else None
+            if not lay:
+                continue
+            def _mark(layer_coll, target, hide_flag):
+                if layer_coll.collection == target:
+                    layer_coll.hide_viewport = hide_flag
+                    return True
+                for ch in layer_coll.children:
+                    if _mark(ch, target, hide_flag):
+                        return True
+                return False
+            _mark(lay.layer_collection, parts_job,   False)
+            _mark(lay.layer_collection, helpers_job, True)
+    except Exception:
+        pass
+
+    return parts_job, helpers_job
+
+def _move_objs_to_collection(objs, target_coll, hide=True, unlink_first=True):
+    """Move objects to target collection and set object viewport hidden if requested."""
+    for o in list(objs):
+        if not o or o.__class__.__name__ != "Object":
+            continue
+        if unlink_first:
+            for c in list(o.users_collection):
+                try: c.objects.unlink(o)
+                except Exception: pass
+        try:
+            if target_coll not in o.users_collection:
+                target_coll.objects.link(o)
+        except Exception:
+            pass
+        try:
+            o.hide_set(bool(hide))
+        except Exception:
+            pass
 
 # ---------------------------
 # Hollow Preparation (modifier or separate inner/outer object)
@@ -951,11 +1033,11 @@ def cap_single_object_hollow_style(obj) -> bool:
             bpy.ops.mesh.normals_make_consistent(inside=False)
         except Exception:
             pass
-        _leave_edit_mode()
-        try:
-            obj.data.validate(); obj.data.update()
-        except Exception:
-            pass
+    _leave_edit_mode()
+    try:
+        obj.data.validate(); obj.data.update()
+    except Exception:
+        pass
     return any_ok
 
 
@@ -1031,22 +1113,86 @@ class SNAP_OT_planar_split(Operator):
                         f"{len(parts)} parts created.",
                         f"{len(parts)} Teile erstellt.")
 
-        parts_coll = ensure_collection("_SnapSplit_Parts")
+        # ---------------------------
+        # Route results into per-job collections (visible Parts, hidden Helpers)
+        # ---------------------------
+
+        parts_job_coll, helpers_job_coll = _ensure_job_collections(obj.name)
+
+        # Build sets to separate final vs intermediate
+        final_parts_set = set(parts)
+
+        # Heuristic: any mesh whose name starts with the source name and isn’t a final is considered intermediate
+        candidates = [o for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith(obj.name)]
+        intermediates = [o for o in candidates if o not in final_parts_set]
+
+        # 1) Link only the final parts to the visible Parts job collection
         bpy.ops.object.select_all(action='DESELECT')
         for p in parts:
-            if parts_coll not in p.users_collection:
-                try: parts_coll.objects.link(p)
-                except Exception: pass
-            p.hide_set(False); p.select_set(True)
+            # Unlink from any other collections to keep Outliner clean
+            try:
+                for c in list(p.users_collection):
+                    try:
+                        c.objects.unlink(p)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                parts_job_coll.objects.link(p)
+            except Exception:
+                pass
+            p.hide_set(False)
+            p.select_set(True)
 
         if parts:
             bpy.context.view_layer.objects.active = parts[0]
 
-        try: update_split_preview_plane(context)
-        except Exception: pass
+        # 2) Move preview planes (if any left) to Helpers and hide
+        try:
+            preview_objs = [o for o in bpy.data.objects if o.name.startswith(PREVIEW_PLANE_PREFIX)]
+            _move_objs_to_collection(preview_objs, helpers_job_coll, hide=True, unlink_first=True)
+        except Exception:
+            pass
 
-        try: _disable_split_preview_and_cleanup(context)
-        except Exception: pass
+        # 3) Move intermediate artifacts to Helpers and hide
+        try:
+            _move_objs_to_collection(intermediates, helpers_job_coll, hide=True, unlink_first=True)
+        except Exception:
+            pass
+
+        # 4) Move service objects (e.g., cutters) to Helpers and optionally remove now-empty service collections
+        for svc_name in ("_SnapSplit_Cutters",):
+            try:
+                c = bpy.data.collections.get(svc_name)
+                if c:
+                    _move_objs_to_collection(list(c.objects), helpers_job_coll, hide=True, unlink_first=True)
+                    # Optionally remove the empty service collection to reduce clutter
+                    if len(c.objects) == 0:
+                        for sc in bpy.data.scenes:
+                            try:
+                                if c in sc.collection.children:
+                                    sc.collection.children.unlink(c)
+                            except Exception:
+                                pass
+                        try:
+                            bpy.data.collections.remove(c)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # Keep your preview system cleanup (safe)
+        try:
+            update_split_preview_plane(context)
+        except Exception:
+            pass
+        try:
+            _disable_split_preview_and_cleanup(context)
+        except Exception:
+            pass
+
+
 
         return {'FINISHED'}
 
@@ -1281,10 +1427,11 @@ class SNAP_OT_cap_open_seams_now(Operator):
             if max_planes and processed >= max_planes:
                 break
 
+            # Build connected edge sets (loop candidates) and keep only degree-2 cyclic loops
             comps = _loops_from_edges_connected(edges_on_plane)
             comps = [c for c in comps if self._loop_is_cyclic_degree2(c)]
 
-            # Single-loop fallback for solid caps
+            # Single-loop quick path (solid caps) BEFORE planarity tests (still fine for cubes)
             if len(comps) == 1:
                 loop_a = comps[0]
                 for e in bm.edges:
@@ -1319,14 +1466,13 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 any_selected = True
                 all_ok = all_ok and did
                 processed += 1
-
-                # Move on to next plane
                 continue
 
             if len(comps) < 2:
                 all_ok = False
                 continue
 
+            # Planarity filter
             mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
             p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
 
@@ -1375,7 +1521,7 @@ class SNAP_OT_cap_open_seams_now(Operator):
         if self.only_selected:
             targets = [o for o in context.selected_objects if o.type == 'MESH']
         else:
-            parts_coll = bpy.data.collections.get("_SnapSplit_Parts")
+            parts_coll = bpy.data.collections.get("SnapSplit_Parts")
             targets = [o for o in (list(parts_coll.objects) if parts_coll else []) if o and o.type == 'MESH']
 
         if not targets:
