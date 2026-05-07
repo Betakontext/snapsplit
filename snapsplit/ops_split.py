@@ -1283,6 +1283,46 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
             comps = _loops_from_edges_connected(edges_on_plane)
             comps = [c for c in comps if self._loop_is_cyclic_degree2(c)]
+
+            # Single-loop fallback for solid caps
+            if len(comps) == 1:
+                loop_a = comps[0]
+                for e in bm.edges:
+                    e.select = False
+                for e in loop_a:
+                    e.select = True
+                bmesh.update_edit_mesh(obj.data)
+
+                did = False
+                if not select_only:
+                    # Try simple face-from-edges first
+                    try:
+                        bpy.ops.mesh.edge_face_add()
+                        did = True
+                    except Exception:
+                        did = False
+                    if not did:
+                        # Fallback to beauty fill
+                        try:
+                            bpy.ops.mesh.fill(use_beauty=True)
+                            did = True
+                        except Exception:
+                            # Last resort: grid fill
+                            try:
+                                bpy.ops.mesh.fill_grid()
+                                did = True
+                            except Exception:
+                                did = False
+                else:
+                    did = True  # selection-only mode
+
+                any_selected = True
+                all_ok = all_ok and did
+                processed += 1
+
+                # Move on to next plane
+                continue
+
             if len(comps) < 2:
                 all_ok = False
                 continue
