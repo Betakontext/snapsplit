@@ -6,7 +6,7 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 
 ---------------------------
 
-For now I tested it with Blender 4.5.3 LTS, 5.0.1 and 5.1.0 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+For now I tested it with Blender 4.5.3 LTS, 4.5.9, 5.0.1, 5.1.0, 5.1.1 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
 - Download the whole repository or only snapsplit.zip
@@ -118,16 +118,19 @@ These are provided as presets and can be overridden by the user.
 Master is the development branch building up on the latest stable version, which you can find as latest branch.
 If you want to join the development, fork and explore the code.
 
-### Folder structure (inside snapsplit.zip):
+### Folder structure (files inside snapsplit.zip):
 
-    snapsplit/
-        __init__.py
-        ops_split.py
-        ops_connectors.py
-        ui.py
-        prefs.py
-        utils.py
-        profiles.py
+    ├── blender_manifest.toml
+    ├── __init__.py
+    ├── LICENCE.txt
+    ├── ops_connectors.py
+    ├── ops_split.py
+    ├── prefs.py
+    ├── profiles.py
+    ├── README.md
+    ├── ui.py
+    └── utils.py
+
 
 
 The project is made with AI assistance and under the terms of the GNU General Public License.
