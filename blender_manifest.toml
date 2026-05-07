@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "snapsplit"
-version = "0.1.2"
+version = "0.1.3"
 name = "SnapSplit"
 tagline = "Cut and automate connection building for 3D prints."
 maintainer = "Christoph Medicus || https://dev.betakontext.de"
