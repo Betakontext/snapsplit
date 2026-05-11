@@ -6,7 +6,7 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 
 ---------------------------
 
-For now I tested it with Blender 4.5.3 LTS, 4.5.9, 5.0.1, 5.1.0, 5.1.1 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0 and 5.1.1 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
 - Download the whole repository or only snapsplit.zip
@@ -140,7 +140,9 @@ Please try it out.
 If you like SnapSplit and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
+
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
+
 -> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
 Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
