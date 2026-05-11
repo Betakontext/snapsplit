@@ -246,6 +246,8 @@ class SNAP_PT_panel(Panel):
             stat = box.row(align=True)
             stat.label(text=status_a, icon='INFO')
             stat.label(text=status_b, icon='INFO')
+            # Clear Picks Button (setzt A/B zurück und entfernt Highlights)
+            stat.operator("snapsplit.clear_picks", text="", icon='X')
 
             row = box.row(align=True)
             row.operator("snapsplit.pick_face_a",
@@ -255,10 +257,14 @@ class SNAP_PT_panel(Panel):
                          text=("Pick Face B" if not _DE else "Fläche B wählen"),
                          icon='MOUSE_LMB')
 
-            col = box.column(align=True)
-            col.operator("snapsplit.align_faces",
-                         text=("Align Faces" if not _DE else "Flächen ausrichten"),
-                         icon='SNAP_ON')
+            # Disable Align until both picks are valid
+            can_align = (bool(nameA) and idxA >= 0 and bool(nameB) and idxB >= 0)
+            row_align = box.row(align=True)
+            row_align.enabled = can_align
+            row_align.operator("snapsplit.align_faces",
+                            text=("Align Faces" if not _DE else "Flächen ausrichten"),
+                            icon='SNAP_ON')
+
 
 
         # =========================

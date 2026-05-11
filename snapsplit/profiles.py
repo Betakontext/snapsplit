@@ -88,7 +88,7 @@ def _material_items():
 # ---------------------------
 
 class SnapSplitProps(PropertyGroup):
-    """Scene-level settings for segmentation, preview, connectors, and tolerances."""
+    """Scene-level settings for segmentation, preview, connectors, tolerances, and alignment."""
     _DE = _is_de()
 
     # Split / Preview
@@ -139,7 +139,7 @@ class SnapSplitProps(PropertyGroup):
         default=True,
     )
 
-    # Connectors
+    # Connections
     connector_type: EnumProperty(
         name="Connector Type" if not _DE else "Verbinder-Typ",
         items=[
@@ -287,17 +287,6 @@ class SnapSplitProps(PropertyGroup):
         subtype='PERCENTAGE'
     )
 
-    # Distribution margin (duplicate kept if intentionally needed elsewhere)
-    connector_margin_pct: FloatProperty(
-        name="Margin (%)" if not _DE else "Randabstand (%)",
-        description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
-                     if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
-        default=10.0,
-        min=0.0,
-        soft_max=40.0,
-        subtype='PERCENTAGE'
-    )
-
     # Tolerances / material profile
     material_profile: EnumProperty(
         name="Material Profiles" if not _DE else "Material-Profile",
@@ -346,6 +335,7 @@ class SnapSplitProps(PropertyGroup):
         description="Show advanced alignment options",
         default=False
     )
+
 
 # ---------------------------
 # Registration
