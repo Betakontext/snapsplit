@@ -22,7 +22,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 bl_info = {
     "name": "SnapSplit – Print-ready segmentation with connectors",
     "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
-    "version": (0, 1, 2),
+    "version": (0, 1, 3),
     "blender": (5, 0, 1),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
@@ -42,10 +42,12 @@ from . import profiles
 from . import prefs
 from . import ops_split
 from . import ops_connectors
+from . import ops_align
 from . import ui
 
 # Registration order matters if modules reference each other in register()
-_modules = [utils, profiles, prefs, ops_split, ops_connectors, ui]
+# Ensure ops_align registers BEFORE ui so its WindowManager props exist.
+_modules = [utils, profiles, prefs, ops_split, ops_connectors, ops_align, ui]
 
 def register():
     """Register all SnapSplit submodules (with hot-reload support during development)."""

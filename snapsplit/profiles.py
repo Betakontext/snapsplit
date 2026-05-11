@@ -67,12 +67,10 @@ def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
     if d_mm <= 0:
         return 16
-    # Proportional to circumference; adjust divisor to taste
     base = int(round(math.pi * d_mm / 1.8))
-    # Practical clamps
     lo, hi = 12, 64
     if d_mm < 3.0:
-        lo = 16  # very small pins still need enough segments to avoid visible flats
+        lo = 16
     return max(lo, min(hi, base))
 
 def _mat_item_desc(key: str, val: float) -> str:
@@ -339,6 +337,13 @@ class SnapSplitProps(PropertyGroup):
     ui_more_tol: BoolProperty(
         name="More tolerance settings",
         description="Show advanced tolerance options",
+        default=False
+    )
+
+    # NEW: Alignment foldout
+    ui_more_align: BoolProperty(
+        name="More alignment settings",
+        description="Show advanced alignment options",
         default=False
     )
 

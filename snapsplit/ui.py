@@ -21,12 +21,12 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 
 import bpy
 from bpy.types import Panel
-from .profiles import MATERIAL_PROFILES
 from .utils import is_lang_de
+from .profiles import MATERIAL_PROFILES  # keep if you show tolerance section
 
 
 class SNAP_PT_panel(Panel):
-    """Main SnapSplit UI panel in the N-Panel 3D Viewport sidebar."""
+    """Main SnapSplit UI panel in the 3D Viewport N-Panel."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "SnapSplit"
@@ -34,11 +34,9 @@ class SNAP_PT_panel(Panel):
 
     @classmethod
     def poll(cls, context):
-        """Show panel when a scene is available."""
         return context is not None and context.scene is not None
 
     def draw(self, context):
-        """Build the SnapSplit UI with sections for Segmentation, Connections, and Tolerance."""
         _DE = is_lang_de()
         layout = self.layout
         props = getattr(context.scene, "snapsplit", None)
@@ -54,6 +52,7 @@ class SNAP_PT_panel(Panel):
         # =========================
         # SEGMENTATION
         # =========================
+
         box = layout.box()
         header = box.row(align=True)
         header.label(text=("Segmentation" if not _DE else "Segmentierung"), icon='MOD_BOOLEAN')
@@ -63,40 +62,36 @@ class SNAP_PT_panel(Panel):
         col = box.column(align=True)
         col.prop(props, "split_axis", text=("Split Axis" if not _DE else "Schnittachse"))
 
-        # Show split preview + Adjust
         row = col.row(align=True)
         row.prop(props, "show_split_preview", text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
         row.operator("snapsplit.adjust_split_axis",
-                    icon="EMPTY_AXIS",
-                    text=("Adjust" if not _DE else "Anpassen"))
+                     icon="EMPTY_AXIS",
+                     text=("Adjust" if not _DE else "Anpassen"))
 
-        # Advanced segmentation controls
         if props.ui_more_seg:
             adv = box.column(align=True)
             adv.prop(props, "parts_count",
-                    text=("Number of Parts" if not _DE else "Anzahl Teile"))
+                     text=("Number of Parts" if not _DE else "Anzahl Teile"))
             try:
                 if int(props.parts_count) >= 12:
                     adv.label(icon='INFO',
-                            text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
+                              text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
             except Exception:
                 pass
             adv.prop(props, "split_offset_mm",
-                    text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
+                     text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
             adv.prop(props, "cap_seams_during_split",
-                    text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt schließen (langsamer)"))
+                     text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt schließen (langsamer)"))
 
-            # Only when auto-cap is OFF, show manual cap button and hint
             if not props.cap_seams_during_split:
                 sub = adv.column(align=True)
                 sub.operator("snapsplit.cap_open_seams_now",
-                            icon="OUTLINER_OB_SURFACE",
-                            text=("Cap seams now" if not _DE else "Nähte jetzt schließen"))
+                             icon="OUTLINER_OB_SURFACE",
+                             text=("Cap seams now" if not _DE else "Nähte jetzt schließen"))
                 sub.label(text=("To close existing seams, run 'Cap seams now'."
                                 if not _DE else "Bestehende Nähte mit 'Nähte jetzt schließen' füllen."),
-                        icon='INFO')
+                          icon='INFO')
 
-        # Planar Split
         col_bottom = box.column(align=True)
         col_bottom.operator("snapsplit.planar_split",
                             icon="MOD_BOOLEAN",
@@ -107,6 +102,7 @@ class SNAP_PT_panel(Panel):
         # =========================
         # CONNECTIONS
         # =========================
+
         box = layout.box()
         header = box.row(align=True)
         header.label(text=("Connections" if not _DE else "Verbindungen"), icon='SNAP_FACE')
@@ -117,7 +113,6 @@ class SNAP_PT_panel(Panel):
         col.prop(props, "connector_type", text=("Connector Type" if not _DE else "Verbinder-Typ"))
         col.prop(props, "connector_distribution", text=("Distribution" if not _DE else "Verteilung"))
 
-        # Actions
         col = layout.column(align=True)
         col.operator("snapsplit.add_connectors",
                      icon="SNAP_FACE",
@@ -127,7 +122,6 @@ class SNAP_PT_panel(Panel):
                      text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
 
         if props.ui_more_conn:
-            # Advanced connection placement
             adv = box.column(align=True)
             if props.connector_distribution == "LINE":
                 adv.prop(props, "connectors_per_seam",
@@ -142,11 +136,8 @@ class SNAP_PT_panel(Panel):
             adv.prop(props, "connector_margin_pct",
                      text=("Margin (%)" if not _DE else "Randabstand (%)"))
 
-
-            # Geometry settings
             gbox = box.box()
 
-            # Pin parameters for CYL_PIN and SNAP_PIN
             if props.connector_type in {"CYL_PIN", "SNAP_PIN"}:
                 gbox.prop(props, "pin_diameter_mm",
                           text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
@@ -168,7 +159,6 @@ class SNAP_PT_panel(Panel):
                 except Exception:
                     pass
 
-            # Tenon parameters for RECT_TENON and SNAP_TENON
             elif props.connector_type in {"RECT_TENON", "SNAP_TENON"}:
                 gbox.prop(props, "tenon_width_mm",
                           text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
@@ -176,14 +166,12 @@ class SNAP_PT_panel(Panel):
                           text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
                 gbox.prop(props, "pin_embed_pct",
                           text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
-
             else:
                 gbox.label(text=("Unsupported connector type" if not _DE else "Nicht unterstützter Verbinder-Typ"), icon='INFO')
 
             gbox.prop(props, "add_chamfer_mm",
                       text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
 
-            # SNAP-specific (for SNAP_PIN and SNAP_TENON)
             if props.connector_type in {"SNAP_PIN", "SNAP_TENON"}:
                 sbox = box.box()
                 sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
@@ -199,6 +187,7 @@ class SNAP_PT_panel(Panel):
         # =========================
         # TOLERANCE
         # =========================
+
         box = layout.box()
         header = box.row(align=True)
         header.label(text=("Tolerance" if not _DE else "Toleranz"), icon='MOD_SOLIDIFY')
@@ -215,7 +204,6 @@ class SNAP_PT_panel(Panel):
             row.prop(props, "tol_override",
                      text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
 
-            # Profile and effective readout
             prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.2)
             row = adv.row(align=True)
             row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
@@ -226,7 +214,57 @@ class SNAP_PT_panel(Panel):
             except Exception:
                 pass
 
-        # Donate button
+        # =========================
+        # ALIGNMENT (Object Mode) — collapsible
+        # =========================
+
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=("Alignment" if not _DE else "Ausrichtung"), icon='SNAP_ON')
+
+        # Ensure profiles.SnapSplitProps defines ui_more_align (default False for collapsed by default)
+        more_txt = ("Less..." if props.ui_more_align else "More...") if not _DE else ("Weniger..." if props.ui_more_align else "Mehr...")
+        header.prop(props, "ui_more_align", text=more_txt, toggle=True)
+
+        if props.ui_more_align:
+            col = box.column(align=True)
+            col.label(text=("Pick faces in Object Mode (A = target, B = moving)" if not _DE
+                            else "Flächen im Objektmodus wählen (A = Ziel, B = bewegt)"))
+
+            # Status line for stored picks
+            wm = context.window_manager
+            nameA = getattr(wm, "snapsplit_face_a_obj", "")
+            idxA = getattr(wm, "snapsplit_face_a_index", -1)
+            nameB = getattr(wm, "snapsplit_face_b_obj", "")
+            idxB = getattr(wm, "snapsplit_face_b_index", -1)
+
+            status_a = (f"A: {nameA} [#{idxA}]" if nameA and idxA >= 0
+                        else ("A: none" if not _DE else "A: keine"))
+            status_b = (f"B: {nameB} [#{idxB}]" if nameB and idxB >= 0
+                        else ("B: none" if not _DE else "B: keine"))
+
+            stat = box.row(align=True)
+            stat.label(text=status_a, icon='INFO')
+            stat.label(text=status_b, icon='INFO')
+
+            row = box.row(align=True)
+            row.operator("snapsplit.pick_face_a",
+                         text=("Pick Face A" if not _DE else "Fläche A wählen"),
+                         icon='MOUSE_LMB')
+            row.operator("snapsplit.pick_face_b",
+                         text=("Pick Face B" if not _DE else "Fläche B wählen"),
+                         icon='MOUSE_LMB')
+
+            col = box.column(align=True)
+            col.operator("snapsplit.align_faces",
+                         text=("Align Faces" if not _DE else "Flächen ausrichten"),
+                         icon='SNAP_ON')
+
+
+        # =========================
+        # Donate
+        # =========================
+
         col = layout.column(align=True)
         col.separator()
         col.operator(
@@ -235,15 +273,12 @@ class SNAP_PT_panel(Panel):
             icon='FUND'
         ).url = "https://buymeacoffee.com/betakontext"
 
-
         layout.separator()
 
 
 def register():
-    """Register the SnapSplit UI panel."""
     bpy.utils.register_class(SNAP_PT_panel)
 
 
 def unregister():
-    """Unregister the SnapSplit UI panel."""
     bpy.utils.unregister_class(SNAP_PT_panel)
