@@ -22,7 +22,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 bl_info = {
     "name": "SnapSplit – Print-ready segmentation with connectors",
     "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
-    "version": (0, 1, 3),
+    "version": (0, 1, 4),
     "blender": (5, 0, 1),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
