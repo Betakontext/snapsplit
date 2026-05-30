@@ -76,20 +76,22 @@ or   ->  Choose "Place connectors (click)" to set individualized connectors with
 
 Property group with:
 
-- Number of parts. (Unclick "cap seams" for larger part numbers)
-- Connector types (Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon ...until now)
-- Material/Printer profile (PLA, PETG, ABS, ASA, TPU, SLA)
-- Derived tolerances (per side)
+- Segmentation: Number of parts. Unclick "cap seams" for larger part numbers
+- Connections:  Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon 
+- Tolerance:    Material profiles (PLA, PETG, ABS, ASA, TPU, SLA)
+- Alignment:    Face to face alignment option in object mode
+
 
 Operators:
 
 - Planar Split along a global axis into the specified number of parts
 - Split preview and adjustment
-- Decap and cap seams option
+- Decap and cap seams toggle, pre and post split
 - Percentage-based edge margin for connector placement
-- Seam line connectors, Grid connectors and individual Connectors on the cut face with rows and columns input
+- Seam line connectors, Grid connectors with rows and columns input and individual per click connectors placement on the cut face.
 - Pin and Snap-Pin adjustments
 - Adjustable insertion depth. Default: 50%
+- Alignment with face selection in object mode
 
 Tolerance profiles (guidelines, adjustable):
 
@@ -101,22 +103,10 @@ Tolerance profiles (guidelines, adjustable):
 - TPU: 0.30–0.45 mm per side
 - SLA: 0.05–0.15 mm per side
 
-These are provided as presets and can be overridden by the user.
+Tolerances are provided as presets and can be overridden by the user.
 
 ---------------------------
 ---------------------------
-
-### Roadmap of ideas:
-
--> Determine seam curves more precisely
--> Freeform/curvature-based seams
--> Bayonet/dovetail connectors
--> A calibration wizard for tolerances
-
-
----------------------------
-Master is the development branch building up on the latest stable version, which you can find as latest branch.
-If you want to join the development, fork and explore the code.
 
 ### Folder structure (files inside snapsplit.zip):
 
@@ -131,11 +121,20 @@ If you want to join the development, fork and explore the code.
     ├── ui.py
     └── utils.py
 
+---------------------------
+---------------------------
+
+### Roadmap of ideas:
+
+-> Planing to add more connector types: f.e. Bayonet/dovetail connectors, ball-and-socket joints ...
+
+If you want to join the development, fork and explore the code.
+
 
 
 The project is made with AI assistance and under the terms of the GNU General Public License.
 
-Please try it out.
+Please try it out. 
 
 If you like SnapSplit and continue using it
 
@@ -145,7 +144,9 @@ If you like SnapSplit and continue using it
 
 -> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
-Actually I'm happy for any feedback, f.e. further needs and and options for next better connection building experiences. Have fun splitting and printing, and feel free to fork and join in to further developments.
+Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
+
+Have fun splitting and printing, and feel free to fork and join in to further developments.
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de
 
