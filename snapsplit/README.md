@@ -1,7 +1,7 @@
 # SnapSplit
 
 ---------------------------
-This is V_0.1.3_cleanup_and_align
+This is V_0.1.4_more_connectors
 ---------------------------
 
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
