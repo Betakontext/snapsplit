@@ -37,7 +37,7 @@ from .utils import current_language, is_lang_de
 # Material profiles (tolerance per side, in mm)
 # ---------------------------
 
-# Konservative Standardwerte (FDM-orientiert)
+# Updated defaults per approved spec (more conservative PLA)
 MATERIAL_PROFILES = {
     "PLA": 0.25,
     "PETG": 0.30,
@@ -64,8 +64,8 @@ def _is_de():
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
-    Heuristik für Segmente bei Zylinderpins nach Durchmesser (mm).
-    Ziel: visuell rund ohne übertrieben dichte Meshes.
+    Return a heuristic segment count for cylindrical pins from diameter in mm.
+    Aims for visually round pins suitable for 3D printing without heavy meshes.
     """
     if d_mm <= 0:
         return 16
@@ -76,11 +76,12 @@ def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     return max(lo, min(hi, base))
 
 def _mat_item_desc(key: str, val: float) -> str:
-    # Kurz und einheitlich EN/DE
+    """Build a localized tooltip text for a material profile entry."""
+    # The message is the same for EN/DE to keep it concise
     return f"Recommended tolerance per side: {val:.2f} mm"
 
 def _material_items():
-    """Enum-Items für Materialprofile mit Tooltips."""
+    """Return EnumProperty items for material profiles with localized tooltips."""
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
 
 # ---------------------------
@@ -144,25 +145,35 @@ class SnapSplitProps(PropertyGroup):
         name="Connector Type" if not _DE else "Verbinder-Typ",
         items=[
             ("CYL_PIN",
-             "Cylinder Pin" if not _DE else "Zylinder-Pin",""),
+             "Cylinder Pin" if not _DE else "Zylinder-Pin",
+             "Dowel pin + socket" if not _DE else "Holzdübel + Buchse"),
             ("RECT_TENON",
-             "Rectangular Tenon" if not _DE else "Rechteck-Zapfen",""),
+             "Rectangular Tenon" if not _DE else "Rechteck-Zapfen",
+             "Anti-rotation joint" if not _DE else "Verdrehsicherer Zapfen"),
             ("SNAP_PIN",
-             "Snap Pin" if not _DE else "Snap-Pin",""),
+             "Snap Pin" if not _DE else "Snap-Pin",
+             "Connector with snap spheres" if not _DE else "Zylinder-/Zapfen-Verbinder mit Schnappnoppen"),
             ("SNAP_TENON",
-             "Snap Tenon" if not _DE else "Snap-Zapfen",""),
+             "Snap Tenon" if not _DE else "Snap-Zapfen",
+             "Rectangular tenon with snap spheres" if not _DE else "Rechteckiger Zapfen mit Schnapp-Sphären"),
+            # New connector families (Phase 1 scope includes PIN_HOLE + DOVETAIL_TAPER UI)
             ("PIN_HOLE",
-             "Pin & Hole" if not _DE else "Pin & Bohrung",""),
+             "Pin & Hole" if not _DE else "Pin & Bohrung",
+             "Cylindrical peg + fit-mode socket" if not _DE else "Zylindrischer Stift + Passungsbohrung"),
             ("DOVETAIL_TAPER",
-             "Dovetail (Tapered)" if not _DE else "Schwalbenschwanz (mit Schräge)",""),
+             "Dovetail (Tapered)" if not _DE else "Schwalbenschwanz (mit Schräge)",
+             "Sliding dovetail with draft" if not _DE else "Schiebeschwalbenschwanz mit Schräge"),
             ("SNAP_CANTILEVER",
-             "Snap-Fit (Cantilever)" if not _DE else "Schnapphaken (Kragarm)",""),
+             "Snap-Fit (Cantilever)" if not _DE else "Schnapphaken (Kragarm)",
+             "Tool-less snap-fit hook" if not _DE else "Werkzeugloser Schnapphaken"),
             ("BALL_SOCKET",
-             "Ball & Socket" if not _DE else "Kugel & Schale",""),
+             "Ball & Socket" if not _DE else "Kugel & Schale",
+             "Omni-directional friction joint" if not _DE else "Allseitiges Reibgelenk"),
             ("PIP_HINGE",
-             "Print-in-Place Hinge" if not _DE else "Druckbares Scharnier (PiP)",""),
+             "Print-in-Place Hinge" if not _DE else "Druckbares Scharnier (PiP)",
+             "Interleaved knuckles or living hinge" if not _DE else "Verzahnte Laschen oder Living Hinge"),
         ],
-        default="DOVETAIL_TAPER",  # damit der Klick direkt deinen Dovetail setzt
+        default="CYL_PIN",
     )
 
     # Placement distribution
@@ -171,15 +182,21 @@ class SnapSplitProps(PropertyGroup):
         description=("Distribute connectors along a line or a grid across the seam face"
                      if not _DE else "Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"),
         items=[
-            ("LINE", "Line" if not _DE else "Linie",""),
-            ("GRID", "Grid" if not _DE else "Raster",""),
+            ("LINE",
+             "Line" if not _DE else "Linie",
+             "Place connectors along a line in the seam face"
+             if not _DE else "Verbinder entlang einer Linie in der Nahtfläche platzieren"),
+            ("GRID",
+             "Grid" if not _DE else "Raster",
+             "Distribute connectors in a grid over the seam face"
+             if not _DE else "Verbinder als Raster über die Nahtfläche verteilen"),
         ],
         default="LINE",
     )
 
     connectors_per_seam: IntProperty(
         name="Connectors per Seam" if not _DE else "Verbinder pro Naht",
-        default=1,  # wie in deinem Screenshot
+        default=3,
         min=1,
         max=128,
     )
@@ -193,22 +210,22 @@ class SnapSplitProps(PropertyGroup):
         max=128,
     )
 
-    # Globale Ränder → exakt bis zum Rand (Bild 02_EdgeMargin00)
     connector_margin_pct: FloatProperty(
         name="Margin (%)" if not _DE else "Randabstand (%)",
         description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
                      if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
-        default=0.0,
+        default=10.0,
         min=0.0,
         soft_max=40.0,
         subtype='PERCENTAGE'
     )
 
+    # New: Absolute edge margin in mm (additional to percentage)
     edge_margin_mm: FloatProperty(
         name="Edge margin (mm)" if not _DE else "Randabstand (mm)",
         description=("Minimum distance from seam edges (in mm) for connector placement"
                      if not _DE else "Mindestabstand zu Nahtkanten (in mm) für die Verbinderplatzierung"),
-        default=0.0,
+        default=2.0,
         min=0.0,
         soft_max=20.0,
     )
@@ -301,7 +318,7 @@ class SnapSplitProps(PropertyGroup):
     material_profile: EnumProperty(
         name="Material Profiles" if not _DE else "Material-Profile",
         items=_material_items(),
-        default="PETG",
+        default="PETG",  # per approved spec
         description=("Select a material profile to auto-fill tolerance per side"
                      if not _DE else "Materialprofil wählen, um die Toleranz pro Seite zu setzen"),
     )
@@ -328,9 +345,15 @@ class SnapSplitProps(PropertyGroup):
     pin_fit_mode: EnumProperty(
         name="Fit mode" if not _DE else "Passung",
         items=[
-            ("snug", "Snug" if not _DE else "Stramm", "~0.25 mm/side FDM, ~0.08 mm/side SLA"),
-            ("sliding", "Sliding" if not _DE else "Leichtgängig", "~0.45 mm/side FDM, ~0.12 mm/side SLA"),
-            ("glue_ready", "Glue-ready" if not _DE else "Klebe-Bereit", "~0.60 mm/side FDM, ~0.18 mm/side SLA"),
+            ("snug",
+             "Snug" if not _DE else "Stramm",
+             "~0.25 mm/side FDM, ~0.08 mm/side SLA"),
+            ("sliding",
+             "Sliding" if not _DE else "Leichtgängig",
+             "~0.45 mm/side FDM, ~0.12 mm/side SLA"),
+            ("glue_ready",
+             "Glue-ready" if not _DE else "Klebe-Bereit",
+             "~0.60 mm/side FDM, ~0.18 mm/side SLA"),
         ],
         default="snug",
         description=("Fit mode maps to per-side clearance (FDM vs SLA)"
@@ -342,166 +365,41 @@ class SnapSplitProps(PropertyGroup):
         default=False,
     )
 
-    # DOVETAIL_TAPER (Grundmaße) – Basiseinträge (werden durch Auto-Fit/Prozentmodus ggf. überschrieben)
+    # DOVETAIL_TAPER
     dovetail_length_mm: FloatProperty(
         name="Length (mm)" if not _DE else "Länge (mm)",
-        default=20.0,
-        min=1.0, soft_max=400.0,
+        default=20.0, min=1.0, soft_max=400.0,
     )
     dovetail_depth_mm: FloatProperty(
         name="Depth (mm)" if not _DE else "Tiefe (mm)",
-        default=12.0,
-        min=1.0, soft_max=200.0,
+        default=8.0, min=1.0, soft_max=200.0,
     )
     dovetail_width_mm: FloatProperty(
         name="Width (mm)" if not _DE else "Breite (mm)",
-        default=16.0,
-        min=1.0, soft_max=200.0,
+        default=8.0, min=1.0, soft_max=200.0,
     )
     dovetail_draft_deg: FloatProperty(
         name="Draft (°)" if not _DE else "Schräge (°)",
-        default=9.0,  # wie im Screenshot
-        min=0.0, soft_max=15.0,
+        default=1.5, min=0.0, soft_max=5.0,
         description=("Use 1–2° taper for progressive friction"
                      if not _DE else "1–2° Schräge für progressiven Sitz"),
     )
     dovetail_leadin_chamfer_mm: FloatProperty(
         name="Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)",
-        default=0.30,   # wie im Screenshot
-        min=0.0, soft_max=3.0,
+        default=0.6, min=0.0, soft_max=3.0,
     )
     dovetail_clearance_scale: FloatProperty(
         name="Clearance scale" if not _DE else "Spiel-Skalierung",
-        default=0.50,  # wie im Screenshot
-        min=0.2, soft_max=2.0,
+        default=1.0, min=0.5, soft_max=2.0,
         description=("Multiplies material tolerance per side"
                      if not _DE else "Multipliziert Materialtoleranz je Seite"),
     )
     dovetail_slide_dir: EnumProperty(
         name="Slide direction" if not _DE else "Schieberichtung",
-        items=[("+X","+X",""),("-X","-X",""),("+Y","+Y",""),("-Y","-Y","")],
+        items=[
+            ("+X", "+X", ""), ("-X", "-X", ""), ("+Y", "+Y", ""), ("-Y", "-Y", "")
+        ],
         default="+X",
-    )
-
-    # DOVETAIL_TAPER (Auto-Preset / Proportional)
-    dovetail_proportional_enabled: BoolProperty(
-        name="Proportional scaling" if not _DE else "Proportionale Skalierung",
-        default=True,
-        description=("When enabled, dependent sizes keep their ratios when the master dimension changes."
-                     if not _DE else "Wenn aktiviert, behalten abhängige Maße ihre Verhältnisse, wenn das Leitmaß geändert wird."),
-    )
-    dovetail_master_dim: EnumProperty(
-        name="Master dimension" if not _DE else "Leitmaß",
-        items=[("WIDTH","Width" if not _DE else "Breite",""),
-               ("LENGTH","Length" if not _DE else "Länge",""),
-               ("DEPTH","Depth" if not _DE else "Tiefe","")],
-        default="DEPTH",  # so bleibt Tiefe stabil, wenn Width/Länge variieren
-    )
-    dovetail_auto_fit: EnumProperty(
-        name="Auto-fit" if not _DE else "Auto-Anpassung",
-        items=[("OFF","Off" if not _DE else "Aus",""),
-               ("FIT_WIDTH","Fit width to seam" if not _DE else "Breite an Naht anpassen",""),
-               ("FIT_LENGTH","Fit length to seam" if not _DE else "Länge an Naht anpassen","")],
-        default="FIT_LENGTH",  # Länge automatisch
-    )
-    dovetail_use_full_span: BoolProperty(
-        name="Use full edge length" if not _DE else "Über gesamte Kantenlänge",
-        default=True,
-        description=("Use the entire seam span for dovetail length, honoring margins and inset."
-                     if not _DE else "Gesamte Naht-Laufweite für die Länge nutzen (unter Berücksichtigung von Rändern und Randabzug)."),
-    )
-    dovetail_end_inset_mm: FloatProperty(
-        name="End inset (mm)" if not _DE else "Randabzug (mm)",
-        default=0.0,  # exakt bis zum Rand
-        min=0.0, soft_max=10.0,
-        description=("Additional inset at both ends when auto-fitting over the full span."
-                     if not _DE else "Zusätzlicher Abzug an beiden Enden bei Auto-Fit über die volle Kantenlänge."),
-    )
-    dovetail_span_orientation: EnumProperty(
-        name="Span orientation" if not _DE else "Spanausrichtung",
-        items=[("AUTO","Auto (longer side)" if not _DE else "Auto (lange Seite)",""),
-               ("SHORT","Short side" if not _DE else "Kurze Seite",""),
-               ("LONG","Long side" if not _DE else "Lange Seite","")],
-        default="AUTO",
-    )
-
-    # Width/Depth Fit-Modi
-    dovetail_fit_width_mode: EnumProperty(
-        name="Width mode" if not _DE else "Breitenmodus",
-        items=[("PERCENT_SHORT","% of short side" if not _DE else "% der kurzen Seite",""),
-               ("MANUAL","Manual" if not _DE else "Manuell","")],
-        default="PERCENT_SHORT",
-    )
-    dovetail_fit_width_pct: FloatProperty(
-        name="Width %" if not _DE else "Breite %",
-        description=("Width as percent of the short seam span (after margins)" if not _DE else "Breite als Prozent der kurzen Nahtspanne (nach Rändern)"),
-        default=100.0,  # volle Breite → Seitenwände werden ausgestanzt
-        min=1.0, soft_max=200.0, subtype='PERCENTAGE',
-    )
-    # Tiefe: neu auch als % der Normal-/Achshöhe
-    dovetail_fit_depth_mode: EnumProperty(
-        name="Depth mode" if not _DE else "Tiefenmodus",
-        items=[
-            ("PERCENT_SHORT","% of short side" if not _DE else "% der kurzen Seite",""),
-            ("PERCENT_NORMAL","% of normal (axis)" if not _DE else "% der Normal-/Achse",""),
-            ("MANUAL","Manual" if not _DE else "Manuell","")
-        ],
-        default="PERCENT_NORMAL",
-    )
-    dovetail_fit_depth_pct: FloatProperty(
-        name="Depth %" if not _DE else "Tiefe %",
-        description=("Depth as percent; mode decides if short side or normal/axis span is used."
-                     if not _DE else "Tiefe in Prozent; Modus entscheidet, ob kurze Seite oder Normal-/Achse verwendet wird."),
-        default=25.0, min=1.0, soft_max=100.0, subtype='PERCENTAGE',
-    )
-
-    # Persistierte Verhältnisse (Proportional)
-    dovetail_ratio_len: FloatProperty(
-        name="k_len", default=2.5, min=0.01, soft_max=10.0,
-        description="Internal: length/width ratio (kept when proportional scaling is enabled).",
-        options={'HIDDEN'}
-    )
-    dovetail_ratio_depth: FloatProperty(
-        name="k_depth", default=1.0, min=0.01, soft_max=5.0,
-        description="Internal: depth/width ratio (kept when proportional scaling is enabled).",
-        options={'HIDDEN'}
-    )
-    dovetail_ratio_chamfer: FloatProperty(
-        name="k_chamfer", default=0.075, min=0.0, soft_max=0.5,
-        description="Internal: chamfer/width ratio (kept when proportional scaling is enabled).",
-        options={'HIDDEN'}
-    )
-
-    # BALL_SOCKET (Phase 3 implementation, properties defined now)
-    ball_diameter_mm: FloatProperty(
-        name="Ball Ø (mm)" if not _DE else "Kugel-Ø (mm)",
-        default=12.0, min=4.0, soft_max=40.0,
-    )
-    ball_friction_target: EnumProperty(
-        name="Friction" if not _DE else "Reibung",
-        items=[
-            ("tight", "Tight" if not _DE else "Fest", ""),
-            ("medium", "Medium" if not _DE else "Mittel", ""),
-            ("loose", "Loose" if not _DE else "Locker", ""),
-        ],
-        default="medium",
-    )
-    ball_socket_clearance_mm: FloatProperty(
-        name="Socket clearance (mm)" if not _DE else "Buchsen-Spiel (mm)",
-        default=0.0, min=0.0, soft_max=0.8,
-        description=("0 uses friction + material profile" if not _DE else "0 nutzt Reibung + Materialprofil"),
-    )
-    ball_lip_thickness_mm: FloatProperty(
-        name="Retention lip (mm)" if not _DE else "Halte-Lippe (mm)",
-        default=1.2, min=0.0, soft_max=4.0,
-    )
-    ball_socket_open_angle_deg: FloatProperty(
-        name="Open angle (°)" if not _DE else "Öffnungswinkel (°)",
-        default=230.0, min=160.0, soft_max=300.0,
-    )
-    ball_leadin_fillet_mm: FloatProperty(
-        name="Lead-in fillet (mm)" if not _DE else "Einführ-Radius (mm)",
-        default=0.6, min=0.0, soft_max=2.0,
     )
 
     # SNAP_CANTILEVER (Phase 2 implementation, properties defined now)
@@ -539,12 +437,48 @@ class SnapSplitProps(PropertyGroup):
         default=1.1, min=0.5, soft_max=2.0,
     )
 
+    # BALL_SOCKET (Phase 3 implementation, properties defined now)
+    ball_diameter_mm: FloatProperty(
+        name="Ball Ø (mm)" if not _DE else "Kugel-Ø (mm)",
+        default=12.0, min=4.0, soft_max=40.0,
+    )
+    ball_friction_target: EnumProperty(
+        name="Friction" if not _DE else "Reibung",
+        items=[
+            ("tight", "Tight" if not _DE else "Fest", ""),
+            ("medium", "Medium" if not _DE else "Mittel", ""),
+            ("loose", "Loose" if not _DE else "Locker", ""),
+        ],
+        default="medium",
+    )
+    ball_socket_clearance_mm: FloatProperty(
+        name="Socket clearance (mm)" if not _DE else "Buchsen-Spiel (mm)",
+        default=0.0, min=0.0, soft_max=0.8,
+        description=("0 uses friction + material profile" if not _DE else "0 nutzt Reibung + Materialprofil"),
+    )
+    ball_lip_thickness_mm: FloatProperty(
+        name="Retention lip (mm)" if not _DE else "Halte-Lippe (mm)",
+        default=1.2, min=0.0, soft_max=4.0,
+    )
+    ball_socket_open_angle_deg: FloatProperty(
+        name="Open angle (°)" if not _DE else "Öffnungswinkel (°)",
+        default=230.0, min=160.0, soft_max=300.0,
+    )
+    ball_leadin_fillet_mm: FloatProperty(
+        name="Lead-in fillet (mm)" if not _DE else "Einführ-Radius (mm)",
+        default=0.6, min=0.0, soft_max=2.0,
+    )
+
     # PIP_HINGE (Phase 4 implementation, properties defined now)
     pip_hinge_type: EnumProperty(
         name="Hinge type" if not _DE else "Scharnier-Typ",
         items=[
-            ("knuckle_pin", "Knuckle (pin)" if not _DE else "Laschen (Bolzen)", ""),
-            ("living_web", "Living web" if not _DE else "Living Hinge", ""),
+            ("knuckle_pin",
+             "Knuckle (pin)" if not _DE else "Laschen (Bolzen)",
+             ""),
+            ("living_web",
+             "Living web" if not _DE else "Living Hinge",
+             ""),
         ],
         default="knuckle_pin",
     )
@@ -576,16 +510,19 @@ class SnapSplitProps(PropertyGroup):
         description="Show advanced segmentation options",
         default=False
     )
+
     ui_more_conn: BoolProperty(
         name="More connection settings",
         description="Show advanced connection/geometry options",
         default=False
     )
+
     ui_more_tol: BoolProperty(
         name="More tolerance settings",
         description="Show advanced tolerance options",
         default=False
     )
+
     ui_more_align: BoolProperty(
         name="More alignment settings",
         description="Show advanced alignment options",

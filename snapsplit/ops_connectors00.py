@@ -22,7 +22,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 
 import bpy
 import bmesh
-from math import cos, sin, pi, radians, tan
+from math import cos, sin, pi, radians
 from mathutils import Vector, Matrix
 from bpy.types import Operator
 from bpy_extras import view3d_utils
@@ -194,7 +194,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
     return pts
 
 # ---------------------------
-# Geometry: base primitives
+# Geometry: base primitives (existing)
 # ---------------------------
 
 def create_cyl_pin(d_mm=5.0, length_mm=10.0, chamfer_mm=0.0, segments=32, name="SnapSplit_Pin"):
@@ -268,6 +268,27 @@ def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     obj = bpy.data.objects.new(name, me)
     return obj
 
+def create_uv_sphere_preview(d_mm=2.0, segments=12, rings=6, name="SnapSpherePreview"):
+    """Create a lightweight wireframe UV sphere for viewport previews."""
+    mm = unit_mm()
+    r = max(1e-9, float(d_mm) * 0.5 * mm)
+
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(
+        bm,
+        u_segments=max(8, int(segments)),
+        v_segments=max(6, int(rings)),
+        radius=r,
+        calc_uvs=False
+    )
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new(name, me)
+    obj.display_type = 'WIRE'
+    obj.hide_select = True
+    return obj
+
 # ---------------------------
 # Boolean helpers
 # ---------------------------
@@ -292,6 +313,14 @@ def boolean_apply(target_obj, mod):
         target_obj.data.update()
     except:
         pass
+
+def cut_socket_with_cutter(target_obj, cutter_obj):
+    """Apply a DIFFERENCE Boolean using cutter_obj on target_obj to create a socket."""
+    mod = target_obj.modifiers.new("SnapSplit_Socket", 'BOOLEAN')
+    mod.operation = 'DIFFERENCE'
+    mod.solver = 'EXACT'
+    mod.object = cutter_obj
+    boolean_apply(target_obj, mod)
 
 def _dispose_object(obj, remove_data=True):
     """Unlink and remove an object; optionally remove and clear its data if orphaned."""
@@ -345,135 +374,207 @@ def union_and_dispose(target_obj, union_obj, name="SnapSplit_Union"):
     _dispose_object(union_obj, remove_data=True)
 
 # ---------------------------
-# Dovetail geometry
+# Snap spheres helpers (existing)
+# ---------------------------
+
+def _ring_height_for_visible_half(length_scene, embed_pct):
+    L_free = max(0.0, (1.0 - embed_pct) * length_scene)
+    return embed_pct * length_scene + 0.5 * L_free
+
+def _choose_visible_half_robust(base_matrix, zA, zB):
+    try:
+        z_axis_world = Vector((base_matrix[0][2], base_matrix[1][2], base_matrix[2][2])).normalized()
+        p0_w = Vector((base_matrix[0][3], base_matrix[1][3], base_matrix[2][3]))
+        pA_w = base_matrix @ Vector((0.0, 0.0, zA, 1.0))
+        pB_w = base_matrix @ Vector((0.0, 0.0, zB, 1.0))
+        dA = (Vector((pA_w.x, pA_w.y, pA_w.z)) - p0_w).dot(z_axis_world)
+        dB = (Vector((pB_w.x, pB_w.y, pB_w.z)) - p0_w).dot(z_axis_world)
+        return zB if dB >= dA else zA
+    except Exception:
+        return zB
+
+def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
+    """Add a ring of snap spheres around a cylindrical pin; union to B, socket to A, and dispose helpers."""
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * length_scene
+    zB = _ring_height_for_visible_half(length_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+
+    created = []
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    r_center = pin_radius_scene + protrude_scene - sph_r_scene
+
+    for i in range(n_per_side):
+        ang = (2.0 * pi) * (i / n_per_side)
+        nx = cos(ang); ny = sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+
+        union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
+        cut_socket_with_cutter_and_dispose(part_a, sph_cut)
+        created.append(None)
+    return created
+
+def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene, props, name_prefix, part_a, part_b, cutters_coll):
+    """Add a ring of snap spheres around a square-section tenon; union to B, socket to A, and dispose helpers."""
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * length_scene
+    zB = _ring_height_for_visible_half(length_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    r_center = half_w_scene + protrude_scene - sph_r_scene
+
+    created = []
+    for i in range(n_per_side):
+        ang = (2.0 * pi) * (i / n_per_side)
+        nx = cos(ang); ny = sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+
+        union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
+        cut_socket_with_cutter_and_dispose(part_a, sph_cut)
+        created.append(None)
+    return created
+
+# ---------------------------
+# New geometry helpers (Phase 1)
 # ---------------------------
 
 def create_dovetail_tongue(width_mm, depth_mm, length_mm, draft_deg, leadin_chamfer_mm=0.0, name="SnapSplit_DovetailTongue"):
     """
     Create a tapered dovetail 'tongue' prism aligned along +Z (length), with XY cross-section trapezoid.
-    - width at z=0 = width_mm
-    - width at z=L = width_mm + 2 * tan(draft) * L
+    - width_mm: nominal top width at entry
+    - draft_deg: linear taper along +Z; widens or narrows by tan(angle)*Z on each side
     Geometry baseline: centered on XY, base at z=0, tip at z=length.
     """
     mm = unit_mm()
     w0 = float(width_mm) * mm
     D = float(depth_mm) * mm
     L = float(length_mm) * mm
-    t = tan(radians(float(draft_deg))) if float(draft_deg) != 0.0 else 0.0
-    w1 = max(1e-6, w0 + 2.0 * t * L)
+    draft = radians(float(draft_deg))
+    # For robustness, keep a symmetric trapezoid: base width w0, end width w1 = w0 + 2*tan(draft)*L
+    dw = 2.0 * (L * (0.5 * (abs(draft) / max(1e-9, (pi/180.0))) if False else (abs(draft))))  # direct tan approximated small-angle
+    # Use exact tan
+    dw = 2.0 * L * abs((0.0 if draft == 0.0 else (abs(sin(draft)/cos(draft)))))  # tan = sin/cos
+
+    w1 = max(1e-6, w0 + dw)  # progressive widening
+    # Build a prism via bmesh: rectangle at z=0 with width w0 and depth D in Y, rectangle at z=L with width w1 and depth D
+    # We'll align D along Y (half depth each side), and width along X (half width each side)
 
     bm = bmesh.new()
 
     def add_rect_layer(z, w, d):
         hx = 0.5 * w
         hy = 0.5 * d
-        return [
+        verts = [
             bm.verts.new(Vector((-hx, -hy, z))),
             bm.verts.new(Vector(( hx, -hy, z))),
             bm.verts.new(Vector(( hx,  hy, z))),
             bm.verts.new(Vector((-hx,  hy, z))),
         ]
+        return verts
 
     v0 = add_rect_layer(0.0, w0, D)
     v1 = add_rect_layer(L,   w1, D)
     bm.verts.index_update(); bm.verts.ensure_lookup_table()
 
-    # side faces
-    for i in range(4):
-        a = v0[i]; b = v0[(i + 1) % 4]; c = v1[(i + 1) % 4]; d = v1[i]
-        try: bm.faces.new([a, b, c, d])
-        except ValueError: pass
+    # Create sides (quads)
+    def face_quad(a, b, c, d):
+        try:
+            bm.faces.new([a, b, c, d])
+        except ValueError:
+            pass
 
-    # caps
-    try: bm.faces.new(v0)
-    except ValueError: pass
-    try: bm.faces.new(v1[::-1])
-    except ValueError: pass
+    # Create faces between corresponding edges
+    for i in range(4):
+        a = v0[i]
+        b = v0[(i + 1) % 4]
+        c = v1[(i + 1) % 4]
+        d = v1[i]
+        face_quad(a, b, c, d)
+
+    # Caps
+    try:
+        bm.faces.new(v0)
+    except ValueError:
+        pass
+    try:
+        bm.faces.new(v1[::-1])
+    except ValueError:
+        pass
 
     bm.normal_update()
-    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me); bm.free()
     obj = bpy.data.objects.new(name, me)
 
-    # Optional lead-in chamfer via bevel modifier
+    # Optional lead-in chamfer: approximate by bevel modifier on entry rim (z=0), small value
     if leadin_chamfer_mm and leadin_chamfer_mm > 0.0:
         bev = obj.modifiers.new("Bevel", 'BEVEL')
         bev.width = float(leadin_chamfer_mm) * mm
         bev.segments = 1
         bev.limit_method = 'ANGLE'
+        bev.angle_limit = radians(0.1)  # nearly all sharp edges
 
     return obj
 
 def create_dovetail_socket_cutter(width_mm, depth_mm, length_mm, clearance_per_side_mm, draft_deg, name="SnapSplit_DovetailSocketCutter"):
-    """Create a slightly larger 'socket' cutter for the dovetail tongue (clearance on X)."""
+    """
+    Create a slightly larger 'socket' cutter for the dovetail tongue:
+    - widens by clearance on X (both sides), same D on Y, same L on Z, same draft.
+    """
+    mm = unit_mm()
     w = float(width_mm) + 2.0 * float(clearance_per_side_mm)
     D = float(depth_mm)
     L = float(length_mm)
-    return create_dovetail_tongue(w, D, L, draft_deg, leadin_chamfer_mm=0.0, name=name)
+    obj = create_dovetail_tongue(w, D, L, draft_deg, leadin_chamfer_mm=0.0, name=name)
+    return obj
 
 # ---------------------------
-# Proportional scaling helpers
-# ---------------------------
-
-def _proportional_update(props, master_changed="WIDTH"):
-    """Apply/update ratios for proportional scaling based on the chosen master dimension."""
-    if not getattr(props, "dovetail_proportional_enabled", True):
-        return
-    w = float(props.dovetail_width_mm)
-    L = float(props.dovetail_length_mm)
-    D = float(props.dovetail_depth_mm)
-    kL = float(props.dovetail_ratio_len)
-    kD = float(props.dovetail_ratio_depth)
-    kC = float(props.dovetail_ratio_chamfer)
-
-    if master_changed == "WIDTH":
-        props.dovetail_length_mm = max(0.1, w * kL)
-        props.dovetail_depth_mm  = max(0.1, w * kD)
-        props.dovetail_leadin_chamfer_mm = max(0.0, w * kC)
-    elif master_changed == "LENGTH":
-        if w > 1e-6:
-            props.dovetail_ratio_len = max(0.01, L / w)
-    elif master_changed == "DEPTH":
-        if w > 1e-6:
-            props.dovetail_ratio_depth = max(0.01, D / w)
-
-# ---------------------------
-# Seam span analysis for Auto-Fit
-# ---------------------------
-
-def _seam_overlap_axes(obj_a, obj_b, axis, seam_pos):
-    """
-    Return tuples for two tangential axes on the seam plane:
-    (axis_vec, lo, hi, span), (axis_vec, lo, hi, span), origin_on_plane
-    """
-    n_axis, t1, t2 = _axis_vectors(axis)
-    bb_a = _bb_world(obj_a); bb_b = _bb_world(obj_b)
-    ca = sum(bb_a, Vector()) / 8.0; cb = sum(bb_b, Vector()) / 8.0
-    origin = (ca + cb) * 0.5; oi = _axis_index(axis)
-    origin = Vector((origin.x, origin.y, origin.z)); origin[oi] = seam_pos
-
-    def interval(points, dirv):
-        lo, hi = _proj_interval(points, dirv, origin)
-        return lo, hi, max(0.0, hi - lo)
-
-    lo1a, hi1a, _ = interval(bb_a, t1); lo1b, hi1b, _ = interval(bb_b, t1)
-    lo2a, hi2a, _ = interval(bb_a, t2); lo2b, hi2b, _ = interval(bb_b, t2)
-
-    lo1, hi1 = max(lo1a, lo1b), min(hi1a, hi1b); span1 = max(0.0, hi1 - lo1)
-    lo2, hi2 = max(lo2a, lo2b), min(hi2a, hi2b); span2 = max(0.0, hi2 - lo2)
-    return (t1, lo1, hi1, span1), (t2, lo2, hi2, span2), origin
-
-def _apply_margins_to_span(lo, hi, span, pct_margin, edge_margin_scene, end_inset_scene):
-    m_pct = max(0.0, float(pct_margin)) * 0.01 * span
-    e = max(0.0, float(edge_margin_scene))
-    ins = max(0.0, float(end_inset_scene))
-    lo2, hi2 = lo + m_pct + e + ins, hi - m_pct - e - ins
-    if hi2 < lo2:
-        mid = (lo + hi) * 0.5
-        return mid, mid, 0.0
-    return lo2, hi2, max(0.0, hi2 - lo2)
-
-# ---------------------------
-# Placement helpers
+# Single-placement helpers (click) — existing + new types
 # ---------------------------
 
 def _orthonormal_frame_from_z(z: Vector):
@@ -486,20 +587,39 @@ def _orthonormal_frame_from_z(z: Vector):
     x = y.cross(z); x.normalize()
     return x, y, z
 
+def _resolve_preview_density_segments():
+    """Return a dict with suggested preview segments based on addon prefs."""
+    # Safe defaults
+    seg = {"cyl": 24, "sph_u": 24, "sph_v": 12}
+    try:
+        prefs = bpy.context.preferences.addons[__package__].preferences
+        d = getattr(prefs, "preview_density", "medium")
+        if d == "low":
+            seg = {"cyl": 12, "sph_u": 12, "sph_v": 6}
+        elif d == "high":
+            seg = {"cyl": 36, "sph_u": 36, "sph_v": 18}
+    except Exception:
+        pass
+    return seg
+
 def _rotate_frame_for_slide_dir(M, slide_dir):
-    """Rotate local frame so that +X aligns with requested slide direction (+/-X, +/-Y)."""
+    """Rotate local frame so that +X aligns with requested slide direction (+/-X, +/-Y) in frame space."""
     if slide_dir not in {"+X", "-X", "+Y", "-Y"}:
         return M
+    # Current axes from M
     x = Vector((M[0][0], M[1][0], M[2][0]))
     y = Vector((M[0][1], M[1][1], M[2][1]))
     z = Vector((M[0][2], M[1][2], M[2][2]))
+    # Target axis
     tgt = {"+X": x, "-X": -x, "+Y": y, "-Y": -y}[slide_dir].normalized()
+    # We want local +X to become 'tgt'. Build new ortho basis:
     new_x = tgt
     new_y = z.cross(new_x)
     if new_y.length_squared < 1e-12:
+        # fallback
         new_y = y
     new_y.normalize()
-    new_x = new_y.cross(z).normalized()
+    new_x = new_y.cross(z).normalized()  # re-orthogonalize
     R = Matrix(((new_x.x, new_y.x, z.x, 0.0),
                 (new_x.y, new_y.y, z.y, 0.0),
                 (new_x.z, new_y.z, z.z, 0.0),
@@ -511,113 +631,89 @@ def _pin_fit_mode_clearance_mm(props):
     """Map pin_fit_mode and material_profile to per-side clearance in mm."""
     mat = getattr(props, "material_profile", "PETG")
     mode = getattr(props, "pin_fit_mode", "snug")
+    # If tol_override is set, prefer the explicit mapping values below
+    # FDM mapping
     fdm = {"snug": 0.25, "sliding": 0.45, "glue_ready": 0.60}
     sla = {"snug": 0.08, "sliding": 0.12, "glue_ready": 0.18}
-    return (sla if mat == "SLA" else fdm).get(mode, 0.25)
+    if mat == "SLA":
+        return sla.get(mode, 0.08)
+    return fdm.get(mode, 0.25)
 
-# ---------------------------
-# Dovetail placement (Full-Span + 20%-Breite/Tiefe standard)
-# ---------------------------
-
-def _calc_dovetail_dims_from_span(a, b, axis, props):
-    """Berechnet (length_mm, width_mm, depth_mm) gemäß Full-Span/FIT_LENGTH und 20%-Breite/Tiefe der kurzen Seite (nach Rändern)."""
-    mm = unit_mm()
-    seam_pos = _pair_seam_plane_pos(a, b, axis, props)
-    (t1, lo1, hi1, span1), (t2, lo2, hi2, span2), origin = _seam_overlap_axes(a, b, axis, seam_pos)
-    pct, edge_abs = _edge_margins_scene(props)
-    end_inset_scene = float(getattr(props, "dovetail_end_inset_mm", 0.0)) * mm
-
-    # Länge = lange Seite
-    if getattr(props, "dovetail_span_orientation", "AUTO") == "SHORT":
-        len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 < span2 else (lo2, hi2, span2)
-        wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 < span2 else (lo1, hi1, span1)
-    elif getattr(props, "dovetail_span_orientation", "AUTO") == "LONG":
-        len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 >= span2 else (lo2, hi2, span2)
-        wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 >= span2 else (lo1, hi1, span1)
-    else:  # AUTO
-        len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 >= span2 else (lo2, hi2, span2)
-        wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 >= span2 else (lo1, hi1, span1)
-
-    # Margins anwenden: Länge mit End-Inset, Breite ohne (nur Prozent der kurzen Seite)
-    _, _, len_use = _apply_margins_to_span(len_lo, len_hi, len_span, pct, edge_abs, end_inset_scene)
-    wid_lo2, wid_hi2, wid_use = _apply_margins_to_span(wid_lo, wid_hi, wid_span, pct, edge_abs, 0.0)
-
-    length_mm = max(4.0, float(len_use / mm))
-
-    # Width/Depth aus Modus: Default 20% der kurzen Seite (nach Rändern)
-    if getattr(props, "dovetail_fit_width_mode", "PERCENT_SHORT") == "PERCENT_SHORT":
-        pct_w = max(1.0, float(getattr(props, "dovetail_fit_width_pct", 20.0)))
-        width_mm = max(2.0, float(wid_use / mm) * (pct_w * 0.01))
-    else:
-        width_mm = float(props.dovetail_width_mm)
-
-    if getattr(props, "dovetail_fit_depth_mode", "PERCENT_SHORT") == "PERCENT_SHORT":
-        pct_d = max(1.0, float(getattr(props, "dovetail_fit_depth_pct", 20.0)))
-        depth_mm = max(2.0, float(wid_use / mm) * (pct_d * 0.01))
-    else:
-        depth_mm = float(props.dovetail_depth_mm)
-
-    return length_mm, width_mm, depth_mm
-
-def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
-    """Place a tapered dovetail tongue with auto-fit/full-span and optional 20%-width/depth."""
+def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click", override_fit_mode=False):
+    """Place one cylindrical pin at a world point; union into B and cut socket into A. If override_fit_mode True, use PIN_HOLE mapping."""
     if props is None:
         props = bpy.context.scene.snapsplit
     z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
     if frame_z is not None:
         z = frame_z.normalized()
     x, y, z = _orthonormal_frame_from_z(z)
-    mm = unit_mm()
 
-    # 1) Dims bestimmen
-    use_full = bool(getattr(props, "dovetail_use_full_span", True))
-    auto_fit = getattr(props, "dovetail_auto_fit", "FIT_LENGTH")
-
-    if use_full or auto_fit == "FIT_LENGTH":
-        length_mm, width_mm, depth_mm = _calc_dovetail_dims_from_span(a, b, axis, props)
-    else:
-        # Fallback: nur Breite/Tiefe ggf. aus 20%-Modus ableiten
-        length_mm = float(props.dovetail_length_mm)
-        # kurze Seite trotzdem ermitteln für Prozentmodi
-        _, w_mm_auto, d_mm_auto = _calc_dovetail_dims_from_span(a, b, axis, props)
-        width_mm = w_mm_auto if getattr(props, "dovetail_fit_width_mode", "PERCENT_SHORT") == "PERCENT_SHORT" else float(props.dovetail_width_mm)
-        depth_mm = d_mm_auto if getattr(props, "dovetail_fit_depth_mode", "PERCENT_SHORT") == "PERCENT_SHORT" else float(props.dovetail_depth_mm)
-
-    # 2) Proportional-Update (Ratios pflegen, aber Werte nicht überschreiben)
-    props.dovetail_width_mm = width_mm
-    props.dovetail_depth_mm = depth_mm
-    props.dovetail_length_mm = length_mm
-    _proportional_update(props, getattr(props, "dovetail_master_dim", "WIDTH"))
-
-    # 3) Validierung
-    width_mm  = max(2.0, float(props.dovetail_width_mm))
-    depth_mm  = max(2.0, float(props.dovetail_depth_mm))
-    length_mm = max(4.0, float(props.dovetail_length_mm))
-
-    if float(props.dovetail_draft_deg) < 0.5:
-        report_user(None, 'INFO',
-                    "Draft < 0.5°: consider 1–2° for better sliding fit.",
-                    "Schräge < 0,5°: 1–2° für bessere Gleitpassung erwägen.")
-
-    # 4) Frame
+    L_scene = float(props.pin_length_mm) * unit_mm()
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
-    L_scene = float(length_mm) * mm
     p_embed = point_world - z * (embed_pct * L_scene)
+
     M = Matrix((
         (x.x, y.x, z.x, p_embed.x),
         (x.y, y.y, z.y, p_embed.y),
         (x.z, y.z, z.z, p_embed.z),
         (0,   0,   0,   1.0),
     ))
-    M = _rotate_frame_for_slide_dir(M, getattr(props, "dovetail_slide_dir", "+X"))
 
-    # 5) Geometrie erstellen, booleanen
+    seg = int(getattr(props, "pin_segments", 32))
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
+    # Create pin only if not hole-only
+    hole_only = bool(getattr(props, "pin_hole_only", False)) if override_fit_mode else False
+    if not hole_only:
+        pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
+                             segments=seg, name=f"{name_prefix}")
+        pin.matrix_world = M
+        cutters_coll.objects.link(pin)
+        union_and_dispose(b, pin, name=f"{name_prefix}_Union")
+
+    # DIFFERENCE (socket) into A
+    mm = unit_mm()
+    if override_fit_mode:
+        c_mm = _pin_fit_mode_clearance_mm(props)
+        socket_d = float(props.pin_diameter_mm) + 2.0 * c_mm
+    else:
+        tol = float(props.effective_tolerance())
+        socket_d = float(props.pin_diameter_mm) + 2.0 * tol
+    socket = create_cyl_pin(socket_d, props.pin_length_mm, 0.0, segments=seg, name=f"{name_prefix}_SocketCutter")
+    socket.matrix_world = M
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(a, socket)
+    return None, None
+
+def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
+    """Place a tapered dovetail tongue at world point; union into B and cut socket into A."""
+    if props is None:
+        props = bpy.context.scene.snapsplit
+    z = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
+    if frame_z is not None:
+        z = frame_z.normalized()
+    x, y, z = _orthonormal_frame_from_z(z)
+
+    # Use dovetail length for embed
+    L_scene = float(props.dovetail_length_mm) * unit_mm()
+    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01  # reuse as "embed" control
+    p_embed = point_world - z * (embed_pct * L_scene)
+
+    M = Matrix((
+        (x.x, y.x, z.x, p_embed.x),
+        (x.y, y.y, z.y, p_embed.y),
+        (x.z, y.z, z.z, p_embed.z),
+        (0,   0,   0,   1.0),
+    ))
+    # Rotate frame so +X is the requested slide direction
+    M = _rotate_frame_for_slide_dir(M, getattr(props, "dovetail_slide_dir", "+X"))
+
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+    # Build tongue
     tong = create_dovetail_tongue(
-        width_mm=width_mm,
-        depth_mm=depth_mm,
-        length_mm=length_mm,
+        width_mm=props.dovetail_width_mm,
+        depth_mm=props.dovetail_depth_mm,
+        length_mm=props.dovetail_length_mm,
         draft_deg=props.dovetail_draft_deg,
         leadin_chamfer_mm=props.dovetail_leadin_chamfer_mm,
         name=f"{name_prefix}_Tongue"
@@ -625,7 +721,7 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
     tong.matrix_world = M
     cutters_coll.objects.link(tong)
 
-    # Bevel anwenden
+    # Apply bevel if present (lead-in)
     for mod in list(tong.modifiers):
         if mod.type == 'BEVEL':
             bpy.context.view_layer.objects.active = tong
@@ -636,17 +732,17 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
                 report_user(None, 'WARNING', f"Bevel apply failure: {e}", "Bevel anwenden fehlgeschlagen.")
             tong.select_set(False)
 
-    # UNION in B
+    # UNION into B
     union_and_dispose(b, tong, name=f"{name_prefix}_Union")
 
-    # Socket in A mit Toleranz
+    # Socket cutter with clearance
     base_tol = float(props.effective_tolerance())
     clr_scale = float(getattr(props, "dovetail_clearance_scale", 1.0))
     c_mm = base_tol * clr_scale
     sock = create_dovetail_socket_cutter(
-        width_mm=width_mm,
-        depth_mm=depth_mm,
-        length_mm=length_mm,
+        width_mm=props.dovetail_width_mm,
+        depth_mm=props.dovetail_depth_mm,
+        length_mm=props.dovetail_length_mm,
         clearance_per_side_mm=c_mm,
         draft_deg=props.dovetail_draft_deg,
         name=f"{name_prefix}_SocketCutter"
@@ -676,8 +772,9 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
     naxis = {"X": Vector((1, 0, 0)), "Y": Vector((0, 1, 0)), "Z": Vector((0, 0, 1))}[axis]
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
-    pct, edge_abs = _edge_margins_scene(props)
+    margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
     cols = max(1, int(getattr(props, "connectors_per_seam", count)))
+    pct, edge_abs = _edge_margins_scene(props)
 
     for a, b in pairs:
         seam_pos = _pair_seam_plane_pos(a, b, axis, props)
@@ -699,15 +796,16 @@ def place_connectors_between(parts, axis, count, ctype, props):
             x = y.cross(z); x.normalize()
 
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
+            # Determine length for embed calculation
             if ctype_cur in {"CYL_PIN", "SNAP_PIN", "PIN_HOLE"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
             elif ctype_cur == "DOVETAIL_TAPER":
-                # Use current dovetail_length_mm; place_one_dovetail_at berechnet final
                 L_scene = float(props.dovetail_length_mm) * unit_mm()
             else:
                 L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * unit_mm()
 
             p_embed = p - z * (embed_pct * L_scene)
+
             M = Matrix((
                 (x.x, y.x, z.x, p_embed.x),
                 (x.y, y.y, z.y, p_embed.y),
@@ -715,11 +813,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 (0,   0,   0,   1.0),
             ))
 
-            if ctype_cur == "DOVETAIL_TAPER":
-                place_one_dovetail_at(a, b, axis, p, props=props, name_prefix=f"Dovetail_{i}")
-                created.append(None)
-
-            elif ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+            if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
                 seg = int(getattr(props, "pin_segments", 32))
                 pin = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, props.add_chamfer_mm,
                                      segments=seg, name=f"Pin_{i}")
@@ -728,6 +822,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 union_and_dispose(b, pin, name=f"PinUnion_{i}")
 
+                # DIFFERENCE (socket) into A and dispose
                 mm = unit_mm()
                 tol = float(props.effective_tolerance())
                 socket_d = float(props.pin_diameter_mm) + 2.0 * tol
@@ -735,13 +830,30 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 socket.matrix_world = M
                 cutters_coll.objects.link(socket)
                 cut_socket_with_cutter_and_dispose(a, socket)
+
                 created.append(None)
+
+                if ctype_cur == "SNAP_PIN":
+                    pin_radius_scene = 0.5 * float(props.pin_diameter_mm) * mm
+                    length_scene = float(props.pin_length_mm) * mm
+                    add_snap_spheres_for_cyl_pin(
+                        base_matrix=M,
+                        pin_radius_scene=pin_radius_scene,
+                        length_scene=length_scene,
+                        props=props,
+                        name_prefix=f"Pin_{i}",
+                        part_a=a,  # A = DIFFERENCE
+                        part_b=b,  # B = UNION
+                        cutters_coll=cutters_coll
+                    )
 
             elif ctype_cur in {"RECT_TENON", "SNAP_TENON"}:
                 tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                  name=f"Tenon_{i}")
                 tenon.matrix_world = M
                 cutters_coll.objects.link(tenon)
+
+                # Apply bevel if present
                 for mod in list(tenon.modifiers):
                     if mod.type == 'BEVEL':
                         bpy.context.view_layer.objects.active = tenon
@@ -766,11 +878,28 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
                 cut_socket_with_cutter_and_dispose(a, socket)
+
                 created.append(None)
 
+                if ctype_cur == "SNAP_TENON":
+                    half_w_scene = max(0.5 * float(props.tenon_width_mm) * mm, 1e-9)
+                    length_scene = float(props.tenon_depth_mm) * mm
+                    add_snap_spheres_for_rect_tenon_ring(
+                        base_matrix=M,
+                        half_w_scene=half_w_scene,
+                        length_scene=length_scene,
+                        props=props,
+                        name_prefix=f"Tenon_{i}",
+                        part_a=a,  # A = DIFFERENCE
+                        part_b=b,  # B = UNION
+                        cutters_coll=cutters_coll
+                    )
+
             elif ctype_cur == "PIN_HOLE":
+                # Fit-mode socket. Respect pin_hole_only
                 hole_only = bool(getattr(props, "pin_hole_only", False))
                 if hole_only:
+                    # Place only socket at location (no union)
                     seg = int(getattr(props, "pin_segments", 32))
                     c_mm = _pin_fit_mode_clearance_mm(props)
                     socket_d = float(props.pin_diameter_mm) + 2.0 * c_mm
@@ -780,11 +909,20 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     cut_socket_with_cutter_and_dispose(a, socket)
                     created.append(None)
                 else:
+                    # Standard pin + fit-mode socket
                     place_one_cyl_pin_at(a, b, axis, p, props=props, name_prefix=f"PinHole_{i}", override_fit_mode=True)
                     created.append(None)
 
+            elif ctype_cur == "DOVETAIL_TAPER":
+                # Dovetail tongue + socket using slide_dir
+                # Rotate local frame so +X is slide_dir
+                M2 = _rotate_frame_for_slide_dir(M, getattr(props, "dovetail_slide_dir", "+X"))
+                # Union tongue, cut socket
+                place_one_dovetail_at(a, b, axis, p, props=props, name_prefix=f"Dovetail_{i}")
+                created.append(None)
+
             else:
-                # Fallback: rectangular tenon
+                # Unknown future types fallback -> rectangular tenon as safe default
                 tenon = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                  name=f"Tenon_{i}")
                 tenon.matrix_world = M
@@ -802,21 +940,23 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
                 cut_socket_with_cutter_and_dispose(a, socket)
+
                 created.append(None)
 
     return created
 
 # ---------------------------
-# Modal operator: place by click (with dovetail preview span update)
+# Modal operator: place by click (extended)
 # ---------------------------
 
 class SNAP_OT_place_connectors_click(Operator):
-    """Interactively place a connector by clicking on the seam plane between two parts."""
+    """Interactively place a connector (pin/tenon/fit/dovetail) by clicking on the seam plane between two parts."""
     bl_idname = "snapsplit.place_connectors_click"
     bl_label = "Place connectors (click)"
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
 
     def invoke(self, context, event):
+        """Start modal placement with live preview for two selected mesh parts."""
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) != 2:
@@ -839,11 +979,14 @@ class SNAP_OT_place_connectors_click(Operator):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             prev_coll = ensure_collection("_SnapSplit_Preview")
 
-            self.preview_objs = []
+            self.preview_objs = []  # may be multiple for complex previews
             self.preview_obj = None
 
+            segmap = _resolve_preview_density_segments()
+
             if ctype_cur in {"CYL_PIN", "SNAP_PIN", "PIN_HOLE"}:
-                seg = int(getattr(props, "pin_segments", 24))
+                # reuse pin preview
+                seg = int(getattr(props, "pin_segments", segmap["cyl"]))
                 pin_prev = create_cyl_pin(props.pin_diameter_mm, props.pin_length_mm, getattr(props, "add_chamfer_mm", 0.0),
                                           segments=seg, name="SnapSplit_Preview_Conn")
                 pin_prev.display_type = 'WIRE'
@@ -862,7 +1005,6 @@ class SNAP_OT_place_connectors_click(Operator):
                 self.preview_objs.append(ten_prev)
 
             elif ctype_cur == "DOVETAIL_TAPER":
-                # Start mit aktuellen Props; Länge wird im Modal bei Mausbewegung live angepasst
                 dov_prev = create_dovetail_tongue(
                     width_mm=props.dovetail_width_mm,
                     depth_mm=props.dovetail_depth_mm,
@@ -878,6 +1020,7 @@ class SNAP_OT_place_connectors_click(Operator):
                 self.preview_objs.append(dov_prev)
 
             else:
+                # fallback preview: a small cube
                 ten_prev = create_rect_tenon_quader(4.0, 6.0, 0.0, name="SnapSplit_Preview_Generic")
                 ten_prev.display_type = 'WIRE'
                 ten_prev.hide_select = True
@@ -893,6 +1036,7 @@ class SNAP_OT_place_connectors_click(Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
+        """Tear down preview objects and optionally report cancellation."""
         try:
             if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
                 for coll in list(self.preview_obj.users_collection):
@@ -915,59 +1059,29 @@ class SNAP_OT_place_connectors_click(Operator):
             report_user(self, 'INFO', "Placement cancelled.", "Platzierung abgebrochen.")
 
     def modal(self, context, event):
+        """Handle mouse movement for preview updates and left-click for placement."""
         try:
+            # Cancel
             if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
                 self.finish(context, cancelled=True)
                 return {'CANCELLED'}
 
+            # Mouse move: Update preview transforms
             if event.type == 'MOUSEMOVE':
                 try:
                     hit = self._intersect_mouse_with_seam_plane(context, event)
                     if hit is not None:
                         M = self._build_frame_at(hit)
                         if self.preview_obj:
-                            # Dovetail preview: update length live when full-span/FIT_LENGTH
+                            # Apply slide-dir adjustment for dovetail preview
                             if getattr(self.props, "connector_type", "") == "DOVETAIL_TAPER":
-                                seam_pos = self.seam_pos
-                                (t1, lo1, hi1, span1), (t2, lo2, hi2, span2), origin = _seam_overlap_axes(self.a, self.b, self.axis, seam_pos)
-                                span_orient = getattr(self.props, "dovetail_span_orientation", "AUTO")
-                                if span_orient == "AUTO":
-                                    len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 >= span2 else (lo2, hi2, span2)
-                                    wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 >= span2 else (lo1, hi1, span1)
-                                elif span_orient == "LONG":
-                                    len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 >= span2 else (lo2, hi2, span2)
-                                    wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 >= span2 else (lo1, hi1, span1)
-                                else:
-                                    len_lo, len_hi, len_span = (lo1, hi1, span1) if span1 < span2 else (lo2, hi2, span2)
-                                    wid_lo, wid_hi, wid_span = (lo2, hi2, span2) if span1 < span2 else (lo1, hi1, span1)
-
-                                pct, edge_abs = _edge_margins_scene(self.props)
-                                mm = unit_mm()
-                                use_full = bool(getattr(self.props, "dovetail_use_full_span", True))
-                                end_inset_scene = float(getattr(self.props, "dovetail_end_inset_mm", 0.0)) * mm
-                                _, _, len_use = _apply_margins_to_span(len_lo, len_hi, len_span, pct, edge_abs,
-                                                                       end_inset_scene if use_full or self.props.dovetail_auto_fit=="FIT_LENGTH" else 0.0)
-                                new_len_mm = float(len_use / mm) if (use_full or self.props.dovetail_auto_fit=="FIT_LENGTH") else float(self.props.dovetail_length_mm)
-                                # Rebuild preview at new length (Draft bleibt korrekt)
-                                try:
-                                    coll = self.preview_obj.users_collection[0] if self.preview_obj.users_collection else None
-                                    name_prev = self.preview_obj.name
-                                    for c in list(self.preview_obj.users_collection):
-                                        c.objects.unlink(self.preview_obj)
-                                    bpy.data.objects.remove(self.preview_obj, do_unlink=True)
-                                    dov_prev = create_dovetail_tongue(self.props.dovetail_width_mm, self.props.dovetail_depth_mm, new_len_mm,
-                                                                      self.props.dovetail_draft_deg, 0.0, name=name_prev)
-                                    dov_prev.display_type = 'WIRE'; dov_prev.hide_select = True
-                                    if coll: coll.objects.link(dov_prev)
-                                    self.preview_obj = dov_prev
-                                except Exception:
-                                    pass
                                 M = _rotate_frame_for_slide_dir(M, getattr(self.props, "dovetail_slide_dir", "+X"))
                             self.preview_obj.matrix_world = M
                 except Exception:
                     pass
                 return {'RUNNING_MODAL'}
 
+            # Left click: place connector
             if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 try:
                     hit = self._intersect_mouse_with_seam_plane(context, event)
@@ -976,9 +1090,13 @@ class SNAP_OT_place_connectors_click(Operator):
                         if ctype_cur == "CYL_PIN":
                             place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
                         elif ctype_cur == "RECT_TENON":
+                            # Reuse existing tenon placement by converting via batch code fallback
+                            # Minimal: create and union + socket similar to batch (omitted here for brevity)
+                            place_one_rect_tenon_at = None  # not redefining existing; keep batch flow primary
                             report_user(self, 'INFO', "Use batch add for tenons currently.", "Für Zapfen derzeit Batch verwenden.")
                         elif ctype_cur == "SNAP_PIN":
                             place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
+                            # Note: snap spheres added only in batch flow for now to keep click flow lightweight
                         elif ctype_cur == "SNAP_TENON":
                             report_user(self, 'INFO', "Use batch add for snap tenons currently.", "Für Snap-Zapfen derzeit Batch verwenden.")
                         elif ctype_cur == "PIN_HOLE":
@@ -1056,7 +1174,7 @@ class SNAP_OT_place_connectors_click(Operator):
         ))
 
 # ---------------------------
-# Batch placement operator
+# Batch placement operator (existing name, extended)
 # ---------------------------
 
 class SNAP_OT_add_connectors(Operator):
