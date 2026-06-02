@@ -332,42 +332,95 @@ class SnapSplitProps(PropertyGroup):
     tenon_ratio_depth: FloatProperty(name="k_ten_depth", default=1.33, min=0.01, soft_max=10.0, options={'HIDDEN'})
     tenon_ratio_chamfer: FloatProperty(name="k_ten_ch", default=0.05, min=0.0, soft_max=0.5, options={'HIDDEN'})
 
-    # Dovetail (Angled) — ersetzt die alte Taper-Logik komplett
-    dovetail_use_full_span: BoolProperty(
-        name="Use full seam span" if not _DE else "Volle Nahtspanne nutzen",
+    # Dovetail: neue, achsenbasierte Dimensionierung (immer editierbar)
+    dovetail_dim_x_mm: FloatProperty(
+        name="Dim X (mm)",
+        description="Dovetail size along local X (depth/thickness)",
+        default=12.0, min=0.0
+    )
+    dovetail_dim_y_mm: FloatProperty(
+        name="Dim Y (mm)",
+        description="Dovetail size along local Y (width/angled side walls)",
+        default=16.0, min=0.0
+    )
+    dovetail_dim_z_mm: FloatProperty(
+        name="Dim Z (mm)",
+        description="Dovetail size along local Z (length/extrusion)",
+        default=20.0, min=0.0
+    )
+
+    # Proportional wie bei Snap Pin: liefert Defaults, UI bleibt editierbar
+    dovetail_prop_enabled: BoolProperty(
+        name="Proportional scaling (Dovetail)",
         default=True,
+        description="If enabled, Dim X/Z default from Dim Y via ratios; manual values still allowed"
     )
+
+    # Ratios für Proportional (nur Defaults, nicht zwingend in der UI zeigen)
+    dovetail_ratio_x: FloatProperty(
+        name="Ratio X",
+        default=0.75, min=0.01, soft_max=5.0,
+        description="Default X = DimY * RatioX when proportional is enabled"
+    )
+    dovetail_ratio_z: FloatProperty(
+        name="Ratio Z",
+        default=1.25, min=0.01, soft_max=5.0,
+        description="Default Z = DimY * RatioZ when proportional is enabled"
+    )
+
+    # Achsbasierte Steuerung
+    dovetail_stretch_axis: EnumProperty(
+        name="Stretch axis",
+        description="Which local axis is stretched across the seam span",
+        items=[('X', 'X', ''), ('Y', 'Y', ''), ('Z', 'Z', '')],
+        default='Z'
+    )
+
+    # Full span + Prozent + Clip-to-edge
+    dovetail_use_full_span: BoolProperty(
+        name="Use full seam span",
+        default=True,
+        description="Stretch along selected axis to full usable seam overlap (with margins/inset)"
+    )
+    dovetail_fit_pct: FloatProperty(
+        name="Span %",
+        default=100.0, min=1.0, max=100.0,
+        description="If not full span, use this percentage of the usable span along the stretch axis"
+    )
+    dovetail_clip_to_edge: BoolProperty(
+        name="Clip to edge",
+        default=True,
+        description="When not full span and <100%, align from nearest edge instead of centered"
+    )
+
+    # Kanten-/Randabzug wie gehabt (wirkt entlang der projizierten Länge der Stretch-Achse)
     dovetail_end_inset_mm: FloatProperty(
-        name="End inset (mm)" if not _DE else "Randabzug (mm)",
-        default=0.0, min=0.0, soft_max=10.0,
+        name="End inset (mm)",
+        default=0.0, min=0.0,
+        description="Extra inset from seam ends along the stretch axis"
     )
-    dovetail_length_mm: FloatProperty(
-        name="Length (mm)" if not _DE else "Länge (mm)",
-        default=20.0, min=4.0, soft_max=500.0,
+
+    # Seitenwinkel: zwei Werte für die angewinkelte Richtungsachse (orthogonal zur Stretch-Achse)
+    dovetail_side_angle_a_deg: FloatProperty(
+        name="Side angle A (°)",
+        default=7.0, min=0.0, max=85.0,
+        description="Side wall angle on one side of the angled axis"
     )
-    dovetail_width_mm: FloatProperty(
-        name="Width (mm)" if not _DE else "Breite (mm)",
-        default=16.0, min=2.0, soft_max=300.0,
+    dovetail_side_angle_b_deg: FloatProperty(
+        name="Side angle B (°)",
+        default=7.0, min=0.0, max=85.0,
+        description="Side wall angle on the opposite side of the angled axis"
     )
-    dovetail_depth_mm: FloatProperty(
-        name="Depth (mm)" if not _DE else "Tiefe (mm)",
-        default=12.0, min=2.0, soft_max=200.0,
-    )
-    dovetail_side_angle_left_deg: FloatProperty(
-        name="Left wall angle (°)" if not _DE else "Winkel linke Wand (°)",
-        default=7.0, min=0.0, soft_max=30.0,
-    )
-    dovetail_side_angle_right_deg: FloatProperty(
-        name="Right wall angle (°)" if not _DE else "Winkel rechte Wand (°)",
-        default=7.0, min=0.0, soft_max=30.0,
-    )
+
+    # Einführfase und Spielfaktor
     dovetail_leadin_chamfer_mm: FloatProperty(
-        name="Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)",
-        default=0.30, min=0.0, soft_max=3.0,
+        name="Lead-in chamfer (mm)",
+        default=0.0, min=0.0
     )
     dovetail_clearance_scale: FloatProperty(
-        name="Clearance scale" if not _DE else "Spiel-Skalierung",
-        default=0.50, min=0.2, soft_max=2.0,
+        name="Clearance scale",
+        default=1.0, min=0.0, soft_max=3.0,
+        description="Scales base tolerance for dovetail socket clearance per side"
     )
 
     # Snap-Cantilever (Master: arm width)
