@@ -74,6 +74,7 @@ SNAP_SPHERE_PRESETS = {
 }
 
 def _snapsplit_update_preview(self, context):
+    """Lightweight: invokes the preview update; do not write back to props here."""
     try:
         from . import ops_split
         ops_split.update_split_preview_plane(context)
@@ -87,6 +88,7 @@ def _is_de():
         return is_lang_de()
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
+    """Heuristic for cylinder resolution by diameter."""
     if d_mm <= 0:
         return 16
     base = int(round(math.pi * d_mm / 1.8))
@@ -226,6 +228,7 @@ class SnapSplitProps(PropertyGroup):
     )
 
     def _update_pin_ratios_from_values(self):
+        """Update internal pin ratios from current absolute values (when proportional is OFF)."""
         try:
             d = float(self.pin_diameter_mm)
             if d > 1e-9:
@@ -235,6 +238,7 @@ class SnapSplitProps(PropertyGroup):
             pass
 
     def _on_pin_diameter_changed(self, context):
+        """When proportional is ON, drive dependents from diameter; otherwise, learn ratios."""
         if not getattr(self, "pin_prop_enabled", True):
             self._update_pin_ratios_from_values()
             return
@@ -246,6 +250,7 @@ class SnapSplitProps(PropertyGroup):
             pass
 
     def _on_pin_dependents_changed(self, context):
+        """Learn ratios from edited dependents when proportional is OFF."""
         self._update_pin_ratios_from_values()
 
     pin_diameter_mm: FloatProperty(
@@ -332,51 +337,90 @@ class SnapSplitProps(PropertyGroup):
     tenon_ratio_depth: FloatProperty(name="k_ten_depth", default=1.33, min=0.01, soft_max=10.0, options={'HIDDEN'})
     tenon_ratio_chamfer: FloatProperty(name="k_ten_ch", default=0.05, min=0.0, soft_max=0.5, options={'HIDDEN'})
 
-    # Dovetail: neue, achsenbasierte Dimensionierung (immer editierbar)
+    # --- Dovetail dimensions (X driver when proportional is enabled) ---
+
     dovetail_dim_x_mm: FloatProperty(
         name="Dim X (mm)",
         description="Dovetail size along local X (depth/thickness)",
-        default=12.0, min=0.0
+        default=12.0, min=0.0,
     )
     dovetail_dim_y_mm: FloatProperty(
         name="Dim Y (mm)",
-        description="Dovetail size along local Y (width/angled side walls)",
-        default=16.0, min=0.0
+        description="Dovetail size along local Y (width; tapered faces)",
+        default=16.0, min=0.0,
     )
     dovetail_dim_z_mm: FloatProperty(
         name="Dim Z (mm)",
         description="Dovetail size along local Z (length/extrusion)",
-        default=20.0, min=0.0
+        default=20.0, min=0.0,
     )
 
-    # Proportional wie bei Snap Pin: liefert Defaults, UI bleibt editierbar
     dovetail_prop_enabled: BoolProperty(
         name="Proportional scaling (Dovetail)",
         default=True,
-        description="If enabled, Dim X/Z default from Dim Y via ratios; manual values still allowed"
+        description="If enabled, X drives Y and Z via ratios (Y = X / Ratio X; Z = Y * Ratio Z)"
     )
-
-    # Ratios für Proportional (nur Defaults, nicht zwingend in der UI zeigen)
     dovetail_ratio_x: FloatProperty(
         name="Ratio X",
         default=0.75, min=0.01, soft_max=5.0,
-        description="Default X = DimY * RatioX when proportional is enabled"
+        description="Defines Y = X / Ratio X when proportional is enabled"
     )
     dovetail_ratio_z: FloatProperty(
         name="Ratio Z",
         default=1.25, min=0.01, soft_max=5.0,
-        description="Default Z = DimY * RatioZ when proportional is enabled"
+        description="Defines Z = (X / Ratio X) * Ratio Z when proportional is enabled"
     )
 
-    # Achsbasierte Steuerung
+    def dovetail_effective_dims_x_driver(self):
+        """
+        Compute effective dovetail (x, y, z) without writing back to properties.
+        - When proportional is ON: X is the only editable driver, Y = X/kx, Z = Y*kz.
+        - When proportional is OFF: use raw X, Y, Z.
+        """
+        x = max(0.0, float(getattr(self, "dovetail_dim_x_mm", 12.0)))
+        y = max(0.0, float(getattr(self, "dovetail_dim_y_mm", 16.0)))
+        z = max(0.0, float(getattr(self, "dovetail_dim_z_mm", 20.0)))
+        if bool(getattr(self, "dovetail_prop_enabled", True)):
+            kx = max(0.01, float(getattr(self, "dovetail_ratio_x", 0.75)))
+            kz = max(0.01, float(getattr(self, "dovetail_ratio_z", 1.25)))
+            y_eff = x / kx
+            z_eff = y_eff * kz
+            return (x, y_eff, z_eff)
+        return (x, y, z)
+
+    # Side angles (mirror at read when proportional is enabled)
+    dovetail_side_angle_a_deg: FloatProperty(
+        name="Side angle A (°)",
+        default=7.0, min=0.0, max=85.0,
+        description="Side wall angle on one side of the taper axis"
+    )
+    dovetail_side_angle_b_deg: FloatProperty(
+        name="Side angle B (°)",
+        default=7.0, min=0.0, max=85.0,
+        description="Side wall angle on the opposite side of the taper axis"
+    )
+
+    def dovetail_effective_angles(self):
+        """
+        Return (a, b) side angles.
+        - When proportional is ON: B mirrors A.
+        - When proportional is OFF: return A, B as set.
+        """
+        a = float(getattr(self, "dovetail_side_angle_a_deg", 7.0))
+        b = float(getattr(self, "dovetail_side_angle_b_deg", 7.0))
+        if bool(getattr(self, "dovetail_prop_enabled", True)):
+            return (a, a)
+        return (a, b)
+
+    # Axis selection for 'fill to edges'
     dovetail_stretch_axis: EnumProperty(
         name="Stretch axis",
-        description="Which local axis is stretched across the seam span",
+        description="Axis that is stretched across the seam's usable span",
         items=[('X', 'X', ''), ('Y', 'Y', ''), ('Z', 'Z', '')],
         default='Z'
     )
 
-    # Full span + Prozent + Clip-to-edge
+    # Full span, percent-of-span, edge snapping and end inset
     dovetail_use_full_span: BoolProperty(
         name="Use full seam span",
         default=True,
@@ -392,27 +436,13 @@ class SnapSplitProps(PropertyGroup):
         default=True,
         description="When not full span and <100%, align from nearest edge instead of centered"
     )
-
-    # Kanten-/Randabzug wie gehabt (wirkt entlang der projizierten Länge der Stretch-Achse)
     dovetail_end_inset_mm: FloatProperty(
         name="End inset (mm)",
         default=0.0, min=0.0,
         description="Extra inset from seam ends along the stretch axis"
     )
 
-    # Seitenwinkel: zwei Werte für die angewinkelte Richtungsachse (orthogonal zur Stretch-Achse)
-    dovetail_side_angle_a_deg: FloatProperty(
-        name="Side angle A (°)",
-        default=7.0, min=0.0, max=85.0,
-        description="Side wall angle on one side of the angled axis"
-    )
-    dovetail_side_angle_b_deg: FloatProperty(
-        name="Side angle B (°)",
-        default=7.0, min=0.0, max=85.0,
-        description="Side wall angle on the opposite side of the angled axis"
-    )
-
-    # Einführfase und Spielfaktor
+    # Lead-in and clearance scale (optional for ops)
     dovetail_leadin_chamfer_mm: FloatProperty(
         name="Lead-in chamfer (mm)",
         default=0.0, min=0.0
@@ -421,6 +451,14 @@ class SnapSplitProps(PropertyGroup):
         name="Clearance scale",
         default=1.0, min=0.0, soft_max=3.0,
         description="Scales base tolerance for dovetail socket clearance per side"
+    )
+
+    # Dovetail overshoot (in mm, left unit-agnostic; ops multiply by unit_mm())
+    dovetail_overshoot_mm: FloatProperty(
+        name="Overshoot (mm)" if not _DE else "Überstand (mm)",
+        description=("Small extra length along the selected stretch axis to ensure clean booleans (in mm)"
+                     if not _DE else "Kleiner Längenzuschlag entlang der Streckachse für saubere Booleans (in mm)"),
+        default=0.5, min=0.0, soft_max=2.0, step=0.1, precision=3
     )
 
     # Snap-Cantilever (Master: arm width)
@@ -533,7 +571,7 @@ class SnapSplitProps(PropertyGroup):
     )
 
     pip_prop_enabled: BoolProperty(
-        name="Proportional (PiP)" if _DE else "Proportional (PiP)",
+        name="Proportional (PiP)" if not _DE else "Proportional (PiP)",
         default=True,
     )
     pip_ratio_gap: FloatProperty(name="k_pip_gap", default=0.04, min=0.0, soft_max=0.2, options={'HIDDEN'})

@@ -223,84 +223,86 @@ def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="Sna
 # Geometry: Dovetail aus Tenon abgeleitet (Winkel an Seitenwänden)
 # ---------------------------
 
-def create_dovetail_from_tenon_like(width_mm, depth_mm, length_mm, angle_left_deg, angle_right_deg,
-                                    leadin_chamfer_mm=0.0, name="SnapSplit_DovetailTongue"):
+def create_dovetail_from_tenon_block(dim_x_mm, dim_y_mm, dim_z_mm,
+                                     angle_left_deg, angle_right_deg,
+                                     leadin_chamfer_mm=0.0,
+                                     name="SnapSplit_DovetailFromTenon",
+                                     taper_axis='X_SHRINK_BOTTOM'):
     """
-    Schwalbenschwanz-Zunge in EXAKT der Tenon-Ausrichtung:
-    - Lokale Achsen wie Tenon: z = Länge, y = Breite, x = Tiefe
-    - Seitenwände links/rechts (±y) neigen sich in X linear über z
-      (x-Dicke wächst entlang +x mit tan(angle)*z jeweils links/rechts).
-    - angle=0 → identischer Rechteck-Zapfen.
+    Build a bar aligned along local Z (length).
+
+    Local axes (mesh space):
+      - X = depth (maps to seam normal in world)
+      - Y = width (in-plane, perpendicular to length)
+      - Z = length (in-plane, chosen stretch direction)
+
+    Core mode:
+      - 'X_SHRINK_BOTTOM' (default): allowed +X shrinks linearly with Z:
+          x_allowed(z) = X_base - tan(angle_side) * (z - zmin)
+        We do NOT change Y or Z coordinates. Length is preserved, no Y pinch.
+        This produces the exact wedge shown in your screenshot ("unten kleiner").
+
+    Angle mapping:
+      - angle_left_deg  controls the -X side rate
+      - angle_right_deg controls the +X side rate
     """
     mm = unit_mm()
-    W = float(width_mm) * mm   # Breite (lokal y)
-    D = float(depth_mm) * mm   # Tiefe  (lokal x)
-    L = float(length_mm) * mm  # Länge  (lokal z)
 
-    aL = math.tan(math.radians(float(angle_left_deg)))
-    aR = math.tan(math.radians(float(angle_right_deg)))
+    # Dimensions in scene units
+    W = float(dim_y_mm) * mm      # width across ±Y
+    L = float(dim_z_mm) * mm      # length along Z
+    X_base = float(dim_x_mm) * mm # +X thickness at z = zmin (bottom)
 
+    # Base prism scaled to (W, W, L) and shifted so z ∈ [0, L]
     bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
     from mathutils import Vector as V
+    bmesh.ops.transform(bm, matrix=Matrix.Diagonal(V((W, W, L, 1.0))), verts=bm.verts)
+    bmesh.ops.transform(bm, matrix=Matrix.Translation((0, 0, L * 0.5)), verts=bm.verts)
 
-    def rect_layer(z, growL, growR):
-        yL = -0.5 * W
-        yR =  0.5 * W
-        x0L = 0.0
-        x1L = D + max(0.0, growL)
-        x0R = 0.0
-        x1R = D + max(0.0, growR)
-        vLL = bm.verts.new(V((x0L, yL, z)))
-        vLR = bm.verts.new(V((x1L, yL, z)))
-        vUR = bm.verts.new(V((x1R, yR, z)))
-        vUL = bm.verts.new(V((x0R, yR, z)))
-        return [vLL, vLR, vUR, vUL]
+    bm.verts.ensure_lookup_table()
+    zmin = min(v.co.z for v in bm.verts)
 
-    v0 = rect_layer(0.0, 0.0, 0.0)
-    v1 = rect_layer(L, aL * L, aR * L)
+    # Stabilize base at bottom ring: +X cannot exceed X_base
+    for v in bm.verts:
+        if v.co.z <= zmin + 1e-12 and v.co.x > X_base:
+            v.co.x = X_base
 
-    bm.verts.index_update(); bm.verts.ensure_lookup_table()
+    # Tangents from angles (rate per unit Z)
+    tL = math.tan(math.radians(float(angle_left_deg)))
+    tR = math.tan(math.radians(float(angle_right_deg)))
 
-    for i in range(4):
-        a = v0[i]; b = v0[(i + 1) % 4]; c = v1[(i + 1) % 4]; d = v1[i]
-        try: bm.faces.new([a, b, c, d])
-        except ValueError: pass
+    # Bottom‑shrink wedge: reduce allowed +X with Z; do not touch Y or Z
+    for v in bm.verts:
+        dz = max(0.0, v.co.z - zmin)
+        t = tL if v.co.x < 0.0 else tR
+        x_allowed = X_base - max(0.0, t * dz)
+        if v.co.x > x_allowed:
+            v.co.x = x_allowed
+        # Optional symmetrical dovetail centered at X=0 (uncomment if desired):
+        # if v.co.x < -x_allowed:
+        #     v.co.x = -x_allowed
 
-    try: bm.faces.new(v0)
-    except ValueError: pass
-    try: bm.faces.new(v1[::-1])
-    except ValueError: pass
+    # Finalize
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
 
-    bm.normal_update()
-    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     obj = bpy.data.objects.new(name, me)
 
     if leadin_chamfer_mm and leadin_chamfer_mm > 0.0:
         bev = obj.modifiers.new("Bevel", 'BEVEL')
         bev.width = float(leadin_chamfer_mm) * mm
         bev.segments = 1
-        bev.limit_method = 'ANGLE'
+        bev.limit_method = 'NONE'
 
     return obj
 
-def create_dovetail_from_tenon_like_socket(width_mm, depth_mm, length_mm, angle_left_deg, angle_right_deg,
-                                           clearance_per_side_mm, name="SnapSplit_DovetailSocket"):
-    """
-    Socket-Cutter zur Zunge:
-    - Vergrößert BREITE (y) pro Seite um clearance, Tiefe (x) bleibt identisch.
-    - Gleiche Seiten-Winkel wie Zunge.
-    """
-    c = max(0.0, float(clearance_per_side_mm))
-    w_socket = float(width_mm) + 2.0 * c
-    return create_dovetail_from_tenon_like(
-        width_mm=w_socket,
-        depth_mm=depth_mm,
-        length_mm=length_mm,
-        angle_left_deg=angle_left_deg,
-        angle_right_deg=angle_right_deg,
-        leadin_chamfer_mm=0.0,
-        name=name
-    )
+
+
+
+
+
 
 # ---------------------------
 # Boolean helpers
@@ -436,6 +438,12 @@ def add_snap_spheres_for_cyl_pin(base_matrix, pin_radius_scene, length_scene, pr
         local_pos = Vector((r_center * nx, r_center * ny, ring_z))
         world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
         world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        # print("DBG basis dot(z, X/Y/Z):",
+        #       round(world_z.dot(Vector((1,0,0))),3),
+        #       round(world_z.dot(Vector((0,1,0))),3),
+        #       round(world_z.dot(Vector((0,0,1))),3),
+        #       "axis", axis, "stretch", stretch)
 
         sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
         M = Matrix.Translation(world_pos)
@@ -633,7 +641,8 @@ def place_one_tenon_at(a, b, axis, point_world, frame_z=None, props=None, name_p
         if mod.type == 'BEVEL':
             bpy.context.view_layer.objects.active = tenon
             tenon.select_set(True)
-            try: bpy.ops.object.modifier_apply(modifier=mod.name)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
             except Exception as e:
                 report_user(None, 'WARNING', f"Bevel apply failure: {e}", "Bevel anwenden fehlgeschlagen.")
             tenon.select_set(False)
@@ -654,201 +663,141 @@ def place_one_tenon_at(a, b, axis, point_world, frame_z=None, props=None, name_p
 
     return None, None
 
-def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
+def place_dovetail_tenon_style(a, b, axis, click_world, props, name_prefix="DovetailTenon"):
     """
-    Axis-agnostic dovetail:
-    - Local frame is fixed: local z = length, local y = taper axis (two tapered faces), local x = depth.
-    - Dim X/Y/Z define depth/width/length; proportional can fill X and Z from Y unless user overrode them.
-    - One selected stretch axis (X/Y/Z) is fit to the seam's usable span (edges), the other two dims remain as given.
-    - Center-first along stretch axis; embed is applied along local z after centering.
-    - Mappings aim for a classic dovetail silhouette when viewing along the split normal.
+    Dovetail tongue in the seam plane:
+      - local x = depth (seam normal)
+      - local y = faces to taper (perpendicular in-plane axis)
+      - local z = length (chosen in-plane stretch axis)
+      - Taper reduces local x over +z on ±y faces
     """
-    if props is None:
-        props = bpy.context.scene.snapsplit
     mm = unit_mm()
 
-    # Seam overlap in-plane tangents with margins and end inset applied
+    # 1) Overlaps and in-plane axes (keep tuples to preserve interval association)
     (len_t, l_lo, l_hi, l_use), (wid_t, w_lo, w_hi, w_use), seam_pos = _calc_dovetail_spans(a, b, axis, props)
+    e_long = len_t.normalized(); long_lo, long_hi = l_lo, l_hi
+    e_short = wid_t.normalized(); short_lo, short_hi = w_lo, w_hi
 
-    # Sort by larger usable span → e_long fills to edges
-    spanL = (l_hi - l_lo); spanW = (w_hi - w_lo)
-    if spanL >= spanW:
-        e_long, long_lo, long_hi, long_use = len_t.normalized(), l_lo, l_hi, l_use
-        e_short, short_lo, short_hi, short_use = wid_t.normalized(), w_lo, w_hi, w_use
-    else:
-        e_long, long_lo, long_hi, long_use = wid_t.normalized(), w_lo, w_hi, w_use
-        e_short, short_lo, short_hi, short_use = len_t.normalized(), l_lo, l_hi, l_use
+    # 2) Disallow stretching along the split axis (cannot go out of plane)
+    stretch = getattr(props, "dovetail_stretch_axis", "Z")
+    if stretch == axis:
+        report_user(None, 'INFO',
+                    "Stretch axis equals split axis; dovetail not created for this setting.",
+                    "Streckachse entspricht Schnittachse; Schwalbenschwanz nicht erstellt.")
+        return None, None
 
-    # Read UI dims and controls
-    dim_x = max(0.05, float(getattr(props, "dovetail_dim_x_mm", 12.0)))  # local x (depth)
-    dim_y = max(0.05, float(getattr(props, "dovetail_dim_y_mm", 16.0)))  # local y (taper width)
-    dim_z = max(0.05, float(getattr(props, "dovetail_dim_z_mm", 20.0)))  # local z (length)
-
-    stretch_axis = getattr(props, "dovetail_stretch_axis", "Z")
-    use_full = bool(getattr(props, "dovetail_use_full_span", True))
-    fit_pct = max(1.0, float(getattr(props, "dovetail_fit_pct", 100.0)))
-    prop_on = bool(getattr(props, "dovetail_prop_enabled", True))
-
-    angle_A = float(getattr(props, "dovetail_side_angle_a_deg", 7.0))
-    angle_B = float(getattr(props, "dovetail_side_angle_b_deg", 7.0))
+    # 3) Effective dims/angles
+    dim_x, dim_y, dim_z = props.dovetail_effective_dims_x_driver()
+    angle_A, angle_B = props.dovetail_effective_angles()
+    full_span = bool(getattr(props, "dovetail_use_full_span", True))
+    fit_pct = float(getattr(props, "dovetail_fit_pct", 100.0))
     leadin = float(getattr(props, "dovetail_leadin_chamfer_mm", 0.0))
+    overshoot_mm = float(getattr(props, "dovetail_overshoot_mm", 0.5))
 
-    # Proportional defaults: Dim Y as master, Dim X/Z follow unless user has overridden them
-    if prop_on:
-        kx = max(0.01, float(getattr(props, "dovetail_ratio_x", 0.75)))
-        kz = max(0.01, float(getattr(props, "dovetail_ratio_z", 1.25)))
-        want_x = max(0.05, dim_y * kx)
-        want_z = max(0.05, dim_y * kz)
-        x_over = bool(getattr(props, "dovetail_dim_x_user_override", False))
-        z_over = bool(getattr(props, "dovetail_dim_z_user_override", False))
-        if use_full or not x_over:
-            dim_x = want_x
-        if use_full or not z_over:
-            dim_z = want_z
+        # 4) Build world basis — deterministic, plane-aware
 
-    # Base world axes choice: we want a consistent silhouette
-    # We'll produce world_x, world_y, world_z such that local→world mapping below holds.
+    # Seam plane normal (split axis) = local x (depth)
+    n = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[axis].normalized()
 
-    if stretch_axis == 'Z':
-        # Stretch along world Z (fill to edges along long tangent)
-        world_z = e_long
-        # Tapered faces should be visible from the split view: use world Y as taper axis
-        world_y = e_short
-        world_x = world_y.cross(world_z)
-        if world_x.length_squared < 1e-12:
-            world_x = Vector((1, 0, 0))
-            if abs(world_x.dot(world_z)) > 0.99:
-                world_x = Vector((0, 1, 0))
-            world_y = world_z.cross(world_x).normalized()
-            world_x = world_y.cross(world_z).normalized()
-        else:
-            world_x.normalize()
+    # In-plane candidate axes with their own intervals (keep association!)
+    cand1_dir, cand1_lo, cand1_hi = len_t.normalized(), l_lo, l_hi
+    cand2_dir, cand2_lo, cand2_hi = wid_t.normalized(), w_lo, w_hi
 
-        # Override local z length if full/percent span along Z
-        if use_full:
-            dim_z = max(0.05, float(long_use / mm))
-        else:
-            dim_z = min(dim_z, float((fit_pct * 0.01 * long_use) / mm))
+    # Requested world axis to align with (we’ll project into the plane)
+    target_world = {"X": Vector((1,0,0)), "Y": Vector((0,1,0)), "Z": Vector((0,0,1))}[stretch].normalized()
 
-        # Local→world mapping (fixed local frame):
-        # local y (taper) → world_y, local z (length) → world_z, local x (depth) → world_x
-        width_mm, length_mm, depth_mm = dim_y, dim_z, dim_x
-        # Taper orientation: keep as entered for Z
-        taper_L, taper_R = angle_A, angle_B
+    # Reject if user picked the split axis (cannot go out of plane)
+    if stretch == axis:
+        report_user(None, 'INFO',
+                    "Stretch axis equals split axis; dovetail not created for this setting.",
+                    "Streckachse entspricht Schnittachse; Schwalbenschwanz nicht erstellt.")
+        return None, None
 
-        axis_dir_for_clip = world_z
-        span_lo, span_hi = long_lo, long_hi
-        cur_dim_scene = float(length_mm) * mm
+    # Pick the in-plane axis most aligned to the requested world axis
+    d1 = abs(cand1_dir.dot(target_world))
+    d2 = abs(cand2_dir.dot(target_world))
+    if d1 >= d2:
+        z_dir, s_lo, s_hi = cand1_dir, cand1_lo, cand1_hi   # local z (length)
+        y_dir = cand2_dir                                   # local y (taper faces) = other in-plane axis
+    else:
+        z_dir, s_lo, s_hi = cand2_dir, cand2_lo, cand2_hi
+        y_dir = cand1_dir
 
-    elif stretch_axis == 'Y':
-        # Stretch along world Y
-        world_y = e_long
-        # Use world Z as taper axis for a classic silhouette
-        world_z = e_short
-        world_x = world_y.cross(world_z)
-        if world_x.length_squared < 1e-12:
-            world_x = Vector((1, 0, 0))
-            if abs(world_x.dot(world_z)) > 0.99:
-                world_x = Vector((0, 1, 0))
-            world_y = world_z.cross(world_x).normalized()
-            world_x = world_y.cross(world_z).normalized()
-        else:
-            world_x.normalize()
+    # Build an orthonormal basis with x = seam normal, z = chosen in-plane length, y = in-plane perpendicular
+    world_x = n
+    # Force y_dir to be orthogonal to x and z (numerically robust)
+    y_dir = (y_dir - world_x * y_dir.dot(world_x)).normalized()
+    world_z = (z_dir - world_x * z_dir.dot(world_x)).normalized()
+    # If y and z are not orthogonal due to numeric drift, orthogonalize y to z
+    y_dir = (y_dir - world_z * y_dir.dot(world_z)).normalized()
+    world_y = y_dir
 
-        if use_full:
-            dim_y = max(0.05, float(long_use / mm))
-        else:
-            dim_y = min(dim_y, float((fit_pct * 0.01 * long_use) / mm))
+    # Ensure right-handed basis; if not, flip y
+    if world_x.cross(world_y).dot(world_z) < 0.0:
+        world_y = -world_y
 
-        # Map local y→world_z (taper), local z→world_y (length), local x→world_x
-        width_mm, length_mm, depth_mm = dim_z, dim_y, dim_x
-        taper_L, taper_R = angle_A, angle_B  # orientation OK for Y
+    # 5) Determine final length along local z from the matched interval
+    use_len_scene = max(0.0, s_hi - s_lo)
+    cur_len_scene = float(dim_z) * mm
+    if full_span:
+        cur_len_scene = use_len_scene
+    else:
+        cur_len_scene = min(cur_len_scene, (fit_pct * 0.01) * use_len_scene)
+    dim_z = max(0.05, cur_len_scene / mm)
 
-        axis_dir_for_clip = world_y
-        span_lo, span_hi = long_lo, long_hi
-        cur_dim_scene = float(length_mm) * mm
+    # 6) Clamp X/Y
+    dim_x = max(0.05, dim_x)
+    dim_y = max(0.05, dim_y)
 
-    else:  # stretch_axis == 'X'
-        # Stretch along world X
-        world_x = e_long
-        # Choose world Z as taper axis to get an “X/Z” tapered pair
-        world_z = e_short
-        world_y = world_z.cross(world_x)
-        if world_y.length_squared < 1e-12:
-            world_y = Vector((0, 1, 0))
-            if abs(world_y.dot(world_x)) > 0.99:
-                world_y = Vector((0, 0, 1))
-            world_z = world_x.cross(world_y).normalized()
-        else:
-            world_y.normalize()
-            world_z = world_x.cross(world_y).normalized()
+    # 7) Center along chosen z-axis interval, then embed along z
+    base = click_world.copy()
+    s_center = 0.5 * (s_lo + s_hi)
+    s_now = base.dot(world_z)
+    base = base + world_z * (s_center - s_now)
 
-        if use_full:
-            dim_x = max(0.05, float(long_use / mm))
-        else:
-            dim_x = min(dim_x, float((fit_pct * 0.01 * long_use) / mm))
+    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
+    embed_scene = embed_pct * float(dim_z) * mm
+    base = base - world_z * embed_scene
 
-        # Map local y→world_z (taper), local z→world_y (length), local x→world_x (depth/stretch)
-        width_mm, length_mm, depth_mm = dim_z, dim_y, dim_x
-
-        # Force taper to converge towards world −Z (down): swap sides if world_z points up
-        z_up = Vector((0, 0, 1))
-        if world_z.dot(z_up) > 0.0:
-            taper_L, taper_R = angle_B, angle_A
-        else:
-            taper_L, taper_R = angle_A, angle_B
-
-        axis_dir_for_clip = world_x
-        span_lo, span_hi = long_lo, long_hi
-        cur_dim_scene = float(depth_mm) * mm
-
-    # Center-first along stretch axis (independent of click)
-    base_anchor = point_world.copy()
-    s_center = 0.5 * (span_lo + span_hi)
-    s_now = base_anchor.dot(axis_dir_for_clip)
-    base_anchor = base_anchor + axis_dir_for_clip * (s_center - s_now)
-
-    # Apply embed along local length (always world_z column in our mapping)
-    L_scene = float(length_mm) * mm
-    embed_ratio = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
-    base_anchor = base_anchor - world_z * (embed_ratio * L_scene)
-
-    # If not full span and fit% < 100, snap to nearest edge center along the stretch axis
-    if not use_full and bool(getattr(props, "dovetail_clip_to_edge", True)) and fit_pct < 100.0:
-        usable = span_hi - span_lo
-        if cur_dim_scene <= usable + 1e-9:
-            center_on_lo = span_lo + 0.5 * cur_dim_scene
-            center_on_hi = span_hi - 0.5 * cur_dim_scene
-            mid = 0.5 * (span_lo + span_hi)
-            s_pick = point_world.dot(axis_dir_for_clip)
-            s_target = center_on_lo if (s_pick <= mid) else center_on_hi
-            s_now = base_anchor.dot(axis_dir_for_clip)
-            base_anchor = base_anchor + axis_dir_for_clip * (s_target - s_now)
-
-    # Build transform matrix from world basis and anchor
+    # 8) Final transform: local x→world_x (seam normal), y→world_y (taper faces), z→world_z (length)
     M = Matrix((
-        (world_x.x, world_y.x, world_z.x, base_anchor.x),
-        (world_x.y, world_y.y, world_z.y, base_anchor.y),
-        (world_x.z, world_y.z, world_z.z, base_anchor.z),
+        (world_x.x, world_y.x, world_z.x, base.x),
+        (world_x.y, world_y.y, world_z.y, base.y),
+        (world_x.z, world_y.z, world_z.z, base.z),
         (0.0,       0.0,       0.0,       1.0),
     ))
 
+
+
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
-    # Create tongue in local frame (y=width (taper), x=depth, z=length)
-    tong = create_dovetail_from_tenon_like(
-        width_mm=width_mm,
-        depth_mm=depth_mm,
-        length_mm=length_mm,
-        angle_left_deg=taper_L,
-        angle_right_deg=taper_R,
+    # 9) Overshoot along local z
+    overs = max(0.0, float(overshoot_mm) * mm)
+    dim_x_g, dim_y_g, dim_z_g = dim_x, dim_y, dim_z
+    if overs > 0.0:
+        dim_z_g = dim_z + (2.0 * overs / mm)
+
+    # 10) Tongue
+    tong = create_dovetail_from_tenon_block(
+        dim_x_mm=dim_x_g, dim_y_mm=dim_y_g, dim_z_mm=dim_z_g,
+        angle_left_deg=angle_A, angle_right_deg=angle_B,
         leadin_chamfer_mm=leadin,
-        name=f"{name_prefix}_Tongue"
+        name=f"{name_prefix}_Tongue",
+        taper_axis='X_SHRINK_BOTTOM'
     )
+
+    # Inspect first few local vertices (sanity: Y should not be pinched)
+    try:
+        vx = [tong.data.vertices[i].co[:] for i in range(min(8, len(tong.data.vertices)))]
+        print("DBG tong local sample:", [(round(x,3), round(y,3), round(z,3)) for (x,y,z) in vx])
+    except Exception as e:
+        print("DBG tong sample failed:", e)
+
+    print("DBG angles A/B:", angle_A, angle_B)
+
     tong.matrix_world = M
     cutters_coll.objects.link(tong)
 
-    # Apply bevel if present
     for mod in list(tong.modifiers):
         if mod.type == 'BEVEL':
             bpy.context.view_layer.objects.active = tong
@@ -859,30 +808,30 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
                 report_user(None, 'WARNING', f"Bevel apply failure: {e}", "Bevel apply failed.")
             tong.select_set(False)
 
-    # Boolean union into B
     union_and_dispose(b, tong, name=f"{name_prefix}_Union")
 
-    # Create socket cutter with clearance per side in the taper width
+    # 11) Socket (clearance on width/local y only)
     base_tol = float(props.effective_tolerance())
     clr_scale = float(getattr(props, "dovetail_clearance_scale", 1.0))
     c_mm = base_tol * clr_scale
 
-    sock = create_dovetail_from_tenon_like_socket(
-        width_mm=width_mm,      # clearance on taper width
-        depth_mm=depth_mm,
-        length_mm=length_mm,
-        angle_left_deg=taper_L,
-        angle_right_deg=taper_R,
-        clearance_per_side_mm=c_mm,
-        name=f"{name_prefix}_SocketCutter"
+    dim_x_s = dim_x_g
+    dim_y_s = dim_y_g + 2.0 * c_mm
+    dim_z_s = dim_z_g
+
+    sock = create_dovetail_from_tenon_block(
+        dim_x_mm=dim_x_s, dim_y_mm=dim_y_s, dim_z_mm=dim_z_s,
+        angle_left_deg=angle_A, angle_right_deg=angle_B,
+        leadin_chamfer_mm=0.0,
+        name=f"{name_prefix}_SocketCutter",
+        taper_axis='X_SHRINK_BOTTOM'
     )
+
     sock.matrix_world = M
     cutters_coll.objects.link(sock)
     cut_socket_with_cutter_and_dispose(a, sock)
 
     return None, None
-
-
 
 
 
@@ -926,19 +875,25 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
 
-
             if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
             elif ctype_cur == "DOVETAIL_TAPER":
-                # Für die Einstecktiefe im Frame nehmen wir die lokale Z-Länge der Dovetail-Geometrie
-                # (die Geometrie selbst wird später entlang der gewählten Stretch-Achse skaliert).
-                L_scene = float(getattr(props, "dovetail_dim_z_mm", 20.0)) * unit_mm()
+                _, _, eff_z = props.dovetail_effective_dims_x_driver()
+                L_scene = float(eff_z) * unit_mm()
+
             else:
                 L_scene = float(props.tenon_depth_mm) * unit_mm()
 
-
-
             p_embed = p - z * (embed_pct * L_scene)
+
+            # DEBUG: inspect chosen frame, dimensions, and angles
+            print("DBG axis:", axis,
+                "stretch:", stretch,
+                "world_x:", tuple(round(c,3) for c in (world_x.x, world_x.y, world_x.z)),
+                "world_y:", tuple(round(c,3) for c in (world_y.x, world_y.y, world_y.z)),
+                "world_z:", tuple(round(c,3) for c in (world_z.x, world_z.y, world_z.z)),
+                "dim_xyz:", (round(dim_x,3), round(dim_y,3), round(dim_z,3)),
+                "angles:", (round(angle_A,3), round(angle_B,3)))
 
             M = Matrix((
                 (x.x, y.x, z.x, p_embed.x),
@@ -1025,7 +980,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     )
 
             elif ctype_cur == "DOVETAIL_TAPER":
-                place_one_dovetail_at(a, b, axis, p, props=props, name_prefix=f"Dovetail_{i}")
+                place_dovetail_tenon_style(a, b, axis, p, props, name_prefix=f"Dovetail_{i}")
                 created.append(None)
 
             else:
@@ -1171,7 +1126,6 @@ class SNAP_OT_place_connectors_click(Operator):
 
     def finish(self, context, cancelled=False):
         try:
-            # 1) Kandidaten sammeln: explizit registrierte
             to_purge = set()
             if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
                 to_purge.add(self.preview_obj)
@@ -1180,7 +1134,6 @@ class SNAP_OT_place_connectors_click(Operator):
                     if o and o.name in bpy.data.objects:
                         to_purge.add(o)
 
-            # 2) Alles aus der Preview-Collection, das markiert oder benannt ist
             try:
                 prev_coll = ensure_collection("_SnapSplit_Preview")
                 for o in list(prev_coll.objects):
@@ -1192,7 +1145,6 @@ class SNAP_OT_place_connectors_click(Operator):
             except Exception:
                 pass
 
-            # 3) Harte Namenssuche (falls Objekte nicht mehr in der Collection hängen)
             name_prefixes = (
                 "SnapSplit_Preview_",
                 "SnapSplit_Preview_Snap_",
@@ -1206,7 +1158,6 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception:
                     pass
 
-            # 4) Unlink aus Collections, Objekt entfernen, Mesh-Daten ggf. entfernen
             for obj in list(to_purge):
                 try:
                     for coll in list(obj.users_collection):
@@ -1232,12 +1183,10 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception:
                     pass
 
-            # interne Referenzen leeren
             if hasattr(self, "preview_objs"):
                 self.preview_objs.clear()
             self.preview_obj = None
 
-            # Viewport aktualisieren
             try:
                 bpy.context.view_layer.update()
             except Exception:
@@ -1333,7 +1282,8 @@ class SNAP_OT_place_connectors_click(Operator):
                                 cutters_coll=cutters_coll
                             )
                         elif ctype_cur == "DOVETAIL_TAPER":
-                            place_one_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Dovetail_Click")
+                            place_dovetail_tenon_style(self.a, self.b, self.axis, hit, self.props, name_prefix="Dovetail_Click")
+
                         else:
                             report_user(self, 'INFO', "Use batch add for this connector.", "Für diesen Verbinder Batch verwenden.")
                 except Exception as e:
@@ -1387,8 +1337,8 @@ class SNAP_OT_place_connectors_click(Operator):
         if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
             L_scene = float(self.props.pin_length_mm) * unit_mm()
         elif ctype_cur == "DOVETAIL_TAPER":
-            L_scene = float(getattr(self.props, "dovetail_dim_z_mm", 20.0)) * unit_mm()
-
+            _, _, eff_z = self.props.dovetail_effective_dims_x_driver()
+            L_scene = float(eff_z) * unit_mm()
         else:
             L_scene = float(self.props.tenon_depth_mm) * unit_mm()
 
@@ -1443,3 +1393,4 @@ def register():
 def unregister():
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+

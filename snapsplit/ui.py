@@ -162,47 +162,73 @@ class SNAP_PT_panel(Panel):
                 pbox.prop(props, "pin_hole_only", text=("Hole only (for metal pins)" if not _DE else "Nur Bohrung (für Metallstifte)"))
                 pbox.label(text=("Chamfer helps compensate elephant's foot" if not _DE else "Fase kompensiert Elephant's Foot"), icon='INFO')
 
-            # DOVETAIL_TAPER (Tenon-based with angled side walls)
+            # DOVETAIL_TAPER (tenon-based with angled side walls)
             if props.connector_type == "DOVETAIL_TAPER":
                 dbox = con_box.box()
                 dbox.label(text=("Dovetail (angled)" if not _DE else "Schwalbenschwanz (Winkel)"), icon='MOD_SIMPLEDEFORM')
 
-                # Proportional wie bei Snap Pin: liefert Defaults, UI bleibt editierbar
+                # Toggle for proportional mode
                 dbox.prop(props, "dovetail_prop_enabled", text=("Proportional scaling (Dovetail)" if not _DE else "Proportionale Skalierung (Dovetail)"))
                 dbox.label(
-                    text=("Proportional sets defaults; manual Dim X/Y/Z always editable."
-                        if not _DE else "Proportional liefert Standardwerte; Dim X/Y/Z sind immer editierbar."),
+                    text=("When enabled, X drives Y and Z via ratios. Y/Z are shown as computed values."
+                          if not _DE else "Wenn aktiviert, steuert X Y/Z über Verhältnisse. Y/Z werden berechnet angezeigt."),
                     icon='INFO'
                 )
 
-                # Immer editierbar
+                # Dimensions
                 dims = dbox.column(align=True)
+                # X always editable
                 dims.prop(props, "dovetail_dim_x_mm", text=("Dim X (mm)" if not _DE else "Maß X (mm)"))
-                dims.prop(props, "dovetail_dim_y_mm", text=("Dim Y (mm)" if not _DE else "Maß Y (mm)"))
-                dims.prop(props, "dovetail_dim_z_mm", text=("Dim Z (mm)" if not _DE else "Maß Z (mm)"))
+
+                if props.dovetail_prop_enabled:
+                    # Show computed Y/Z as read-only labels
+                    try:
+                        x_eff, y_eff, z_eff = props.dovetail_effective_dims_x_driver()
+                    except Exception:
+                        x_eff, y_eff, z_eff = props.dovetail_dim_x_mm, props.dovetail_dim_y_mm, props.dovetail_dim_z_mm
+
+                    row_y = dims.row(align=True); row_y.enabled = False
+                    row_y.prop(props, "dovetail_dim_y_mm", text=("Dim Y (mm)" if not _DE else "Maß Y (mm)"))
+                    row_y.label(text=f"{y_eff:.3f} mm", icon='INFO')
+
+                    row_z = dims.row(align=True); row_z.enabled = False
+                    row_z.prop(props, "dovetail_dim_z_mm", text=("Dim Z (mm)" if not _DE else "Maß Z (mm)"))
+                    row_z.label(text=f"{z_eff:.3f} mm", icon='INFO')
+                else:
+                    # All editable
+                    dims.prop(props, "dovetail_dim_y_mm", text=("Dim Y (mm)" if not _DE else "Maß Y (mm)"))
+                    dims.prop(props, "dovetail_dim_z_mm", text=("Dim Z (mm)" if not _DE else "Maß Z (mm)"))
+
+                dbox.separator()
+
+                # Side angles: when proportional is ON, show B as mirror of A (read-only label)
+                if props.dovetail_prop_enabled:
+                    dbox.prop(props, "dovetail_side_angle_a_deg", text=("Side angle (°)" if not _DE else "Seitenwinkel (°)"))
+                    try:
+                        a_deg, b_deg = props.dovetail_effective_angles()
+                    except Exception:
+                        a_deg, b_deg = props.dovetail_side_angle_a_deg, props.dovetail_side_angle_b_deg
+                    row = dbox.row(align=True); row.enabled = False
+                    row.prop(props, "dovetail_side_angle_b_deg", text=("Side angle B (°)" if not _DE else "Seitenwinkel B (°)"))
+                    row.label(text=f"{b_deg:.1f}°", icon='INFO')
+                else:
+                    dbox.prop(props, "dovetail_side_angle_a_deg", text=("Side angle A (°)" if not _DE else "Seitenwinkel A (°)"))
+                    dbox.prop(props, "dovetail_side_angle_b_deg", text=("Side angle B (°)" if not _DE else "Seitenwinkel B (°)"))
 
                 # Full span + Stretch axis
                 row_fs = dbox.row(align=True)
                 row_fs.prop(props, "dovetail_use_full_span", text=("Use full seam span" if not _DE else "Volle Nahtspanne"))
                 row_fs.prop(props, "dovetail_stretch_axis", text=("Stretch axis" if not _DE else "Streckachse"))
 
-                # Prozentsteuerung nur wenn Full Span aus; bezieht sich auf Stretch-Achse
+                # Percent-of-span controls apply only when not using full span
                 pbox = dbox.box()
                 pbox.enabled = not props.dovetail_use_full_span
                 pbox.label(text=("Percent of seam span (applies to stretch axis)" if not _DE else "Prozent der Nahtspanne (gilt für Streckachse)"), icon='ARROW_LEFTRIGHT')
                 pbox.prop(props, "dovetail_fit_pct", text=("Span %" if not _DE else "Spanne %"))
                 pbox.prop(props, "dovetail_clip_to_edge", text=("Clip to edge" if not _DE else "Am Rand ausrichten"))
 
-                # End inset wirkt auf die aktuelle Längsprojektion der Streckachse
+                # End inset along the selected stretch axis projection
                 dbox.prop(props, "dovetail_end_inset_mm", text=("End inset (mm)" if not _DE else "Randabzug (mm)"))
-
-                dbox.separator()
-                # Winkel gelten auf die zwei Seiten, die zur Streckachse orthogonal sind
-                dbox.prop(props, "dovetail_side_angle_a_deg", text=("Side angle A (°)" if not _DE else "Seitenwinkel A (°)"))
-                dbox.prop(props, "dovetail_side_angle_b_deg", text=("Side angle B (°)" if not _DE else "Seitenwinkel B (°)"))
-                dbox.prop(props, "dovetail_leadin_chamfer_mm", text=("Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)"))
-                dbox.prop(props, "dovetail_clearance_scale", text=("Clearance scale" if not _DE else "Spiel-Skalierung"))
-
 
             # SNAP_CANTILEVER
             if props.connector_type == "SNAP_CANTILEVER":
