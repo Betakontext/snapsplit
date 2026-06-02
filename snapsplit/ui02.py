@@ -169,27 +169,53 @@ class SNAP_PT_panel(Panel):
                 tip = "Chamfer helps compensate elephant's foot" if not _DE else "Fase kompensiert Elephant's Foot"
                 pbox.label(text=tip, icon='INFO')
 
-            # DOVETAIL_TAPER (neue Angled-UI)
+            # DOVETAIL_TAPER
             if props.connector_type == "DOVETAIL_TAPER":
                 dbox = box.box()
-                dbox.label(text=("Dovetail (angled)" if not _DE else "Schwalbenschwanz (Winkel)"), icon='MOD_SIMPLEDEFORM')
+                dbox.label(text=("Dovetail (tapered)" if not _DE else "Schwalbenschwanz (mit Schräge)"), icon='MOD_SIMPLEDEFORM')
 
-                dbox.prop(props, "dovetail_use_full_span", text=("Use full seam span" if not _DE else "Volle Nahtspanne"))
-                row = dbox.row(align=True)
-                row.enabled = not props.dovetail_use_full_span
-                row.prop(props, "dovetail_length_mm", text=("Length (mm)" if not _DE else "Länge (mm)"))
-                row.prop(props, "dovetail_width_mm", text=("Width (mm)" if not _DE else "Breite (mm)"))
+                core_row1 = dbox.row(align=True)
+                en_len = not (props.dovetail_use_full_span or props.dovetail_auto_fit == "FIT_LENGTH")
+                sub_len = core_row1.row(align=True); sub_len.enabled = en_len
+                sub_len.prop(props, "dovetail_length_mm", text=("Length (mm)" if not _DE else "Länge (mm)"))
+                core_row1.prop(props, "dovetail_depth_mm", text=("Depth (mm)" if not _DE else "Tiefe (mm)"))
 
-                dbox.prop(props, "dovetail_depth_mm", text=("Depth (mm)" if not _DE else "Tiefe (mm)"))
-                dbox.prop(props, "dovetail_end_inset_mm", text=("End inset (mm)" if not _DE else "Randabzug (mm)"))
-                dbox.separator()
-                dbox.prop(props, "dovetail_side_angle_left_deg", text=("Left wall (°)" if not _DE else "Linke Wand (°)"))
-                dbox.prop(props, "dovetail_side_angle_right_deg", text=("Right wall (°)" if not _DE else "Rechte Wand (°)"))
-                dbox.prop(props, "dovetail_leadin_chamfer_mm", text=("Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)"))
-                dbox.prop(props, "dovetail_clearance_scale", text=("Clearance scale" if not _DE else "Spiel-Skalierung"))
-                dbox.label(text=("Length/Width follow seam spans when 'Use full seam span' is enabled."
-                                if not _DE else "Länge/Breite folgen der Nahtspanne bei 'Volle Nahtspanne'."), icon='INFO')
+                core_row2 = dbox.row(align=True)
+                en_wid = not (props.dovetail_auto_fit == "FIT_WIDTH")
+                sub_wid = core_row2.row(align=True); sub_wid.enabled = en_wid
+                sub_wid.prop(props, "dovetail_width_mm", text=("Width (mm)" if not _DE else "Breite (mm)"))
+                dbox.prop(props, "dovetail_draft_deg", text=("Draft (°)" if not _DE else "Schräge (°)"))
 
+                dmore = dbox.column(align=True)
+                dmore.prop(props, "dovetail_proportional_enabled", text=("Proportional scaling" if not _DE else "Proportionale Skalierung"))
+                dmore.prop(props, "dovetail_master_dim", text=("Master dimension" if not _DE else "Leitmaß"))
+                dmore.prop(props, "dovetail_auto_fit", text=("Auto-fit" if not _DE else "Auto-Anpassung"))
+                dmore.prop(props, "dovetail_use_full_span", text=("Use full edge length" if not _DE else "Über gesamte Kantenlänge"))
+                if props.dovetail_use_full_span or props.dovetail_auto_fit in {"FIT_LENGTH","FIT_WIDTH"}:
+                    dmore.prop(props, "dovetail_end_inset_mm", text=("End inset (mm)" if not _DE else "Randabzug (mm)"))
+                    dmore.prop(props, "dovetail_span_orientation", text=("Span orientation" if not _DE else "Spanausrichtung"))
+
+                wbox = dbox.box()
+                wbox.label(text=("Width/Depth auto-sizing" if not _DE else "Breite/Tiefe automatisch"), icon='ARROW_LEFTRIGHT')
+                wrow = wbox.row(align=True)
+                wrow.prop(props, "dovetail_fit_width_mode", text=("Width mode" if not _DE else "Breitenmodus"))
+                if props.dovetail_fit_width_mode == "PERCENT_SHORT":
+                    wrow2 = wbox.row(align=True)
+                    wrow2.prop(props, "dovetail_fit_width_pct", text=("Width %" if not _DE else "Breite %"))
+                drow = wbox.row(align=True)
+                drow.prop(props, "dovetail_fit_depth_mode", text=("Depth mode" if not _DE else "Tiefenmodus"))
+                if props.dovetail_fit_depth_mode in {"PERCENT_SHORT", "PERCENT_NORMAL"}:
+                    drow2 = wbox.row(align=True)
+                    drow2.prop(props, "dovetail_fit_depth_pct", text=("Depth %" if not _DE else "Tiefe %"))
+
+                dmore.prop(props, "dovetail_leadin_chamfer_mm", text=("Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)"))
+                dmore.prop(props, "dovetail_clearance_scale", text=("Clearance scale" if not _DE else "Spiel-Skalierung"))
+                dmore.prop(props, "dovetail_slide_dir", text=("Slide direction" if not _DE else "Schieberichtung"))
+
+                tip = "Use 1–2° taper for progressive friction." if not _DE else "1–2° Schräge für progressiven Sitz."
+                dbox.label(text=tip, icon='INFO')
+                if props.dovetail_use_full_span:
+                    dbox.label(text=("Length uses full seam span minus margins and inset." if not _DE else "Länge nutzt volle Nahtlaufweite abzüglich Ränder und Randabzug."), icon='INFO')
 
             # SNAP_CANTILEVER
             if props.connector_type == "SNAP_CANTILEVER":

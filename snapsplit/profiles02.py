@@ -332,34 +332,22 @@ class SnapSplitProps(PropertyGroup):
     tenon_ratio_depth: FloatProperty(name="k_ten_depth", default=1.33, min=0.01, soft_max=10.0, options={'HIDDEN'})
     tenon_ratio_chamfer: FloatProperty(name="k_ten_ch", default=0.05, min=0.0, soft_max=0.5, options={'HIDDEN'})
 
-    # Dovetail (Angled) — ersetzt die alte Taper-Logik komplett
-    dovetail_use_full_span: BoolProperty(
-        name="Use full seam span" if not _DE else "Volle Nahtspanne nutzen",
-        default=True,
-    )
-    dovetail_end_inset_mm: FloatProperty(
-        name="End inset (mm)" if not _DE else "Randabzug (mm)",
-        default=0.0, min=0.0, soft_max=10.0,
-    )
+    # Dovetail (bestehende Auto-/Proportional-Logik)
     dovetail_length_mm: FloatProperty(
         name="Length (mm)" if not _DE else "Länge (mm)",
-        default=20.0, min=4.0, soft_max=500.0,
-    )
-    dovetail_width_mm: FloatProperty(
-        name="Width (mm)" if not _DE else "Breite (mm)",
-        default=16.0, min=2.0, soft_max=300.0,
+        default=20.0, min=1.0, soft_max=400.0,
     )
     dovetail_depth_mm: FloatProperty(
         name="Depth (mm)" if not _DE else "Tiefe (mm)",
-        default=12.0, min=2.0, soft_max=200.0,
+        default=12.0, min=1.0, soft_max=200.0,
     )
-    dovetail_side_angle_left_deg: FloatProperty(
-        name="Left wall angle (°)" if not _DE else "Winkel linke Wand (°)",
-        default=7.0, min=0.0, soft_max=30.0,
+    dovetail_width_mm: FloatProperty(
+        name="Width (mm)" if not _DE else "Breite (mm)",
+        default=16.0, min=1.0, soft_max=200.0,
     )
-    dovetail_side_angle_right_deg: FloatProperty(
-        name="Right wall angle (°)" if not _DE else "Winkel rechte Wand (°)",
-        default=7.0, min=0.0, soft_max=30.0,
+    dovetail_draft_deg: FloatProperty(
+        name="Draft (°)" if not _DE else "Schräge (°)",
+        default=9.0, min=0.0, soft_max=15.0,
     )
     dovetail_leadin_chamfer_mm: FloatProperty(
         name="Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)",
@@ -369,6 +357,69 @@ class SnapSplitProps(PropertyGroup):
         name="Clearance scale" if not _DE else "Spiel-Skalierung",
         default=0.50, min=0.2, soft_max=2.0,
     )
+    dovetail_slide_dir: EnumProperty(
+        name="Slide direction" if not _DE else "Schieberichtung",
+        items=[("+X","+X",""),("-X","-X",""),("+Y","+Y",""),("-Y","-Y","")],
+        default="+X",
+    )
+    dovetail_proportional_enabled: BoolProperty(
+        name="Proportional scaling" if not _DE else "Proportionale Skalierung",
+        default=True,
+    )
+    dovetail_master_dim: EnumProperty(
+        name="Master dimension" if not _DE else "Leitmaß",
+        items=[("WIDTH","Width" if not _DE else "Breite",""),
+               ("LENGTH","Length" if not _DE else "Länge",""),
+               ("DEPTH","Depth" if not _DE else "Tiefe","")],
+        default="DEPTH",
+    )
+    dovetail_auto_fit: EnumProperty(
+        name="Auto-fit" if not _DE else "Auto-Anpassung",
+        items=[("OFF","Off" if not _DE else "Aus",""),
+               ("FIT_WIDTH","Fit width to seam" if not _DE else "Breite an Naht anpassen",""),
+               ("FIT_LENGTH","Fit length to seam" if not _DE else "Länge an Naht anpassen","")],
+        default="FIT_LENGTH",
+    )
+    dovetail_use_full_span: BoolProperty(
+        name="Use full edge length" if not _DE else "Über gesamte Kantenlänge",
+        default=True,
+    )
+    dovetail_end_inset_mm: FloatProperty(
+        name="End inset (mm)" if not _DE else "Randabzug (mm)",
+        default=0.0, min=0.0, soft_max=10.0,
+    )
+    dovetail_span_orientation: EnumProperty(
+        name="Span orientation" if not _DE else "Spanausrichtung",
+        items=[("AUTO","Auto (longer side)" if not _DE else "Auto (lange Seite)",""),
+               ("SHORT","Short side" if not _DE else "Kurze Seite",""),
+               ("LONG","Long side" if not _DE else "Lange Seite","")],
+        default="AUTO",
+    )
+    dovetail_fit_width_mode: EnumProperty(
+        name="Width mode" if not _DE else "Breitenmodus",
+        items=[("PERCENT_SHORT","% of short side" if not _DE else "% der kurzen Seite",""),
+               ("MANUAL","Manual" if not _DE else "Manuell","")],
+        default="PERCENT_SHORT",
+    )
+    dovetail_fit_width_pct: FloatProperty(
+        name="Width %" if not _DE else "Breite %",
+        default=100.0, min=1.0, soft_max=200.0, subtype='PERCENTAGE',
+    )
+    dovetail_fit_depth_mode: EnumProperty(
+        name="Depth mode" if not _DE else "Tiefenmodus",
+        items=[("PERCENT_SHORT","% of short side" if not _DE else "% der kurzen Seite",""),
+               ("PERCENT_NORMAL","% of normal (axis)" if not _DE else "% der Normal-/Achse",""),
+               ("MANUAL","Manual" if not _DE else "Manuell","")],
+        default="PERCENT_NORMAL",
+    )
+    dovetail_fit_depth_pct: FloatProperty(
+        name="Depth %" if not _DE else "Tiefe %",
+        default=25.0, min=1.0, soft_max=100.0, subtype='PERCENTAGE',
+    )
+
+    dovetail_ratio_len: FloatProperty(name="k_len", default=2.5, min=0.01, soft_max=10.0, options={'HIDDEN'})
+    dovetail_ratio_depth: FloatProperty(name="k_depth", default=1.0, min=0.01, soft_max=5.0, options={'HIDDEN'})
+    dovetail_ratio_chamfer: FloatProperty(name="k_chamfer", default=0.075, min=0.0, soft_max=0.5, options={'HIDDEN'})
 
     # Snap-Cantilever (Master: arm width)
     snap_cant_arm_len_mm: FloatProperty(
