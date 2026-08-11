@@ -87,15 +87,15 @@ def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_p
 
     def overlap_len(a_min, a_max, b_min, b_max):
         """Return length of 1D interval overlap."""
-        return max(0.0, min(a_max, b_max) - max(a_min, b_max if b_min > a_max else b_min))
+        return max(0.0, min(a_max, b_max) - max(a_min, b_min))
 
     t1_min_a, t1_max_a = _proj_interval(bb_a, t1, origin)
     t1_min_b, t1_max_b = _proj_interval(bb_b, t1, origin)
     t2_min_a, t2_max_a = _proj_interval(bb_a, t2, origin)
     t2_min_b, t2_max_b = _proj_interval(bb_b, t2, origin)
 
-    ol1 = max(0.0, min(t1_max_a, t1_max_b) - max(t1_min_a, t1_min_b))
-    ol2 = max(0.0, min(t2_max_a, t2_max_b) - max(t2_min_a, t2_min_b))
+    ol1 = overlap_len(t1_min_a, t1_max_a, t1_min_b, t1_max_b)
+    ol2 = overlap_len(t2_min_a, t2_max_a, t2_min_b, t2_max_b)
 
     if ol1 >= ol2:
         t = t1.normalized()
@@ -883,102 +883,23 @@ class SNAP_OT_place_connectors_click(Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
-        """Tear down preview objects from scene and preview collection, then optionally report cancellation."""
-        # NOTE:
-        # We perform a robust cleanup:
-        # 1) Remove explicitly tracked preview objects (self.preview_obj and self.preview_objs).
-        # 2) Also sweep the dedicated preview collection "_SnapSplit_Preview" for any leftovers
-        #    that match our naming/flagging scheme, in case references were lost.
-        # 3) Unlink from all collections, remove from bpy.data.objects, and free orphaned mesh data.
+        """Tear down preview objects and optionally report cancellation."""
         try:
-            # Collect all candidates to purge
-            to_purge = set()
-
-            # 1) Operator-tracked preview objects
             if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
-                to_purge.add(bpy.data.objects.get(self.preview_obj.name))
+                for coll in list(self.preview_obj.users_collection):
+                    coll.objects.unlink(self.preview_obj)
+                bpy.data.objects.remove(self.preview_obj)
+
             if getattr(self, "preview_objs", None):
                 for o in list(self.preview_objs):
                     if o and o.name in bpy.data.objects:
-                        to_purge.add(bpy.data.objects.get(o.name))
-
-            # 2) Sweep preview collection by naming convention and custom flag
-            prev_coll = bpy.data.collections.get("_SnapSplit_Preview")
-            name_prefixes = (
-                "SnapSplit_Preview_",
-                "SnapSplit_Preview_Snap_",
-                "SnapSplit_Preview_SnapTen_",
-                "SnapSplit_Preview_Conn",
-            )
-            if prev_coll:
-                for o in list(prev_coll.objects):
-                    try:
-                        if (o.name.startswith(name_prefixes)) or bool(o.get("_snapsplit_preview")):
-                            to_purge.add(o)
-                    except Exception:
-                        pass
-
-            # 3) As a final safety net, scan through all objects for the known prefixes/flag
-            for o in list(bpy.data.objects):
-                try:
-                    if (o.name.startswith(name_prefixes)) or bool(o.get("_snapsplit_preview")):
-                        to_purge.add(o)
-                except Exception:
-                    pass
-
-            # Unlink and remove each object, then free orphaned data when possible
-            for obj in list(to_purge):
-                if not obj:
-                    continue
-                # Unlink from all collections
-                try:
-                    for coll in list(obj.users_collection):
-                        try:
-                            coll.objects.unlink(obj)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-                # Keep a handle to potential mesh data for orphan-check after object removal
-                mesh_data = getattr(obj, "data", None)
-
-                # Remove object from bpy.data
-                try:
-                    bpy.data.objects.remove(obj)
-                except Exception:
-                    # If standard remove failed, try dispose helper
-                    try:
-                        _dispose_object(obj, remove_data=False)
-                    except Exception:
-                        pass
-
-                # Remove orphaned mesh data
-                try:
-                    if mesh_data and hasattr(mesh_data, "users") and mesh_data.users == 0:
-                        if mesh_data.__class__.__name__ == "Mesh":
-                            bpy.data.meshes.remove(mesh_data)
-                        else:
-                            bpy.data.batch_remove((mesh_data,))
-                except Exception:
-                    pass
-
-            # Clear operator references
-            try:
-                if getattr(self, "preview_objs", None) is not None:
-                    self.preview_objs.clear()
-            except Exception:
-                pass
-            self.preview_obj = None
-
-            # Refresh view layer to reflect removals
-            try:
-                context.view_layer.update()
-            except Exception:
-                pass
-
+                        for coll in list(o.users_collection):
+                            try: coll.objects.unlink(o)
+                            except Exception: pass
+                        try: bpy.data.objects.remove(o)
+                        except Exception: pass
+                self.preview_objs.clear()
         except Exception:
-            # Swallow all to avoid modal errors on cleanup
             pass
 
         if cancelled:
