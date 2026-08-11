@@ -28,6 +28,91 @@ from bpy_extras import view3d_utils
 from .utils import ensure_collection, unit_mm, report_user
 
 # ---------------------------
+# Collection cleanup utilities
+# ---------------------------
+
+def remove_collection_by_name(coll_name: str):
+    """Unlink and remove a collection by name, including unlinking/removing all its objects.
+
+    - Unlinks objects from the collection and any other collections
+    - Removes object data blocks if they become orphaned
+    - Unlinks the collection from all parents and the scene root
+    - Removes the collection datablock at the end
+    """
+    coll = bpy.data.collections.get(coll_name)
+    if not coll:
+        return
+
+    # Collect objects to purge (copy into list as we will modify collections)
+    objs = list(coll.objects)
+
+    # Unlink and remove all objects belonging to the collection
+    for obj in objs:
+        if not obj:
+            continue
+        # Unlink from all collections first
+        try:
+            for c in list(obj.users_collection):
+                try:
+                    c.objects.unlink(obj)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        mesh_data = getattr(obj, "data", None)
+
+        # Remove the object datablock
+        try:
+            bpy.data.objects.remove(obj)
+        except Exception:
+            # Fallback: try to clear via helper
+            try:
+                _dispose_object(obj, remove_data=False)
+            except Exception:
+                pass
+
+        # Remove mesh data if orphaned
+        try:
+            if mesh_data and hasattr(mesh_data, "users") and mesh_data.users == 0:
+                if mesh_data.__class__.__name__ == "Mesh":
+                    bpy.data.meshes.remove(mesh_data)
+                else:
+                    try:
+                        bpy.data.batch_remove((mesh_data,))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # Unlink collection from any parents and the scene root
+    try:
+        for parent in list(bpy.data.collections):
+            try:
+                if coll.name in [c.name for c in getattr(parent, "children", [])]:
+                    parent.children.unlink(coll)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        scene_root = bpy.context.view_layer.layer_collection.collection
+        if coll.name in [c.name for c in scene_root.children]:
+            scene_root.children.unlink(coll)
+    except Exception:
+        pass
+
+    # Finally, remove the collection datablock
+    try:
+        bpy.data.collections.remove(coll)
+    except Exception:
+        pass
+
+def remove_cutters_collection():
+    """Remove the helper collection '_SnapSplit_Cutters' and its content completely."""
+    remove_collection_by_name("_SnapSplit_Cutters")
+
+# ---------------------------
 # BBox and projection
 # ---------------------------
 
@@ -84,10 +169,6 @@ def distribute_points_line_on_seam(obj_a, obj_b, count, axis, seam_pos, margin_p
     oi = _axis_index(axis)
     origin = Vector((origin.x, origin.y, origin.z))
     origin[oi] = seam_pos
-
-    def overlap_len(a_min, a_max, b_min, b_max):
-        """Return length of 1D interval overlap."""
-        return max(0.0, min(a_max, b_max) - max(a_min, b_max if b_min > a_max else b_min))
 
     t1_min_a, t1_max_a = _proj_interval(bb_a, t1, origin)
     t1_min_b, t1_max_b = _proj_interval(bb_b, t1, origin)
@@ -160,7 +241,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
     m1 = max(0.0, float(margin_pct)) * 0.01 * span1
     m2 = max(0.0, float(margin_pct)) * 0.01 * span2
     lo1_i, hi1_i = lo1 + m1, hi1 - m1
-    lo2_i, hi2_i = lo2 + m2, lo2 + (span2 - m2)
+    lo2_i, hi2_i = lo2 + m2, hi2 - m2
     if hi1_i < lo1_i or hi2_i < lo2_i:
         c = origin + t1.normalized() * ((lo1 + hi1) * 0.5) + t2.normalized() * ((lo2 + hi2) * 0.5)
         return [c for _ in range(max(1, cols * rows))]
@@ -883,18 +964,11 @@ class SNAP_OT_place_connectors_click(Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
-        """Tear down preview objects from scene and preview collection, then optionally report cancellation."""
-        # NOTE:
-        # We perform a robust cleanup:
-        # 1) Remove explicitly tracked preview objects (self.preview_obj and self.preview_objs).
-        # 2) Also sweep the dedicated preview collection "_SnapSplit_Preview" for any leftovers
-        #    that match our naming/flagging scheme, in case references were lost.
-        # 3) Unlink from all collections, remove from bpy.data.objects, and free orphaned mesh data.
+        """Tear down preview objects and collections; also remove cutters collection on cancel or end."""
+        # Robust cleanup of preview objects and the preview collection itself
         try:
-            # Collect all candidates to purge
             to_purge = set()
 
-            # 1) Operator-tracked preview objects
             if getattr(self, "preview_obj", None) and self.preview_obj.name in bpy.data.objects:
                 to_purge.add(bpy.data.objects.get(self.preview_obj.name))
             if getattr(self, "preview_objs", None):
@@ -902,7 +976,6 @@ class SNAP_OT_place_connectors_click(Operator):
                     if o and o.name in bpy.data.objects:
                         to_purge.add(bpy.data.objects.get(o.name))
 
-            # 2) Sweep preview collection by naming convention and custom flag
             prev_coll = bpy.data.collections.get("_SnapSplit_Preview")
             name_prefixes = (
                 "SnapSplit_Preview_",
@@ -918,7 +991,6 @@ class SNAP_OT_place_connectors_click(Operator):
                     except Exception:
                         pass
 
-            # 3) As a final safety net, scan through all objects for the known prefixes/flag
             for o in list(bpy.data.objects):
                 try:
                     if (o.name.startswith(name_prefixes)) or bool(o.get("_snapsplit_preview")):
@@ -926,11 +998,10 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception:
                     pass
 
-            # Unlink and remove each object, then free orphaned data when possible
+            # Unlink and remove objects
             for obj in list(to_purge):
                 if not obj:
                     continue
-                # Unlink from all collections
                 try:
                     for coll in list(obj.users_collection):
                         try:
@@ -940,20 +1011,16 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception:
                     pass
 
-                # Keep a handle to potential mesh data for orphan-check after object removal
                 mesh_data = getattr(obj, "data", None)
 
-                # Remove object from bpy.data
                 try:
                     bpy.data.objects.remove(obj)
                 except Exception:
-                    # If standard remove failed, try dispose helper
                     try:
                         _dispose_object(obj, remove_data=False)
                     except Exception:
                         pass
 
-                # Remove orphaned mesh data
                 try:
                     if mesh_data and hasattr(mesh_data, "users") and mesh_data.users == 0:
                         if mesh_data.__class__.__name__ == "Mesh":
@@ -963,7 +1030,32 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception:
                     pass
 
-            # Clear operator references
+            # Finally: delete the preview collection itself if empty or present
+            try:
+                if prev_coll:
+                    # Unlink from parents
+                    for parent in list(bpy.data.collections):
+                        try:
+                            if prev_coll.name in [c.name for c in getattr(parent, "children", [])]:
+                                parent.children.unlink(prev_coll)
+                        except Exception:
+                            pass
+                    # Also unlink from master scene collection
+                    try:
+                        scene_root = bpy.context.view_layer.layer_collection.collection
+                        if prev_coll.name in [c.name for c in scene_root.children]:
+                            scene_root.children.unlink(prev_coll)
+                    except Exception:
+                        pass
+                    # Remove collection
+                    try:
+                        bpy.data.collections.remove(prev_coll)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Clear references
             try:
                 if getattr(self, "preview_objs", None) is not None:
                     self.preview_objs.clear()
@@ -971,14 +1063,18 @@ class SNAP_OT_place_connectors_click(Operator):
                 pass
             self.preview_obj = None
 
-            # Refresh view layer to reflect removals
             try:
                 context.view_layer.update()
             except Exception:
                 pass
 
         except Exception:
-            # Swallow all to avoid modal errors on cleanup
+            pass
+
+        # Important: also ensure no _SnapSplit_Cutters leftovers after cancel or end of session
+        try:
+            remove_cutters_collection()
+        except Exception:
             pass
 
         if cancelled:
@@ -1074,6 +1170,13 @@ class SNAP_OT_place_connectors_click(Operator):
                                 part_b=self.b,  # B = UNION
                                 cutters_coll=cutters_coll
                             )
+
+                        # After a successful placement, remove cutters collection to avoid leftovers
+                        try:
+                            remove_cutters_collection()
+                        except Exception:
+                            pass
+
                 except Exception as e:
                     report_user(self, 'ERROR', f"Placement failed: {e}",
                                 "Platzierung fehlgeschlagen.")
@@ -1167,6 +1270,13 @@ class SNAP_OT_add_connectors(Operator):
             ctype=props.connector_type,
             props=props
         )
+
+        # After batch creation, remove the cutters collection (robust cleanup)
+        try:
+            remove_cutters_collection()
+        except Exception:
+            pass
+
         report_user(self, 'INFO', f"{len(created)} connectors created.",
                     f"{len(created)} Verbinder erstellt.")
         return {'FINISHED'}
