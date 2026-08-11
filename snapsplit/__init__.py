@@ -23,7 +23,7 @@ bl_info = {
     "name": "SnapSplit – Print-ready segmentation with connectors",
     "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
     "version": (0, 1, 3),
-    "blender": (5, 0, 1),
+    "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
         "Split meshes into printable parts and generate fitting connectors for 3D printing."
