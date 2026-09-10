@@ -31,7 +31,6 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from .utils import current_language, is_lang_de
-from .languages import tr  # NEW
 
 # ---------------------------
 # Material profiles (tolerance per side, in mm)
@@ -45,6 +44,7 @@ MATERIAL_PROFILES = {
     "TPU": 0.35,
     "SLA": 0.10,
 }
+
 def _snapsplit_update_preview(self, context):
     """Property update callback to refresh or clear split preview planes."""
     try:
@@ -75,8 +75,9 @@ def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
 
 def _mat_item_desc(key: str, val: float) -> str:
     """Build a localized tooltip text for a material profile entry."""
-    # Provide EN/DE identical string previously; now translate key
-    return tr("profiles.mat.tooltip", f"Recommended tolerance per side: {val:.2f} mm")
+    if _is_de():
+        return f"Recommended tolerance per side: {val:.2f} mm"
+    return f"Recommended tolerance per side: {val:.2f} mm"
 
 def _material_items():
     """Return EnumProperty items for material profiles with localized tooltips."""
@@ -92,9 +93,9 @@ class SnapSplitProps(PropertyGroup):
 
     # Split / Preview
     split_offset_mm: FloatProperty(
-        name=tr("ui.split_offset_mm", "Split Offset (mm)"),
-        description=tr("ui.split_offset_desc",
-                       "Offset of the cutting plane along the split axis (positive in axis direction)"),
+        name="Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)",
+        description=("Offset of the cutting plane along the split axis (positive in axis direction)"
+                     if not _DE else "Verschiebung der Schnittebene entlang der Achse (positiv in Achsrichtung)"),
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
@@ -102,96 +103,100 @@ class SnapSplitProps(PropertyGroup):
     )
 
     split_axis: EnumProperty(
-        name=tr("ui.split_axis", "Split Axis"),
+        name="Split Axis" if not _DE else "Schnittachse",
         items=[
-            ("X", "X", tr("ui.split_along_x", "Split along X")),
-            ("Y", "Y", tr("ui.split_along_y", "Split along Y")),
-            ("Z", "Z", tr("ui.split_along_z", "Split along Z")),
+            ("X", "X", "Split along X" if not _DE else "Entlang X schneiden"),
+            ("Y", "Y", "Split along Y" if not _DE else "Entlang Y schneiden"),
+            ("Z", "Z", "Split along Z" if not _DE else "Entlang Z schneiden"),
         ],
         default="Z",
         update=_snapsplit_update_preview,
     )
 
     show_split_preview: BoolProperty(
-        name=tr("ui.show_split_preview", "Show split preview"),
-        description=tr("ui.show_split_preview_desc",
-                       "Show temporary orange planes at planned cut positions"),
+        name="Show split preview" if not _DE else "Schnittvorschau anzeigen",
+        description=("Show temporary orange planes at planned cut positions"
+                     if not _DE else "Temporäre orange Ebenen als geplante Schnittpositionen anzeigen"),
         default=False,
         update=_snapsplit_update_preview,
     )
 
     parts_count: IntProperty(
-        name=tr("ui.parts_count", "Number of Parts"),
+        name="Number of Parts" if not _DE else "Anzahl Teile",
         default=2,
         min=2,
         max=64,
-        description=tr("ui.parts_count_desc",
-                       "Number of desired segments (cut planes = parts - 1)"),
+        description=("Number of desired segments (cut planes = parts - 1)"
+                     if not _DE else "Anzahl gewünschter Segmente (Schnittebenen = Teile - 1)"),
         update=_snapsplit_update_preview,
     )
 
     # Performance/Workflow: Cap seams automatically during split
     cap_seams_during_split: BoolProperty(
-        name=tr("ui.cap_seams_during_split_short", "Cap seams during split"),
-        description=tr("ui.cap_seams_during_split_desc",
-                       "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."),
+        name="Cap seams during split" if not _DE else "Nähte beim Schnitt schließen",
+        description=("Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."
+                     if not _DE else "Wendet nach dem Schnitt automatisch den Randverschluss an. Mit Hollow/Innenhülle: präzise Außen/Innen-Loop-Füllung; ohne Hollow: einfache Füllung. Kann die Laufzeit erhöhen."),
         default=True,
     )
 
     # Connections
     connector_type: EnumProperty(
-        name=tr("ui.connector_type", "Connector Type"),
+        name="Connector Type" if not _DE else "Verbinder-Typ",
         items=[
             ("CYL_PIN",
-             tr("ui.cyl_pin", "Cylinder Pin"),
-             tr("ui.cyl_pin_desc", "Dowel pin + socket")),
+             "Cylinder Pin" if not _DE else "Zylinder-Pin",
+             "Dowel pin + socket" if not _DE else "Holzdübel + Buchse"),
             ("RECT_TENON",
-             tr("ui.rect_tenon", "Rectangular Tenon"),
-             tr("ui.rect_tenon_desc", "Anti-rotation joint")),
+             "Rectangular Tenon" if not _DE else "Rechteck-Zapfen",
+             "Anti-rotation joint" if not _DE else "Verdrehsicherer Zapfen"),
             ("SNAP_PIN",
-             tr("ui.snap_pin", "Snap Pin"),
-             tr("ui.snap_pin_desc", "Connector with snap spheres")),
+             "Snap Pin" if not _DE else "Snap-Pin",
+             "Connector with snap spheres" if not _DE else "Zylinder-/Zapfen-Verbinder mit Schnappnoppen"),
             ("SNAP_TENON",
-             tr("ui.snap_tenon", "Snap Tenon"),
-             tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres")),
+             "Snap Tenon" if not _DE else "Snap-Zapfen",
+             "Rectangular tenon with snap spheres" if not _DE else "Rechteckiger Zapfen mit Schnapp-Sphären"),
         ],
         default="CYL_PIN",
     )
 
     # Placement distribution
     connector_distribution: EnumProperty(
-        name=tr("ui.distribution", "Distribution"),
-        description=tr("ui.distribution_desc",
-                       "Distribute connectors along a line or a grid across the seam face"),
+        name="Distribution" if not _DE else "Verteilung",
+        description=("Distribute connectors along a line or a grid across the seam face"
+                     if not _DE else "Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"),
         items=[
             ("LINE",
-             tr("ui.line", "Line"),
-             tr("ui.line_desc", "Place connectors along a line in the seam face")),
+             "Line" if not _DE else "Linie",
+             "Place connectors along a line in the seam face"
+             if not _DE else "Verbinder entlang einer Linie in der Nahtfläche platzieren"),
             ("GRID",
-             tr("ui.grid", "Grid"),
-             tr("ui.grid_desc", "Distribute connectors in a grid over the seam face")),
+             "Grid" if not _DE else "Raster",
+             "Distribute connectors in a grid over the seam face"
+             if not _DE else "Verbinder als Raster über die Nahtfläche verteilen"),
         ],
         default="LINE",
     )
 
     connectors_per_seam: IntProperty(
-        name=tr("ui.connectors_per_seam", "Connectors per Seam"),
+        name="Connectors per Seam" if not _DE else "Verbinder pro Naht",
         default=3,
         min=1,
         max=128,
     )
 
     connectors_rows: IntProperty(
-        name=tr("ui.rows_grid", "Rows (GRID)"),
-        description=tr("ui.rows_grid_desc", "Number of rows for grid distribution"),
+        name="Rows (GRID)" if not _DE else "Reihen (RASTER)",
+        description=("Number of rows for grid distribution"
+                     if not _DE else "Anzahl der Reihen bei Raster-Verteilung"),
         default=2,
         min=1,
         max=128,
     )
 
     connector_margin_pct: FloatProperty(
-        name=tr("ui.margin_pct", "Margin (%)"),
-        description=tr("ui.margin_pct_desc", "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"),
+        name="Margin (%)" if not _DE else "Randabstand (%)",
+        description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
+                     if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
         default=10.0,
         min=0.0,
         soft_max=40.0,
@@ -200,24 +205,27 @@ class SnapSplitProps(PropertyGroup):
 
     # Snap options (active when connector_type == 'SNAP_PIN')
     snap_spheres_per_side: IntProperty(
-        name=tr("ui.spheres_per_side", "Spheres per side"),
-        description=tr("ui.spheres_per_side_desc", "Number of snap spheres per side/around"),
+        name="Spheres per side" if not _DE else "Sphären je Seite",
+        description=("Number of snap spheres per side/around"
+                     if not _DE else "Anzahl der Schnapp-Sphären je Seitenfläche/Umfang"),
         default=2,
         min=1,
         max=32,
     )
 
     snap_sphere_diameter_mm: FloatProperty(
-        name=tr("ui.sphere_diameter_mm", "Sphere  (mm)"),
-        description=tr("ui.sphere_diameter_mm_desc", "Diameter of snap spheres"),
+        name="Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)",
+        description=("Diameter of snap spheres"
+                     if not _DE else "Durchmesser der Schnapp-Sphären"),
         default=2.0,
         min=0.5,
         soft_max=10.0,
     )
 
     snap_sphere_protrusion_mm: FloatProperty(
-        name=tr("ui.protrusion_mm", "Protrusion (mm)"),
-        description=tr("ui.protrusion_mm_desc", "How far spheres protrude from side surface"),
+        name="Protrusion (mm)" if not _DE else "Überstand (mm)",
+        description=("How far spheres protrude from side surface"
+                     if not _DE else "Wie weit die Sphären aus der Seitenfläche herausstehen"),
         default=1.0,
         min=0.0,
         soft_max=5.0,
@@ -225,43 +233,44 @@ class SnapSplitProps(PropertyGroup):
 
     # Pin / Tenon dimensions (mm)
     pin_diameter_mm: FloatProperty(
-        name=tr("ui.pin_diameter_mm", "Pin Diameter (mm)"),
+        name="Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)",
         default=5.0,
         min=0.5,
         soft_max=50.0,
     )
 
     pin_length_mm: FloatProperty(
-        name=tr("ui.pin_length_mm", "Pin Length (mm)"),
+        name="Pin Length (mm)" if not _DE else "Pin-Länge (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
     pin_segments: IntProperty(
-        name=tr("ui.segments", "Segments"),
-        description=tr("ui.segments_desc", "Cylinder pin radial segments (visual smoothness)"),
+        name="Segments" if not _DE else "Segmente",
+        description=("Cylinder pin radial segments (visual smoothness)"
+                     if not _DE else "Kreissegmente des Pins (nur Optik/Glätte)"),
         default=32,
         min=8,
         max=128,
     )
 
     tenon_width_mm: FloatProperty(
-        name=tr("ui.tenon_width_mm", "Tenon Width (mm)"),
+        name="Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)",
         default=6.0,
         min=1.0,
         soft_max=100.0,
     )
 
     tenon_depth_mm: FloatProperty(
-        name=tr("ui.tenon_depth_mm", "Tenon Depth (mm)"),
+        name="Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)",
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
     add_chamfer_mm: FloatProperty(
-        name=tr("ui.chamfer_mm", "Chamfer (mm)"),
+        name="Chamfer (mm)" if not _DE else "Fase (mm)",
         default=0.3,
         min=0.0,
         soft_max=2.0,
@@ -269,8 +278,9 @@ class SnapSplitProps(PropertyGroup):
 
     # Insert depth
     pin_embed_pct: FloatProperty(
-        name=tr("ui.insert_depth_pct", "Insert Depth (%)"),
-        description=tr("ui.insert_depth_pct_desc", "Percentage of connector length recessed into part A"),
+        name="Insert Depth (%)" if not _DE else "Einstecktiefe (%)",
+        description=("Percentage of connector length recessed into part A"
+                     if not _DE else "Prozentualer Anteil der Verbinderlänge, die in Teil A steckt"),
         default=50.0,
         min=0.0,
         max=100.0,
@@ -279,16 +289,17 @@ class SnapSplitProps(PropertyGroup):
 
     # Tolerances / material profile
     material_profile: EnumProperty(
-        name=tr("ui.material_profiles", "Material Profiles"),
+        name="Material Profiles" if not _DE else "Material-Profile",
         items=_material_items(),
         default="PLA",
-        description=tr("ui.material_profile_desc",
-                       "Select a material profile to auto-fill tolerance per side"),
+        description=("Select a material profile to auto-fill tolerance per side"
+                     if not _DE else "Materialprofil wählen, um die Toleranz pro Seite zu setzen"),
     )
 
     tol_override: FloatProperty(
-        name=tr("ui.tol_per_face_mm", "Tolerance per Face (mm)"),
-        description=tr("ui.tol_override_desc", "Overrides material profile (0 = use profile value)"),
+        name="Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)",
+        description=("Overrides material profile (0 = use profile value)"
+                     if not _DE else "Überschreibt das Materialprofil (0 = Profilwert verwenden)"),
         default=0.0,
         min=0.0,
         soft_max=0.6,
@@ -344,4 +355,3 @@ def unregister():
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-

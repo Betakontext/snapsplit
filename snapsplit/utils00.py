@@ -21,10 +21,6 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 import bpy
 from mathutils import Vector
 
-# NEW: integrate central translations
-from .languages import tr, get_current_language as _lang_get
-
-
 def ensure_collection(name):
     """Ensure a collection with the given name exists; create and link it if missing."""
     coll = bpy.data.collections.get(name)
@@ -81,11 +77,12 @@ def scene_to_mm(scene_value: float) -> float:
         return float(scene_value)
     return float(scene_value) / 0.001
 
-# Localization helpers now delegate to languages.py
+# Localization helpers — explicitly use current_language()
 def current_language():
     """Return Blender UI language like 'en_US', 'de_DE'; fallback to 'en_US' on failure."""
     try:
-        return _lang_get()
+        lang = bpy.context.preferences.view.language or ""
+        return lang or "en_US"
     except Exception:
         return "en_US"
 
@@ -97,18 +94,8 @@ def is_lang_de():
         return False
 
 def report_user(self, level, msg_en, msg_de=None):
-    """Report a localized message to the user, falling back to English; also print to console.
-
-    Behavior:
-    - If msg_en looks like a translation key (contains a dot), use tr(key, default=msg_en).
-    - Else use provided strings with legacy DE fallback if is_lang_de()==True.
-    """
-    # Determine text
-    if "." in str(msg_en):
-        text = tr(str(msg_en), default=str(msg_en))
-    else:
-        text = msg_de if (msg_de and is_lang_de()) else msg_en
-
+    """Report a localized message to the user, falling back to English; also print to console."""
+    text = msg_de if (msg_de and is_lang_de()) else msg_en
     if hasattr(self, "report"):
         try:
             self.report({level}, text)
@@ -123,4 +110,3 @@ def register():
 def unregister():
     """Required add-on hook (no-op for utilities)."""
     pass
-
