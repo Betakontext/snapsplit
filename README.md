@@ -113,45 +113,52 @@ Tolerances are provided as presets and can be overridden by the user.
 ---------------------------
 ---------------------------
 
-### Folder structure (files inside snapsplit.zip):
+### Folder structure (file structure for snapsplit.zip):
 
-    ├── blender_manifest.toml
-    ├── __init__.py
-    ├── LICENCE.txt
-    ├── ops_connectors.py
-    ├── ops_split.py
-    ├── prefs.py
-    ├── profiles.py
-    ├── README.md
-    ├── ui.py
-    └── utils.py
+snapsplit
+├── blender_manifest.toml
+├── __init__.py
+├── languages.py
+├── LICENCE.txt
+├── ops_align.py
+├── ops_connectors.py
+├── ops_split.py
+├── prefs.py
+├── profiles.py
+├── README.md
+├── ui.py
+└── utils.py
+
 
 ---------------------------
 ---------------------------
 
 ### Roadmap of ideas:
 
--> Planing to add more connector types: f.e. Bayonet/dovetail connectors, ball-and-socket joints ...
+More languages, more connector types and new options to integrate custom forms and meshes as connectors
 
-If you want to join the development, fork and explore the code.
+-> Development branch for further connector types is V_0.1.4_more_connectors
+-> Development branch to add more languages is V_0.1.5_more_languages
 
+I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
+---------------------------
+---------------------------
 
-The project is made with AI assistance and under the terms of the GNU General Public License.
-
-Please try it out. 
-
-If you like SnapSplit and continue using it
+Please try it out. If you like SnapSplit and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
-
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
+-> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
--> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
+-> fork + star the repo to take it further.
 
 Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
+Have fun splitting and printing, and feel free to join in for further developments.
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+CONTACT: dev@betakontext.de | https://dev.betakontext.de |
 
-CONTACT: dev@betakontext.de | https://dev.betakontext.de
+---------------------------
+---------------------------
 
+The project is made with AI assistance and under the terms of the GNU General Public License.
