@@ -18,11 +18,14 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
+# __init__.py - SnapSplit package entry point
 
 bl_info = {
-    "name": "SnapSplit – Print-ready segmentation with connectors",
-    "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
-    "version": (0, 1, 3),
+    "name": "SnapSplit  Print-ready segmentation with connectors",
+    "author": "Christoph Medicus",
+    "email": "dev@betakontext.de
+    "website": "https://dev.betakontext.de",
+    "version": (0, 1, 5),
     "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
@@ -37,6 +40,7 @@ bl_info = {
 import importlib
 
 # Import submodules
+from . import languages  # NEW: central translations
 from . import utils
 from . import profiles
 from . import prefs
@@ -47,7 +51,7 @@ from . import ui
 
 # Registration order matters if modules reference each other in register()
 # Ensure ops_align registers BEFORE ui so its WindowManager props exist.
-_modules = [utils, profiles, prefs, ops_split, ops_connectors, ops_align, ui]
+_modules = [languages, utils, profiles, prefs, ops_split, ops_connectors, ops_align, ui]
 
 def register():
     """Register all SnapSplit submodules (with hot-reload support during development)."""
@@ -68,3 +72,5 @@ def unregister():
     for m in reversed(_modules):
         if hasattr(m, "unregister"):
             m.unregister()
+
+

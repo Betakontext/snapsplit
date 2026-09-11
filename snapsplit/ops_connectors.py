@@ -19,6 +19,9 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# ops_connectors.py
+
+
 import bpy
 import bmesh
 from mathutils import Vector, Matrix
@@ -26,6 +29,7 @@ from bpy.types import Operator
 from bpy_extras import view3d_utils
 
 from .utils import ensure_collection, unit_mm, report_user
+from .languages import tr  # centralized translation helper
 
 # ---------------------------
 # Collection cleanup utilities
@@ -365,7 +369,9 @@ def boolean_apply(target_obj, mod):
     try:
         bpy.ops.object.modifier_apply(modifier=mod.name)
     except Exception as e:
-        report_user(None, 'WARNING', f"Modifier apply failed ({mod.name}): {e}")
+        # Localized warning on modifier apply failure
+        report_user(None, 'WARNING',
+                    tr("op.common.warn.mod_apply_fail", f"Modifier apply failed ({mod.name}): {e}"))
     target_obj.select_set(False)
     try:
         target_obj.data.validate(verbose=False)
@@ -653,7 +659,8 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
             try:
                 bpy.ops.object.modifier_apply(modifier=mod.name)
             except Exception as e:
-                report_user(None, 'WARNING', f"Bevel apply failure: {e}")
+                # Localized warning for bevel apply failure
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             tenon.select_set(False)
 
     # UNION into B and dispose tenon
@@ -779,7 +786,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         try:
                             bpy.ops.object.modifier_apply(modifier=mod.name)
                         except Exception as e:
-                            report_user(None, 'WARNING', f"Bevel apply failure: {e}")
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         tenon.select_set(False)
 
                 # UNION into B and dispose
@@ -851,8 +858,8 @@ class SNAP_OT_place_connectors_click(Operator):
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) != 2:
-            report_user(self, 'ERROR', "Select exactly 2 adjacent split parts.",
-                        "Genau 2 benachbarte Schnitt-Teile auswählen.")
+            report_user(self, 'ERROR',
+                        tr("op.connect.click.err.need2", "Select exactly 2 adjacent split parts."))
             return {'CANCELLED'}
 
         self.a, self.b = sel
@@ -862,7 +869,7 @@ class SNAP_OT_place_connectors_click(Operator):
         try:
             self.seam_pos = _pair_seam_plane_pos(self.a, self.b, self.axis, props)
         except Exception:
-            report_user(self, 'ERROR', "Could not compute seam plane.", "Naht-Ebene konnte nicht berechnet werden.")
+            report_user(self, 'ERROR', tr("op.connect.click.err.seam", "Could not compute seam plane."))
             return {'CANCELLED'}
 
         # Preview object (wireframe) based on connector type
@@ -1078,7 +1085,7 @@ class SNAP_OT_place_connectors_click(Operator):
             pass
 
         if cancelled:
-            report_user(self, 'INFO', "Placement cancelled.", "Platzierung abgebrochen.")
+            report_user(self, 'INFO', tr("op.connect.click.cancelled", "Placement cancelled."))
 
     def modal(self, context, event):
         """Handle mouse movement for preview updates and left-click for placement."""
@@ -1178,15 +1185,15 @@ class SNAP_OT_place_connectors_click(Operator):
                             pass
 
                 except Exception as e:
-                    report_user(self, 'ERROR', f"Placement failed: {e}",
-                                "Platzierung fehlgeschlagen.")
+                    report_user(self, 'ERROR',
+                                tr("op.connect.click.err.place", f"Placement failed: {e}"))
                 return {'RUNNING_MODAL'}
 
             # Fallback
             return {'RUNNING_MODAL'}
 
         except Exception as e:
-            report_user(self, 'ERROR', f"Modal error: {e}", "Modal-Fehler.")
+            report_user(self, 'ERROR', tr("op.connect.click.err.modal", f"Modal error: {e}"))
             return {'RUNNING_MODAL'}
 
     def _intersect_mouse_with_seam_plane(self, context, event):
@@ -1259,8 +1266,8 @@ class SNAP_OT_add_connectors(Operator):
         props = context.scene.snapsplit
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) < 2:
-            report_user(self, 'ERROR', "Select at least 2 cut mesh-pieces.",
-                        "Mindestens 2 geschnittene Mesh-Teile auswählen.")
+            report_user(self, 'ERROR',
+                        tr("op.connect.batch.err.need2", "Select at least 2 cut mesh-pieces."))
             return {'CANCELLED'}
 
         created = place_connectors_between(
@@ -1277,8 +1284,8 @@ class SNAP_OT_add_connectors(Operator):
         except Exception:
             pass
 
-        report_user(self, 'INFO', f"{len(created)} connectors created.",
-                    f"{len(created)} Verbinder erstellt.")
+        report_user(self, 'INFO',
+                    tr("op.connect.batch.info.done", f"{len(created)} connectors created.").format(n=len(created)))
         return {'FINISHED'}
 
 # ---------------------------
@@ -1289,6 +1296,13 @@ classes = (SNAP_OT_add_connectors, SNAP_OT_place_connectors_click)
 
 def register():
     """Register operators for connector placement."""
+    # Localize operator labels/descriptions at register time
+    SNAP_OT_place_connectors_click.bl_label = tr("op.connect.click.label", "Place connectors (click)")
+    SNAP_OT_place_connectors_click.__doc__ = tr("op.connect.click.doc", "Interactively place a connector (pin/tenon) by clicking on the seam plane between two parts.")
+
+    SNAP_OT_add_connectors.bl_label = tr("op.connect.batch.label", "Add connectors")
+    SNAP_OT_add_connectors.__doc__ = tr("op.connect.batch.doc", "Batch-place connectors between all adjacent selected parts using current settings.")
+
     for c in classes:
         bpy.utils.register_class(c)
 

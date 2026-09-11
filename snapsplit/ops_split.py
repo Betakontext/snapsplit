@@ -19,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# ops_split.py
+
 import bpy
 import bmesh
 from bpy.types import Operator
@@ -31,6 +33,16 @@ from .utils import (
     is_lang_de,
     unit_mm,
 )
+
+# Import translation helper
+# 'tr' resolves UI strings from a central language dictionary.
+# It accepts a key and a default English fallback text.
+try:
+    from .languages import tr
+except Exception:
+    # Fallback if languages module is unavailable
+    def tr(key: str, fallback: str = "") -> str:
+        return fallback or key
 
 # ---------------------------
 # Preview naming
@@ -138,32 +150,22 @@ def warn_if_unapplied_transforms(obj, operator=None):
         negative_scale = det < 0.0
 
         if has_loc or has_rot or non_uniform or negative_scale:
-            msg_en = "Object has unapplied transforms"
-            details_en = []
-            if has_loc: details_en.append("Location")
-            if has_rot: details_en.append("Rotation")
-            if non_uniform: details_en.append("Non-uniform Scale")
-            if negative_scale: details_en.append("Negative Scale")
-            details_str_en = ", ".join(details_en)
+            # Build bilingual message via translation keys
+            details = []
+            if has_loc: details.append(tr("TRANSFORM_LOCATION", "Location"))
+            if has_rot: details.append(tr("TRANSFORM_ROTATION", "Rotation"))
+            if non_uniform: details.append(tr("TRANSFORM_NON_UNIFORM_SCALE", "Non-uniform Scale"))
+            if negative_scale: details.append(tr("TRANSFORM_NEGATIVE_SCALE", "Negative Scale"))
+            details_str = ", ".join(details)
 
-            msg_de = "Objekt hat nicht angewendete Transformationen"
-            details_de = []
-            if has_loc: details_de.append("Position")
-            if has_rot: details_de.append("Rotation")
-            if non_uniform: details_de.append("nicht-uniforme Skalierung")
-            if negative_scale: details_de.append("negative Skalierung")
-            details_str_de = ", ".join(details_de)
-
-            hint_en = "Consider Apply All Transforms (Ctrl+A) for exact and predictable split results."
-            hint_de = "Für exakte und vorhersagbare Schnittergebnisse ggf. 'Apply All Transforms' (Strg+A) anwenden."
-
-            msg_all_en = f"{msg_en}: {details_str_en}. {hint_en}"
-            msg_all_de = f"{msg_de}: {details_str_de}. {hint_de}"
+            msg = tr("warn.unapplied_transforms", "Object has unapplied transforms")
+            hint = tr("warn.apply_transforms_hint", "Consider Apply All Transforms (Ctrl+A) for exact and predictable split results.")
+            msg_all = f"{msg}: {details_str}. {hint}"
 
             if operator is not None:
-                report_user(operator, 'INFO', msg_all_en, msg_all_de)
+                report_user(operator, 'INFO', msg_all, msg_all)
             else:
-                print(f"[SnapSplit] {msg_all_en} / {msg_all_de}")
+                print(f"[SnapSplit] {msg_all}")
     except Exception:
         pass
 
@@ -733,14 +735,16 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None, 
 class SNAP_OT_adjust_split_axis(Operator):
     """Interactively adjust split axis/offset with a live plane preview."""
     bl_idname = "snapsplit.adjust_split_axis"
-    bl_label = "Adjust split axis" if not is_lang_de() else "Schnittachse anpassen"
+    bl_label = tr("op.adjust_axis.label", "Adjust split axis")
     bl_options = {'REGISTER', 'UNDO', 'BLOCKING'}
 
     def invoke(self, context, event):
         """Start modal adjustment, initialize preview planes and internal state."""
         obj = context.active_object
         if not obj or obj.type != 'MESH':
-            report_user(self, 'ERROR', "Please select a mesh object.", "Bitte ein Mesh-Objekt auswählen.")
+            report_user(self, 'ERROR',
+                        tr("ERR_SELECT_MESH", "Please select a mesh object."),
+                        tr("ERR_SELECT_MESH", "Please select a mesh object."))
             return {'CANCELLED'}
 
         warn_if_unapplied_transforms(obj, operator=self)
@@ -809,9 +813,9 @@ class SNAP_OT_adjust_split_axis(Operator):
             try: self._region.tag_redraw()
             except Exception: pass
 
-        report_user(self, 'INFO',
-                    "Adjust split axis cancelled." if cancelled else "Split axis adjusted.",
-                    "Schnittachsen-Anpassung abgebrochen." if cancelled else "Schnittachse angepasst.")
+        msg_ok = tr("op.adjust_axis.done", "Split axis adjusted.")
+        msg_cancel = tr("op.adjust_axis.cancelled", "Adjust split axis cancelled.")
+        report_user(self, 'INFO', msg_cancel if cancelled else msg_ok, msg_cancel if cancelled else msg_ok)
 
     def modal(self, context, event):
         """Handle mouse/keyboard events to adjust offset and update the preview."""
@@ -1044,14 +1048,16 @@ def cap_single_object_hollow_style(obj) -> bool:
 class SNAP_OT_planar_split(Operator):
     """Split the active mesh into multiple parts along a selected axis, with optional auto-capping."""
     bl_idname = "snapsplit.planar_split"
-    bl_label = "Planar Split" if not is_lang_de() else "Planarer Schnitt"
+    bl_label = tr("op.split.label", "Planar Split")
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
         """Execute the split operation and optionally cap seams depending on settings."""
         obj = context.active_object
         if not obj or obj.type != 'MESH':
-            report_user(self, 'ERROR', "Please select a mesh object.", "Bitte ein Mesh-Objekt auswählen.")
+            report_user(self, 'ERROR',
+                        tr("op.common.select_mesh", "Please select a mesh object."),
+                        tr("op.common.select_mesh", "Please select a mesh object."))
             return {'CANCELLED'}
 
         warn_if_unapplied_transforms(obj, operator=self)
@@ -1071,7 +1077,7 @@ class SNAP_OT_planar_split(Operator):
         axis = props.split_axis
         count = max(2, int(props.parts_count))
         if count >= 12:
-            self.report({'INFO'}, f"Splitting into {count} parts can take a while on dense meshes...")
+            self.report({'INFO'}, tr("op.split.many_parts_hint", f"Splitting into {count} parts can take a while on dense meshes..."))
 
         offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
@@ -1097,21 +1103,21 @@ class SNAP_OT_planar_split(Operator):
 
             if capped_cnt == 0:
                 report_user(self, 'WARNING',
-                            "Auto-cap during split did not find valid loops to fill.",
-                            "Automatisches Schließen beim Schnitt fand keine gültigen Loops.")
+                            tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."),
+                            tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."))
             else:
                 report_user(self, 'INFO',
-                            f"Auto-capped seams on {capped_cnt} part(s).",
-                            f"Nähte automatisch bei {capped_cnt} Teil(en) geschlossen.")
+                            tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."),
+                            tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."))
 
         if len(parts) < count:
             report_user(self, 'WARNING',
-                        f"Fewer parts created than expected ({len(parts)} < {count}).",
-                        f"Weniger Teile erstellt als erwartet ({len(parts)} < {count}).")
+                        tr("op.split.fewer_parts", f"Fewer parts created than expected ({len(parts)} < {count})."),
+                        tr("op.split.fewer_parts", f"Fewer parts created than expected ({len(parts)} < {count})."))
         else:
             report_user(self, 'INFO',
-                        f"{len(parts)} parts created.",
-                        f"{len(parts)} Teile erstellt.")
+                        tr("op.split.parts_created", f"{len(parts)} parts created."),
+                        tr("op.split.parts_created", f"{len(parts)} parts created."))
 
         # ---------------------------
         # Route results into per-job collections (visible Parts, hidden Helpers)
@@ -1192,8 +1198,6 @@ class SNAP_OT_planar_split(Operator):
         except Exception:
             pass
 
-
-
         return {'FINISHED'}
 
 # ---------------------------
@@ -1231,30 +1235,30 @@ def _perimeter_of_edges(loop):
 class SNAP_OT_cap_open_seams_now(Operator):
     """Fill between exactly two split edge loops (outer+inner) per plane; prefers seed edges if present."""
     bl_idname = "snapsplit.cap_open_seams_now"
-    bl_label = "Cap seams now" if not is_lang_de() else "Nähte jetzt schließen"
-    bl_description = ("Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred."
-                      if not is_lang_de() else
-                      "Zwischen genau zwei Schnitt-Edge-Loops (Außen+Innen) pro Ebene füllen. Seeds bevorzugt.")
+    bl_label = tr("op.cap_now.label", "Cap seams now")
+    bl_description = tr(
+        "op.cap_now.desc",
+        "Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred."
+    )
     bl_options = {'REGISTER', 'UNDO'}
 
     only_selected: bpy.props.BoolProperty(
-        name="Only selected objects" if not is_lang_de() else "Nur ausgewählte Objekte",
+        name=tr("op.cap_now.only_selected.name", "Only selected objects"),
         default=True
     )
     max_planes: bpy.props.IntProperty(
-        name="Max planes",
-        description="0 = all planes per object, 1 = only largest",
+        name=tr("MAX_PLANES", "Max planes"),
+        description=tr("op.cap_now.max_planes.desc", "0 = all planes per object, 1 = only largest"),
         default=0, min=0, soft_max=12
     )
     select_only: bpy.props.BoolProperty(
-        name="Select only (no fill)" if not is_lang_de() else "Nur selektieren (kein Füllen)",
+        name=tr("op.cap_now.select_only.name", "Select only (no fill)"),
         default=False
     )
     require_two_seeds: bpy.props.BoolProperty(
-        name="Require exactly two seed edges" if not is_lang_de() else "Genau zwei Seed-Kanten verlangen",
-        description=("If exactly two edges are selected in Edit Mode, use them as seeds only (no auto-detection)."
-                     if not is_lang_de() else
-                     "Wenn im Edit Mode genau 2 Kanten selektiert sind, nur diese als Seeds verwenden (keine Auto-Erkennung)."),
+        name=tr("op.cap_now.require_two_seeds.name", "Require exactly two seed edges"),
+        description=tr("op.cap_now.require_two_seeds.desc",
+                       "If exactly two edges are selected in Edit Mode, use them as seeds only (no auto-detection)."),
         default=False
     )
 
@@ -1526,8 +1530,8 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
         if not targets:
             report_user(self, 'ERROR',
-                        "No mesh objects to cap. Select split parts or use the parts collection.",
-                        "Keine Mesh-Objekte gefunden. Teile auswählen oder die Teile-Sammlung nutzen.")
+                        tr("op.cap_now.no_targets", "No mesh objects to cap. Select split parts or use the parts collection."),
+                        tr("op.cap_now.no_targets", "No mesh objects to cap. Select split parts or use the parts collection."))
             return {'CANCELLED'}
 
         success = 0
@@ -1538,28 +1542,28 @@ class SNAP_OT_cap_open_seams_now(Operator):
             except Exception as e:
                 _leave_edit_mode()
                 report_user(self, 'WARNING',
-                            f"Processing failed on '{obj.name}': {e}",
-                            f"Verarbeitung fehlgeschlagen bei '{obj.name}': {e}")
+                            tr("op.cap_now.failed_one", f"Processing failed on '{obj.name}': {e}"),
+                            tr("op.cap_now.failed_one", f"Processing failed on '{obj.name}': {e}"))
 
         if success == 0:
             if self.select_only:
                 report_user(self, 'WARNING',
-                            "Could not determine split edge loops to select.",
-                            "Schnitt-Edge-Loops konnten nicht selektiert werden.")
+                            tr("op.cap_now.none_selected", "Could not determine split edge loops to select."),
+                            tr("op.cap_now.none_selected", "Could not determine split edge loops to select."))
             else:
                 report_user(self, 'WARNING',
-                            "Could not determine and fill split edge loops.",
-                            "Schnitt-Edge-Loops konnten nicht ermittelt/gefüllt werden.")
+                            tr("op.cap_now.none_capped", "Could not determine and fill split edge loops."),
+                            tr("op.cap_now.none_capped", "Could not determine and fill split edge loops."))
             return {'CANCELLED'}
 
         if self.select_only:
             report_user(self, 'INFO',
-                        f"Selected split edge loops on {success} object(s).",
-                        f"Schnitt-Edge-Loops bei {success} Objekt(en) selektiert.")
+                        tr("op.cap_now.selected_count", f"Selected split edge loops on {success} object(s)."),
+                        tr("op.cap_now.selected_count", f"Selected split edge loops on {success} object(s)."))
         else:
             report_user(self, 'INFO',
-                        f"Capped seams on {success} object(s).",
-                        f"Nähte bei {success} Objekt(en) geschlossen.")
+                        tr("op.cap_now.capped_count", f"Capped seams on {success} object(s)."),
+                        tr("op.cap_now.capped_count", f"Capped seams on {success} object(s)."))
         return {'FINISHED'}
 
 # ---------------------------
@@ -1574,6 +1578,18 @@ classes = (
 
 def register():
     """Register operators and add the depsgraph handler if available."""
+    # Re-assign dynamic labels/descriptions through translations at register time (optional safety)
+    try:
+        SNAP_OT_adjust_split_axis.bl_label = tr("op.adjust_axis.label", "Adjust split axis")
+        SNAP_OT_planar_split.bl_label = tr("op.split.label", "Planar Split")
+        SNAP_OT_cap_open_seams_now.bl_label = tr("op.cap_now.label", "Cap seams now")
+        SNAP_OT_cap_open_seams_now.bl_description = tr(
+            "op.cap_now.desc",
+            "Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred."
+        )
+    except Exception:
+        pass
+
     for c in classes:
         bpy.utils.register_class(c)
     # Optionally add depsgraph handler if defined
