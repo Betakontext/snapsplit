@@ -71,7 +71,7 @@ _BASE_TO_DEFAULT_LOCALE = {
     "en": "en_US",
     "de": "de_DE",
     "fr": "fr_FR",
-    "es": "es_ES",
+    "es": "es",
     "it": "it_IT",
     "pt": "pt_BR",  # prefer Brazilian Portuguese as default; pt_PT covered too
     "nl": "nl_NL",
@@ -823,7 +823,7 @@ translations: Dict[str, Dict[str, str]] = {
     },
 
     # Spanish (Spain) - complete
-    "es_ES": {
+    "es": {
         "ui.panel.title": "SnapSplit",
         "ui.reload_language": "Recargar idioma de la interfaz",
         "ui.reload_language_desc": "Volver a registrar el complemento para aplicar el idioma de Blender a las etiquetas estáticas.",

@@ -19,15 +19,11 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
 # __init__.py - SnapSplit package entry point
-#
-# - Ensure modules are registered/unregistered in a stable order
-# - Expose register/unregister used by the Preferences "Reload UI Language"
-# - No behavioral changes beyond localization string sources
 
 bl_info = {
     "name": "SnapSplit  Print-ready segmentation with connectors",
     "author": "https://dev.betakontext.de | Christoph Medicus | dev@betakontext.de",
-    "version": (0, 1, 3),
+    "version": (0, 1, 5),
     "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
