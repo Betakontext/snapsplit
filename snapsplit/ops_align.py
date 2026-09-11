@@ -19,19 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
-"""
-
 
 # ops_align.py
-
-SnapSplit — Object-Mode Face Picker + Align
-- Pick Face A (target) and Face B (moving) in Object Mode
-- Persistent highlight of picked faces using BMesh (visible on first pick)
-- Robust, roll-stable alignment frames (better for cylinder sides)
-- Align B to A: coplanar, face-to-face, centers coincident
-- Clear Picks operator to reset selection/highlights
-- Normal cursor, no eyedropper
-"""
 
 
 import bpy
@@ -40,8 +29,15 @@ from bpy.types import Operator
 from mathutils import Vector, Matrix
 from bpy_extras import view3d_utils
 
-from .utils import report_user, is_lang_de
-from .languages import tr
+from .utils import report_user
+
+# Translation helper: tr(key, fallback)
+try:
+    from .languages import tr
+except Exception:
+    # Fallback if languages module is unavailable
+    def tr(key: str, fallback: str = "") -> str:
+        return fallback or key
 
 
 # ---------------------------
@@ -123,7 +119,7 @@ def _object_face_frame_world(obj, face_index):
 
 
 def _make_frame_matrix(origin, R):
-    """Build a 4x4 frame matrix from origin and 3x3 rotation."""
+    """Build a 4x4 matrix from origin and a 3x3 rotation/axes matrix."""
     M = Matrix.Identity(4)
     M[0][0], M[0][1], M[0][2] = R[0][0], R[0][1], R[0][2]
     M[1][0], M[1][1], M[1][2] = R[1][0], R[1][1], R[1][2]
@@ -299,23 +295,24 @@ def _highlight_picked_face_persistent(objA, idxA, objB=None, idxB=-1):
 # ---------------------------
 
 class SNAP_OT_pick_face_a(Operator):
-    """Label/description will be assigned at register() using tr()."""
+    """Pick target face (A) in Object Mode"""
     bl_idname = "snapsplit.pick_face_a"
-    bl_label = "Pick Face A"  # overwritten at register
-    bl_description = "Pick target face (A) in Object Mode"  # overwritten at register
+    bl_label = tr("ui.pick_face_a", "Pick Face A")
     bl_options = {'REGISTER', 'UNDO'}
 
     def modal(self, context, event):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
-            report_user(self, 'INFO', "ops_align.msg.canceled", "Abgebrochen.")
+            report_user(self, 'INFO',
+                        tr("MSG_CANCELLED", "Canceled."),
+                        tr("MSG_CANCELLED", "Canceled."))
             return {'CANCELLED'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             hit = _raycast_pick_face(context, event)
             if not hit:
                 report_user(self, 'INFO',
-                            "ops_align.msg.no_face_hit",
-                            "Keine Fläche getroffen. Drehen/zoomen und direkt auf ein sichtbares Mesh klicken.")
+                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."),
+                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."))
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
             wm = context.window_manager
@@ -334,40 +331,42 @@ class SNAP_OT_pick_face_a(Operator):
             except Exception:
                 pass
 
-            # Localized report with format values done before report_user
-            msg_key = "ops_align.msg.picked_a"
-            en_default = f"Picked A: {obj.name} face {fidx}"
-            report_user(self, 'INFO', msg_key, en_default)
+            report_user(self, 'INFO',
+                        tr("INFO_PICKED_A", f"Picked A: {obj.name} face {fidx}"),
+                        tr("INFO_PICKED_A", f"Picked A: {obj.name} face {fidx}"))
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
         if context.space_data is None or context.space_data.type != 'VIEW_3D':
-            report_user(self, 'ERROR', "ops_align.msg.run_in_3dview", "In einer 3D-Ansicht ausführen.")
+            report_user(self, 'ERROR',
+                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."),
+                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."))
             return {'CANCELLED'}
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
 
 class SNAP_OT_pick_face_b(Operator):
-    """Label/description will be assigned at register() using tr()."""
+    """Pick moving face (B) in Object Mode"""
     bl_idname = "snapsplit.pick_face_b"
-    bl_label = "Pick Face B"  # overwritten at register
-    bl_description = "Pick moving face (B) in Object Mode"  # overwritten at register
+    bl_label = tr("ui.pick_face_b", "Pick Face B")
     bl_options = {'REGISTER', 'UNDO'}
 
     def modal(self, context, event):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
-            report_user(self, 'INFO', "ops_align.msg.canceled", "Abgebrochen.")
+            report_user(self, 'INFO',
+                        tr("MSG_CANCELLED", "Canceled."),
+                        tr("MSG_CANCELLED", "Canceled."))
             return {'CANCELLED'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             hit = _raycast_pick_face(context, event)
             if not hit:
                 report_user(self, 'INFO',
-                            "ops_align.msg.no_face_hit",
-                            "Keine Fläche getroffen. Drehen/zoomen und direkt auf ein sichtbares Mesh klicken.")
+                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."),
+                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."))
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
             wm = context.window_manager
@@ -382,16 +381,18 @@ class SNAP_OT_pick_face_b(Operator):
             _highlight_picked_face_persistent(objA=(objA or obj), idxA=(idxA if objA else fidx),
                                               objB=(obj if objA else None), idxB=(fidx if objA else -1))
 
-            msg_key = "ops_align.msg.picked_b"
-            en_default = f"Picked B: {obj.name} face {fidx}"
-            report_user(self, 'INFO', msg_key, en_default)
+            report_user(self, 'INFO',
+                        tr("INFO_PICKED_B", f"Picked B: {obj.name} face {fidx}"),
+                        tr("INFO_PICKED_B", f"Picked B: {obj.name} face {fidx}"))
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
         if context.space_data is None or context.space_data.type != 'VIEW_3D':
-            report_user(self, 'ERROR', "ops_align.msg.run_in_3dview", "In einer 3D-Ansicht ausführen.")
+            report_user(self, 'ERROR',
+                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."),
+                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."))
             return {'CANCELLED'}
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -402,10 +403,9 @@ class SNAP_OT_pick_face_b(Operator):
 # ---------------------------
 
 class SNAP_OT_align_faces(Operator):
-    """Label/description will be assigned at register() using tr()."""
+    """Align moving face B to target face A (face-to-face, centers matched)"""
     bl_idname = "snapsplit.align_faces"
-    bl_label = "Align Faces"  # overwritten at register
-    bl_description = "Align moving face B to target face A (face-to-face, centers matched)"  # overwritten
+    bl_label = tr("ALIGN_FACES_LABEL", "Align Faces")
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -417,26 +417,26 @@ class SNAP_OT_align_faces(Operator):
 
         if not nameA or idxA < 0 or not nameB or idxB < 0:
             report_user(self, 'ERROR',
-                        "ops_align.msg.pick_ab_first",
-                        "Zuerst Fläche A und B wählen (Objektmodus).")
+                        tr("ERR_PICK_A_B_FIRST", "Pick Face A and Face B first (Object Mode)."),
+                        tr("ERR_PICK_A_B_FIRST", "Pick Face A and Face B first (Object Mode)."))
             return {'CANCELLED'}
 
         objA = bpy.data.objects.get(nameA)
         objB = bpy.data.objects.get(nameB)
         if not objA or not objB or objA.type != 'MESH' or objB.type != 'MESH':
             report_user(self, 'ERROR',
-                        "ops_align.msg.stored_not_found",
-                        "Gespeicherte Flächen nicht gefunden oder keine Meshes.")
+                        tr("ERR_STORED_FACES_NOT_FOUND", "Stored faces not found or not meshes."),
+                        tr("ERR_STORED_FACES_NOT_FOUND", "Stored faces not found or not meshes."))
             return {'CANCELLED'}
 
         try:
             originA, RA = _object_face_frame_world(objA, idxA)
             originB, RB = _object_face_frame_world(objB, idxB)
+
         except Exception as e:
-            # Include the error in default English string for debugging; tr() falls back to default if missing
             report_user(self, 'ERROR',
-                        f"Could not compute face frames: {e}",
-                        f"Flächenkoordinaten konnten nicht berechnet werden: {e}")
+                tr("ERR_FACE_FRAMES_COMPUTE", f"Could not compute face frames: {e}"),
+                tr("ERR_FACE_FRAMES_COMPUTE", f"Could not compute face frames: {e}"))
             return {'CANCELLED'}
 
         # Face-to-face: flip B’s Z and Y to keep right-handed
@@ -449,8 +449,8 @@ class SNAP_OT_align_faces(Operator):
             M_align = FA @ FB.inverted()
         except Exception:
             report_user(self, 'ERROR',
-                        "ops_align.msg.align_invalid",
-                        "Ausrichtungstransformation ungültig (singulärer Frame).")
+                        tr("ERR_ALIGN_SINGULAR", "Alignment transform invalid (singular frame)."),
+                        tr("ERR_ALIGN_SINGULAR", "Alignment transform invalid (singular frame)."))
             return {'CANCELLED'}
 
         # Apply to moving object B
@@ -467,9 +467,9 @@ class SNAP_OT_align_faces(Operator):
         except Exception:
             pass
 
-        # Success report with formatting done before translation default if needed
-        en_default = f"Aligned {objB.name} to {objA.name}."
-        report_user(self, 'INFO', "ops_align.msg.aligned", en_default)
+        report_user(self, 'INFO',
+                    tr("INFO_ALIGNED", f"Aligned {objB.name} to {objA.name}."),
+                    tr("INFO_ALIGNED", f"Aligned {objB.name} to {objA.name}."))
         return {'FINISHED'}
 
 
@@ -498,10 +498,9 @@ def _exit_to_object_mode_safe():
 
 
 class SNAP_OT_clear_picks(bpy.types.Operator):
-    """Label/description will be assigned at register() using tr()."""
+    """Clear stored Face A/B picks and remove their highlights."""
     bl_idname = "snapsplit.clear_picks"
-    bl_label = "Clear Picks"  # overwritten at register
-    bl_description = "Clear stored Face A/B picks and remove their highlights."  # overwritten
+    bl_label = tr("CLEAR_PICKS_LABEL", "Clear Picks")
     bl_options = {'INTERNAL', 'UNDO'}
 
     def execute(self, context):
@@ -531,52 +530,26 @@ class SNAP_OT_clear_picks(bpy.types.Operator):
         except Exception:
             pass
 
-        # Localized info to status bar
-        report_user(self, 'INFO', "ops_align.msg.picks_cleared", "Auswahlen gelöscht")
+        self.report({'INFO'}, tr("INFO_PICKS_CLEARED", "Picks cleared"))
         return {'FINISHED'}
 
 
 # ---------------------------
-# WindowManager storage for picks (localized names/descriptions)
+# WindowManager storage for picks
 # ---------------------------
 
 def _register_picker_storage():
-    """Register or update WindowManager properties with localized names/descriptions."""
+    """Ensure WindowManager properties for storing picks exist."""
     wm = bpy.types.WindowManager
+    if not hasattr(wm, "snapsplit_face_a_obj"):
+        wm.snapsplit_face_a_obj = bpy.props.StringProperty(name=tr("PROP_FACE_A_OBJECT", "Face A Object"))
+    if not hasattr(wm, "snapsplit_face_a_index"):
+        wm.snapsplit_face_a_index = bpy.props.IntProperty(name=tr("PROP_FACE_A_INDEX", "Face A Index"), default=-1)
+    if not hasattr(wm, "snapsplit_face_b_obj"):
+        wm.snapsplit_face_b_obj = bpy.props.StringProperty(name=tr("PROP_FACE_B_OBJECT", "Face B Object"))
+    if not hasattr(wm, "snapsplit_face_b_index"):
+        wm.snapsplit_face_b_index = bpy.props.IntProperty(name=tr("PROP_FACE_B_INDEX", "Face B Index"), default=-1)
 
-    # Localized display names and descriptions via tr()
-    name_a = tr("ops_align.prop.face_a_obj.name", "Face A Object")
-    desc_a = tr("ops_align.prop.face_a_obj.desc", "Name of target face A's object")
-    name_a_idx = tr("ops_align.prop.face_a_idx.name", "Face A Index")
-    desc_a_idx = tr("ops_align.prop.face_a_idx.desc", "Polygon index of face A")
-
-    name_b = tr("ops_align.prop.face_b_obj.name", "Face B Object")
-    desc_b = tr("ops_align.prop.face_b_obj.desc", "Name of moving face B's object")
-    name_b_idx = tr("ops_align.prop.face_b_idx.name", "Face B Index")
-    desc_b_idx = tr("ops_align.prop.face_b_idx.desc", "Polygon index of face B")
-
-    # Define or update properties; re-assign to update labels after language reload
-    try:
-        wm.snapsplit_face_a_obj = bpy.props.StringProperty(name=name_a, description=desc_a)
-    except Exception:
-        pass
-    try:
-        wm.snapsplit_face_a_index = bpy.props.IntProperty(name=name_a_idx, description=desc_a_idx, default=-1)
-    except Exception:
-        pass
-    try:
-        wm.snapsplit_face_b_obj = bpy.props.StringProperty(name=name_b, description=desc_b)
-    except Exception:
-        pass
-    try:
-        wm.snapsplit_face_b_index = bpy.props.IntProperty(name=name_b_idx, description=desc_b_idx, default=-1)
-    except Exception:
-        pass
-
-
-# ---------------------------
-# Registration with localized labels/descriptions
-# ---------------------------
 
 classes = (
     SNAP_OT_pick_face_a,
@@ -585,41 +558,21 @@ classes = (
     SNAP_OT_clear_picks,
 )
 
-def _apply_localized_class_labels():
-    """Assign bl_label and bl_description according to current language via tr()."""
-    # Pick Face A
-    SNAP_OT_pick_face_a.bl_label = tr("ops_align.op.pick_a.label", "Pick Face A")
-    SNAP_OT_pick_face_a.bl_description = tr("ops_align.op.pick_a.desc", "Pick target face (A) in Object Mode")
-
-    # Pick Face B
-    SNAP_OT_pick_face_b.bl_label = tr("ops_align.op.pick_b.label", "Pick Face B")
-    SNAP_OT_pick_face_b.bl_description = tr("ops_align.op.pick_b.desc", "Pick moving face (B) in Object Mode")
-
-    # Align Faces
-    SNAP_OT_align_faces.bl_label = tr("ops_align.op.align.label", "Align Faces")
-    SNAP_OT_align_faces.bl_description = tr(
-        "ops_align.op.align.desc",
-        "Align moving face B to target face A (face-to-face, centers matched)"
-    )
-
-    # Clear Picks
-    SNAP_OT_clear_picks.bl_label = tr("ops_align.op.clear_picks.label", "Clear Picks")
-    SNAP_OT_clear_picks.bl_description = tr(
-        "ops_align.op.clear_picks.desc",
-        "Clear stored Face A/B picks and remove their highlights."
-    )
-
-
 def register():
+    """Register operators and ensure WindowManager storage exists. Also refresh labels via tr()."""
+    try:
+        SNAP_OT_pick_face_a.bl_label = tr("PICK_FACE_A_LABEL", "Pick Face A")
+        SNAP_OT_pick_face_b.bl_label = tr("PICK_FACE_B_LABEL", "Pick Face B")
+        SNAP_OT_align_faces.bl_label = tr("ALIGN_FACES_LABEL", "Align Faces")
+        SNAP_OT_clear_picks.bl_label = tr("CLEAR_PICKS_LABEL", "Clear Picks")
+    except Exception:
+        pass
+
     for c in classes:
         bpy.utils.register_class(c)
-    # Localize operator labels/descriptions at registration time
-    _apply_localized_class_labels()
-    # Localize and (re)define WM properties
     _register_picker_storage()
 
-
 def unregister():
+    """Unregister operators."""
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-

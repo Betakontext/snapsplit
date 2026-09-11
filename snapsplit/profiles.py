@@ -19,6 +19,9 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# profiles.py
+
+
 import math
 import bpy
 from bpy.props import (
@@ -30,8 +33,9 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
-from .utils import current_language, is_lang_de
-from .languages import tr  # NEW
+# Only use the translation helper; remove any custom language branches
+from .languages import tr
+
 
 # ---------------------------
 # Material profiles (tolerance per side, in mm)
@@ -45,20 +49,17 @@ MATERIAL_PROFILES = {
     "TPU": 0.35,
     "SLA": 0.10,
 }
+
+
 def _snapsplit_update_preview(self, context):
     """Property update callback to refresh or clear split preview planes."""
     try:
         from . import ops_split
         ops_split.update_split_preview_plane(context)
     except Exception:
+        # Fail silently to not break UI interactions if preview operator is unavailable
         pass
 
-def _is_de():
-    """Return True if current UI language is German (best-effort)."""
-    try:
-        return current_language().lower().startswith("de")
-    except Exception:
-        return is_lang_de()
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
@@ -73,14 +74,29 @@ def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
         lo = 16
     return max(lo, min(hi, base))
 
+
 def _mat_item_desc(key: str, val: float) -> str:
-    """Build a localized tooltip text for a material profile entry."""
-    # Provide EN/DE identical string previously; now translate key
-    return tr("profiles.mat.tooltip", f"Recommended tolerance per side: {val:.2f} mm")
+    """
+    Build a localized tooltip text for a material profile entry.
+
+    Uses languages.py template key "profiles.mat.tooltip" and formats it
+    with {val} = tolerance value in mm, rounded to 2 decimals.
+    """
+    # Use a clear English default to stay informative if translation key is missing
+    templ = tr("profiles.mat.tooltip", "Recommended tolerance per side: {val} mm")
+    try:
+        return templ.format(val=f"{val:.2f}")
+    except Exception:
+        # Fallback without formatting to avoid raising in UI build
+        return f"Recommended tolerance per side: {val:.2f} mm"
+
 
 def _material_items():
     """Return EnumProperty items for material profiles with localized tooltips."""
+    # Enum items: (identifier, name, description)
+    # Keep labels as the well-known material codes (PLA, PETG, ...) for clarity.
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
+
 
 # ---------------------------
 # Property group
@@ -88,13 +104,14 @@ def _material_items():
 
 class SnapSplitProps(PropertyGroup):
     """Scene-level settings for segmentation, preview, connectors, tolerances, and alignment."""
-    _DE = _is_de()
 
     # Split / Preview
     split_offset_mm: FloatProperty(
         name=tr("ui.split_offset_mm", "Split Offset (mm)"),
-        description=tr("ui.split_offset_desc",
-                       "Offset of the cutting plane along the split axis (positive in axis direction)"),
+        description=tr(
+            "ui.split_offset_desc",
+            "Offset of the cutting plane along the split axis (positive in axis direction)"
+        ),
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
@@ -114,8 +131,10 @@ class SnapSplitProps(PropertyGroup):
 
     show_split_preview: BoolProperty(
         name=tr("ui.show_split_preview", "Show split preview"),
-        description=tr("ui.show_split_preview_desc",
-                       "Show temporary orange planes at planned cut positions"),
+        description=tr(
+            "ui.show_split_preview_desc",
+            "Show temporary orange planes at planned cut positions"
+        ),
         default=False,
         update=_snapsplit_update_preview,
     )
@@ -125,16 +144,20 @@ class SnapSplitProps(PropertyGroup):
         default=2,
         min=2,
         max=64,
-        description=tr("ui.parts_count_desc",
-                       "Number of desired segments (cut planes = parts - 1)"),
+        description=tr(
+            "ui.parts_count_desc",
+            "Number of desired segments (cut planes = parts - 1)"
+        ),
         update=_snapsplit_update_preview,
     )
 
     # Performance/Workflow: Cap seams automatically during split
     cap_seams_during_split: BoolProperty(
         name=tr("ui.cap_seams_during_split_short", "Cap seams during split"),
-        description=tr("ui.cap_seams_during_split_desc",
-                       "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."),
+        description=tr(
+            "ui.cap_seams_during_split_desc",
+            "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."
+        ),
         default=True,
     )
 
@@ -142,18 +165,26 @@ class SnapSplitProps(PropertyGroup):
     connector_type: EnumProperty(
         name=tr("ui.connector_type", "Connector Type"),
         items=[
-            ("CYL_PIN",
-             tr("ui.cyl_pin", "Cylinder Pin"),
-             tr("ui.cyl_pin_desc", "Dowel pin + socket")),
-            ("RECT_TENON",
-             tr("ui.rect_tenon", "Rectangular Tenon"),
-             tr("ui.rect_tenon_desc", "Anti-rotation joint")),
-            ("SNAP_PIN",
-             tr("ui.snap_pin", "Snap Pin"),
-             tr("ui.snap_pin_desc", "Connector with snap spheres")),
-            ("SNAP_TENON",
-             tr("ui.snap_tenon", "Snap Tenon"),
-             tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres")),
+            (
+                "CYL_PIN",
+                tr("ui.cyl_pin", "Cylinder Pin"),
+                tr("ui.cyl_pin_desc", "Dowel pin + socket"),
+            ),
+            (
+                "RECT_TENON",
+                tr("ui.rect_tenon", "Rectangular Tenon"),
+                tr("ui.rect_tenon_desc", "Anti-rotation joint"),
+            ),
+            (
+                "SNAP_PIN",
+                tr("ui.snap_pin", "Snap Pin"),
+                tr("ui.snap_pin_desc", "Connector with snap spheres"),
+            ),
+            (
+                "SNAP_TENON",
+                tr("ui.snap_tenon", "Snap Tenon"),
+                tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres"),
+            ),
         ],
         default="CYL_PIN",
     )
@@ -161,15 +192,21 @@ class SnapSplitProps(PropertyGroup):
     # Placement distribution
     connector_distribution: EnumProperty(
         name=tr("ui.distribution", "Distribution"),
-        description=tr("ui.distribution_desc",
-                       "Distribute connectors along a line or a grid across the seam face"),
+        description=tr(
+            "ui.distribution_desc",
+            "Distribute connectors along a line or a grid across the seam face"
+        ),
         items=[
-            ("LINE",
-             tr("ui.line", "Line"),
-             tr("ui.line_desc", "Place connectors along a line in the seam face")),
-            ("GRID",
-             tr("ui.grid", "Grid"),
-             tr("ui.grid_desc", "Distribute connectors in a grid over the seam face")),
+            (
+                "LINE",
+                tr("ui.line", "Line"),
+                tr("ui.line_desc", "Place connectors along a line in the seam face"),
+            ),
+            (
+                "GRID",
+                tr("ui.grid", "Grid"),
+                tr("ui.grid_desc", "Distribute connectors in a grid over the seam face"),
+            ),
         ],
         default="LINE",
     )
@@ -191,7 +228,10 @@ class SnapSplitProps(PropertyGroup):
 
     connector_margin_pct: FloatProperty(
         name=tr("ui.margin_pct", "Margin (%)"),
-        description=tr("ui.margin_pct_desc", "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"),
+        description=tr(
+            "ui.margin_pct_desc",
+            "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
+        ),
         default=10.0,
         min=0.0,
         soft_max=40.0,
@@ -282,8 +322,10 @@ class SnapSplitProps(PropertyGroup):
         name=tr("ui.material_profiles", "Material Profiles"),
         items=_material_items(),
         default="PLA",
-        description=tr("ui.material_profile_desc",
-                       "Select a material profile to auto-fill tolerance per side"),
+        description=tr(
+            "ui.material_profile_desc",
+            "Select a material profile to auto-fill tolerance per side"
+        ),
     )
 
     tol_override: FloatProperty(
@@ -301,27 +343,27 @@ class SnapSplitProps(PropertyGroup):
 
     # UI foldouts
     ui_more_seg: BoolProperty(
-        name="More segmentation settings",
-        description="Show advanced segmentation options",
+        name=tr("ui.foldout.more_seg", "More segmentation settings"),
+        description=tr("ui.foldout.more_seg_desc", "Show advanced segmentation options"),
         default=False
     )
 
     ui_more_conn: BoolProperty(
-        name="More connection settings",
-        description="Show advanced connection/geometry options",
+        name=tr("ui.foldout.more_conn", "More connection settings"),
+        description=tr("ui.foldout.more_conn_desc", "Show advanced connection/geometry options"),
         default=False
     )
 
     ui_more_tol: BoolProperty(
-        name="More tolerance settings",
-        description="Show advanced tolerance options",
+        name=tr("ui.foldout.more_tol", "More tolerance settings"),
+        description=tr("ui.foldout.more_tol_desc", "Show advanced tolerance options"),
         default=False
     )
 
-    # NEW: Alignment foldout
+    # Alignment foldout
     ui_more_align: BoolProperty(
-        name="More alignment settings",
-        description="Show advanced alignment options",
+        name=tr("ui.foldout.more_align", "More alignment settings"),
+        description=tr("ui.foldout.more_align_desc", "Show advanced alignment options"),
         default=False
     )
 
@@ -332,11 +374,13 @@ class SnapSplitProps(PropertyGroup):
 
 classes = (SnapSplitProps,)
 
+
 def register():
     """Register property classes and attach to bpy.types.Scene."""
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.snapsplit = PointerProperty(type=SnapSplitProps)
+
 
 def unregister():
     """Unregister property classes and detach from bpy.types.Scene."""
@@ -344,4 +388,3 @@ def unregister():
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-

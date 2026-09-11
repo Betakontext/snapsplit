@@ -333,7 +333,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.section.settings": "Settings",
         "ui.label.collection": "Export Collection",
         "ui.tooltip.collection": "Collection used for export output",
-        "ui.buy_me_coffee": "Buy me a coffee ",
 
         # Preferences
         "prefs.title": "SnapSplit Preferences",
@@ -511,7 +510,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.section.settings": "Einstellungen",
         "ui.label.collection": "Export-Kollektion",
         "ui.tooltip.collection": "Kollektion für Exportausgaben",
-        "ui.buy_me_coffee": "Spendier mir einen Kaffee ",
 
         "prefs.title": "SnapSplit Einstellungen",
         "prefs.default_profile": "Standard-Profil",

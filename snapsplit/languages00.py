@@ -278,24 +278,6 @@ _ALL_KEYS = (
     "tooltip.planar_split",
     "tooltip.adjust",
     "tooltip.show_split_preview",
-
-    # ---------------------------
-    # Additional keys to cover all UI you mentioned explicitly
-    # ---------------------------
-    "ui.segmentation_title",
-    "ui.less",
-    "ui.adjust",
-    "ui.cap_seams_during_split_slow",
-    "ui.connections_title",
-    "ui.add_connectors",
-    "ui.place_connectors_click",
-    "ui.pick_faces_hint",
-    "ui.face_a_none",
-    "ui.face_b_none",
-    "ui.pick_face_a",
-    "ui.pick_face_b",
-    "ui.align_faces",
-    "ui.align_faces_desc",
 )
 
 # ---------------------------
@@ -333,7 +315,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.section.settings": "Settings",
         "ui.label.collection": "Export Collection",
         "ui.tooltip.collection": "Collection used for export output",
-        "ui.buy_me_coffee": "Buy me a coffee ",
 
         # Preferences
         "prefs.title": "SnapSplit Preferences",
@@ -479,22 +460,6 @@ translations: Dict[str, Dict[str, str]] = {
         "tooltip.planar_split": "Split selected geometry along a best-fit plane.",
         "tooltip.adjust": "Open fine-tuning options for the current operation.",
         "tooltip.show_split_preview": "Toggle a visual preview of the split before applying.",
-
-        # Additional UI you mentioned
-        "ui.segmentation_title": "Segmentation",
-        "ui.less": "Less",
-        "ui.adjust": "Adjust",
-        "ui.cap_seams_during_split_slow": "Cap seams during split (slower)",
-        "ui.connections_title": "Connections",
-        "ui.add_connectors": "Add connectors",
-        "ui.place_connectors_click": "Place connectors (click)",
-        "ui.pick_faces_hint": "Pick faces in Object Mode (A = target, B = moving)",
-        "ui.face_a_none": "A: none",
-        "ui.face_b_none": "B: none",
-        "ui.pick_face_a": "Pick Face A",
-        "ui.pick_face_b": "Pick Face B",
-        "ui.align_faces": "Align Faces",
-        "ui.align_faces_desc": "Align face B to face A using local fit and orientation",
     },
 
     # German (Germany) - complete
@@ -511,7 +476,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.section.settings": "Einstellungen",
         "ui.label.collection": "Export-Kollektion",
         "ui.tooltip.collection": "Kollektion für Exportausgaben",
-        "ui.buy_me_coffee": "Spendier mir einen Kaffee ",
 
         "prefs.title": "SnapSplit Einstellungen",
         "prefs.default_profile": "Standard-Profil",
@@ -564,6 +528,8 @@ translations: Dict[str, Dict[str, str]] = {
         "msg.operation_done": "Vorgang abgeschlossen.",
         "msg.operation_failed": "Vorgang fehlgeschlagen.",
         "msg.unapplied_transforms": "Objekt hat nicht angewendete Transformationen",
+
+        # profiles.py specific UI
 
         # Segmentation / Preview
         "ui.split_offset_mm": "Schnitt-Offset (mm)",
@@ -643,26 +609,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Weitere Ausrichtungs-Einstellungen",
         "ui.foldout.more_align_desc": "Erweiterte Ausrichtungsoptionen anzeigen",
 
-        # Tooltips
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Teilt die ausgewählte Geometrie entlang einer Best-Fit-Ebene.",
         "tooltip.adjust": "Öffnet Feineinstellungen für den aktuellen Vorgang.",
         "tooltip.show_split_preview": "Schaltet die visuelle Schnittvorschau vor dem Anwenden um.",
-
-        # Additional UI mentioned
-        "ui.segmentation_title": "Segmentierung",
-        "ui.less": "Weniger",
-        "ui.adjust": "Anpassen",
-        "ui.cap_seams_during_split_slow": "Nähte während des Schnitts verschließen (langsamer)",
-        "ui.connections_title": "Verbindungen",
-        "ui.add_connectors": "Verbinder hinzufügen",
-        "ui.place_connectors_click": "Verbinder platzieren (Klick)",
-        "ui.pick_faces_hint": "Flächen im Objektmodus wählen (A = Ziel, B = beweglich)",
-        "ui.face_a_none": "A: keine",
-        "ui.face_b_none": "B: keine",
-        "ui.pick_face_a": "Fläche A wählen",
-        "ui.pick_face_b": "Fläche B wählen",
-        "ui.align_faces": "Flächen ausrichten",
-        "ui.align_faces_desc": "Richte Fläche B an Fläche A mit lokaler Anpassung und Orientierung aus",
     },
 
     # French (France) - complete
@@ -802,24 +752,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Plus de réglages d’alignement",
         "ui.foldout.more_align_desc": "Afficher les options avancées d’alignement",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Découpe la géométrie sélectionnée selon un plan ajusté.",
         "tooltip.adjust": "Ouvre les réglages fins de l’opération en cours.",
         "tooltip.show_split_preview": "Active/désactive l’aperçu visuel avant application.",
-
-        "ui.segmentation_title": "Segmentation",
-        "ui.less": "Moins",
-        "ui.adjust": "Ajuster",
-        "ui.cap_seams_during_split_slow": "Boucher les arêtes pendant la coupe (plus lent)",
-        "ui.connections_title": "Connexions",
-        "ui.add_connectors": "Ajouter des connecteurs",
-        "ui.place_connectors_click": "Placer des connecteurs (clic)",
-        "ui.pick_faces_hint": "Choisir des faces en mode Objet (A = cible, B = mobile)",
-        "ui.face_a_none": "A : aucune",
-        "ui.face_b_none": "B : aucune",
-        "ui.pick_face_a": "Choisir face A",
-        "ui.pick_face_b": "Choisir face B",
-        "ui.align_faces": "Aligner les faces",
-        "ui.align_faces_desc": "Aligner la face B sur la face A avec ajustement local et orientation",
     },
 
     # Spanish (Spain) - complete
@@ -959,24 +895,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Más ajustes de alineación",
         "ui.foldout.more_align_desc": "Mostrar opciones avanzadas de alineación",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Divide la geometría seleccionada según un plano de mejor ajuste.",
         "tooltip.adjust": "Abre los ajustes finos de la operación actual.",
         "tooltip.show_split_preview": "Activa/desactiva la vista previa antes de aplicar.",
-
-        "ui.segmentation_title": "Segmentación",
-        "ui.less": "Menos",
-        "ui.adjust": "Ajustar",
-        "ui.cap_seams_during_split_slow": "Cerrar bordes durante el corte (más lento)",
-        "ui.connections_title": "Conexiones",
-        "ui.add_connectors": "Añadir conectores",
-        "ui.place_connectors_click": "Colocar conectores (clic)",
-        "ui.pick_faces_hint": "Elegir caras en Modo Objeto (A = objetivo, B = móvil)",
-        "ui.face_a_none": "A: ninguno",
-        "ui.face_b_none": "B: ninguno",
-        "ui.pick_face_a": "Elegir Cara A",
-        "ui.pick_face_b": "Elegir Cara B",
-        "ui.align_faces": "Alinear caras",
-        "ui.align_faces_desc": "Alinear la cara B con la cara A usando ajuste local y orientación",
     },
 
     # Italian (Italy) - complete
@@ -1116,24 +1038,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Altre impostazioni di allineamento",
         "ui.foldout.more_align_desc": "Mostra le opzioni avanzate di allineamento",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Divide la geometria selezionata con un piano di miglior adattamento.",
         "tooltip.adjust": "Apre le regolazioni fini per l’operazione corrente.",
         "tooltip.show_split_preview": "Attiva/disattiva l’anteprima visiva prima di applicare.",
-
-        "ui.segmentation_title": "Segmentazione",
-        "ui.less": "Meno",
-        "ui.adjust": "Regola",
-        "ui.cap_seams_during_split_slow": "Chiudi bordi durante il taglio (più lento)",
-        "ui.connections_title": "Connessioni",
-        "ui.add_connectors": "Aggiungi connettori",
-        "ui.place_connectors_click": "Posiziona connettori (clic)",
-        "ui.pick_faces_hint": "Scegli facce in Modalità Oggetto (A = bersaglio, B = mobile)",
-        "ui.face_a_none": "A: nessuna",
-        "ui.face_b_none": "B: nessuna",
-        "ui.pick_face_a": "Scegli Faccia A",
-        "ui.pick_face_b": "Scegli Faccia B",
-        "ui.align_faces": "Allinea facce",
-        "ui.align_faces_desc": "Allinea la faccia B alla faccia A con adattamento locale e orientamento",
     },
 
     # Portuguese (Brazil) - complete
@@ -1273,24 +1181,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Mais configurações de alinhamento",
         "ui.foldout.more_align_desc": "Mostrar opções avançadas de alinhamento",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Divide a geometria selecionada por um plano de melhor ajuste.",
         "tooltip.adjust": "Abre ajustes finos para a operação atual.",
         "tooltip.show_split_preview": "Ativa/desativa a prévia visual antes de aplicar.",
-
-        "ui.segmentation_title": "Segmentação",
-        "ui.less": "Menos",
-        "ui.adjust": "Ajustar",
-        "ui.cap_seams_during_split_slow": "Fechar arestas durante o corte (mais lento)",
-        "ui.connections_title": "Conexões",
-        "ui.add_connectors": "Adicionar conectores",
-        "ui.place_connectors_click": "Posicionar conectores (clique)",
-        "ui.pick_faces_hint": "Escolher faces no modo Objeto (A = alvo, B = móvel)",
-        "ui.face_a_none": "A: nenhum",
-        "ui.face_b_none": "B: nenhum",
-        "ui.pick_face_a": "Escolher Face A",
-        "ui.pick_face_b": "Escolher Face B",
-        "ui.align_faces": "Alinhar faces",
-        "ui.align_faces_desc": "Alinhar a face B à face A com ajuste local e orientação",
     },
 
     # Portuguese (Portugal) - complete
@@ -1342,7 +1236,7 @@ translations: Dict[str, Dict[str, str]] = {
         "op.cap_now.select_only.name": "Apenas selecionar (sem preencher)",
         "op.cap_now.require_two_seeds.name": "Exigir exatamente duas arestas seed",
         "op.cap_now.require_two_seeds.desc": "Se exatamente duas arestas estiverem selecionadas no Modo de Edição, usá-las apenas como seeds (sem deteção automática).",
-        "op.cap_now.no_targets": "Nenhum objeto de malha para fechar. Selecione partes divididas ou utilize a coleção de partes.",
+        "op.cap_now.no_targets": "Nenhum objeto de malha para fechar. Seleccione partes divididas ou utilize a coleção de partes.",
         "op.cap_now.failed_one": "Falha ao processar «{name}»: {err}",
         "op.cap_now.none_selected": "Não foi possível determinar os loops de arestas de corte para selecionar.",
         "op.cap_now.none_capped": "Não foi possível determinar e preencher os loops de arestas de corte.",
@@ -1430,24 +1324,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Mais definições de alinhamento",
         "ui.foldout.more_align_desc": "Mostrar opções avançadas de alinhamento",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Divide a geometria selecionada segundo um plano de melhor ajuste.",
         "tooltip.adjust": "Abre os ajustes finos da operação atual.",
         "tooltip.show_split_preview": "Ativa/desativa a pré-visualização antes de aplicar.",
-
-        "ui.segmentation_title": "Segmentação",
-        "ui.less": "Menos",
-        "ui.adjust": "Ajustar",
-        "ui.cap_seams_during_split_slow": "Fechar arestas durante o corte (mais lento)",
-        "ui.connections_title": "Ligações",
-        "ui.add_connectors": "Adicionar conectores",
-        "ui.place_connectors_click": "Colocar conectores (clique)",
-        "ui.pick_faces_hint": "Escolher faces no modo Objeto (A = alvo, B = móvel)",
-        "ui.face_a_none": "A: nenhum",
-        "ui.face_b_none": "B: nenhum",
-        "ui.pick_face_a": "Escolher Face A",
-        "ui.pick_face_b": "Escolher Face B",
-        "ui.align_faces": "Alinhar faces",
-        "ui.align_faces_desc": "Alinhar a face B à face A com ajuste local e orientação",
     },
 
     # Dutch (Netherlands) - complete
@@ -1587,24 +1467,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Meer uitlijningsinstellingen",
         "ui.foldout.more_align_desc": "Geavanceerde uitlijningsopties tonen",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Splitst geselecteerde geometrie langs een best-fit vlak.",
         "tooltip.adjust": "Opent fijnafstemming voor de huidige bewerking.",
         "tooltip.show_split_preview": "Schakelt de visuele voorvertoning in/uit voor toepassen.",
-
-        "ui.segmentation_title": "Segmentatie",
-        "ui.less": "Minder",
-        "ui.adjust": "Aanpassen",
-        "ui.cap_seams_during_split_slow": "Randen afsluiten tijdens splitsen (trager)",
-        "ui.connections_title": "Verbindingen",
-        "ui.add_connectors": "Verbinders toevoegen",
-        "ui.place_connectors_click": "Verbinders plaatsen (klik)",
-        "ui.pick_faces_hint": "Vlakken kiezen in Objectmodus (A = doel, B = bewegend)",
-        "ui.face_a_none": "A: geen",
-        "ui.face_b_none": "B: geen",
-        "ui.pick_face_a": "Kies Vlak A",
-        "ui.pick_face_b": "Kies Vlak B",
-        "ui.align_faces": "Vlakken uitlijnen",
-        "ui.align_faces_desc": "Lijn vlak B uit met vlak A met lokale passing en oriëntatie",
     },
 
     # Polish (Poland) - complete
@@ -1744,24 +1610,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Więcej ustawień wyrównania",
         "ui.foldout.more_align_desc": "Pokaż zaawansowane opcje wyrównania",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Dzieli wybraną geometrię wzdłuż najlepiej dopasowanej płaszczyzny.",
         "tooltip.adjust": "Otwiera precyzyjne ustawienia bieżącej operacji.",
         "tooltip.show_split_preview": "Włącza/wyłącza podgląd przed zastosowaniem.",
-
-        "ui.segmentation_title": "Segmentacja",
-        "ui.less": "Mniej",
-        "ui.adjust": "Dostosuj",
-        "ui.cap_seams_during_split_slow": "Zamykaj krawędzie podczas cięcia (wolniej)",
-        "ui.connections_title": "Połączenia",
-        "ui.add_connectors": "Dodaj łączniki",
-        "ui.place_connectors_click": "Umieść łączniki (klik)",
-        "ui.pick_faces_hint": "Wybierz powierzchnie w trybie Obiekt (A = cel, B = ruchoma)",
-        "ui.face_a_none": "A: brak",
-        "ui.face_b_none": "B: brak",
-        "ui.pick_face_a": "Wybierz Powierzchnię A",
-        "ui.pick_face_b": "Wybierz Powierzchnię B",
-        "ui.align_faces": "Wyrównaj powierzchnie",
-        "ui.align_faces_desc": "Wyrównaj powierzchnię B do A z lokalnym dopasowaniem i orientacją",
     },
 
     # Japanese (Japan) - complete
@@ -1901,24 +1753,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "詳細な位置合わせ設定",
         "ui.foldout.more_align_desc": "高度な位置合わせオプションを表示",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "最適平面に沿って選択ジオメトリを分割します。",
         "tooltip.adjust": "現在の操作の微調整を開きます。",
         "tooltip.show_split_preview": "適用前のプレビューを切り替えます。",
-
-        "ui.segmentation_title": "セグメンテーション",
-        "ui.less": "少なく",
-        "ui.adjust": "調整",
-        "ui.cap_seams_during_split_slow": "分割中にエッジをキャップ（低速）",
-        "ui.connections_title": "接続",
-        "ui.add_connectors": "コネクタを追加",
-        "ui.place_connectors_click": "コネクタを配置（クリック）",
-        "ui.pick_faces_hint": "オブジェクトモードで面を選ぶ（A = ターゲット, B = 移動）",
-        "ui.face_a_none": "A: なし",
-        "ui.face_b_none": "B: なし",
-        "ui.pick_face_a": "面Aを選択",
-        "ui.pick_face_b": "面Bを選択",
-        "ui.align_faces": "面を整列",
-        "ui.align_faces_desc": "ローカルフィットと向きを用いて面Bを面Aに整列",
     },
 
     # Chinese (Simplified, China) - complete
@@ -2058,24 +1896,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "更多对齐设置",
         "ui.foldout.more_align_desc": "显示高级对齐选项",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "沿最佳拟合平面分割所选几何体。",
         "tooltip.adjust": "打开当前操作的微调选项。",
         "tooltip.show_split_preview": "在应用前切换可视化预览。",
-
-        "ui.segmentation_title": "分割",
-        "ui.less": "更少",
-        "ui.adjust": "调整",
-        "ui.cap_seams_during_split_slow": "切割时封盖边界（较慢）",
-        "ui.connections_title": "连接",
-        "ui.add_connectors": "添加连接件",
-        "ui.place_connectors_click": "放置连接件（单击）",
-        "ui.pick_faces_hint": "在对象模式中选择面（A = 目标，B = 移动）",
-        "ui.face_a_none": "A：无",
-        "ui.face_b_none": "B：无",
-        "ui.pick_face_a": "选择面 A",
-        "ui.pick_face_b": "选择面 B",
-        "ui.align_faces": "对齐面",
-        "ui.align_faces_desc": "使用局部拟合与方向将面 B 对齐到面 A",
     },
 
     # Chinese (Traditional, Taiwan) - complete
@@ -2215,24 +2039,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "更多對齊設定",
         "ui.foldout.more_align_desc": "顯示進階的對齊選項",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "沿最佳擬合平面分割所選幾何體。",
         "tooltip.adjust": "開啟目前操作的微調選項。",
         "tooltip.show_split_preview": "在套用前切換視覺預覽。",
-
-        "ui.segmentation_title": "分割",
-        "ui.less": "更少",
-        "ui.adjust": "調整",
-        "ui.cap_seams_during_split_slow": "切割時封蓋邊界（較慢）",
-        "ui.connections_title": "連接",
-        "ui.add_connectors": "新增連接件",
-        "ui.place_connectors_click": "放置連接件（點擊）",
-        "ui.pick_faces_hint": "在物件模式中選擇面（A = 目標，B = 移動）",
-        "ui.face_a_none": "A：無",
-        "ui.face_b_none": "B：無",
-        "ui.pick_face_a": "選擇面 A",
-        "ui.pick_face_b": "選擇面 B",
-        "ui.align_faces": "對齊面",
-        "ui.align_faces_desc": "使用在地擬合與方向將面 B 對齊至面 A",
     },
 
     # Russian (Russia) - complete
@@ -2372,24 +2182,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Дополнительные настройки выравнивания",
         "ui.foldout.more_align_desc": "Показать расширенные параметры выравнивания",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Разрезает выбранную геометрию по наилучшей подходящей плоскости.",
         "tooltip.adjust": "Открывает тонкие настройки текущей операции.",
         "tooltip.show_split_preview": "Вкл./выкл. визуальный предпросмотр перед применением.",
-
-        "ui.segmentation_title": "Сегментация",
-        "ui.less": "Меньше",
-        "ui.adjust": "Настроить",
-        "ui.cap_seams_during_split_slow": "Закрывать кромки при разрезе (медленнее)",
-        "ui.connections_title": "Соединения",
-        "ui.add_connectors": "Добавить соединители",
-        "ui.place_connectors_click": "Разместить соединители (клик)",
-        "ui.pick_faces_hint": "Выберите грани в режиме Объект (A = цель, B = движ.)",
-        "ui.face_a_none": "A: нет",
-        "ui.face_b_none": "B: нет",
-        "ui.pick_face_a": "Выбрать грань A",
-        "ui.pick_face_b": "Выбрать грань B",
-        "ui.align_faces": "Выровнять грани",
-        "ui.align_faces_desc": "Выровнять грань B по грани A с локальным соответствием и ориентацией",
     },
 
     # Ukrainian (Ukraine) - complete
@@ -2428,7 +2224,7 @@ translations: Dict[str, Dict[str, str]] = {
         "op.split.label": "Площинний розріз",
         "op.split.desc": "Розділити грані уздовж підібраної площини",
         "op.split.many_parts_hint": "Поділ на багато частин може зайняти час на щільних сітках...",
-        "op.split.autocap.none": "Автозакриття не знайшло ді��сних петель.",
+        "op.split.autocap.none": "Автозакриття не знайшло дійсних петель.",
         "op.split.autocap.count": "Автозакриття кромок на {n} частині(ях).",
         "op.split.fewer_parts": "Створено менше частин, ніж очікувалось ({have} < {want}).",
         "op.split.parts_created": "Створено частин: {n}.",
@@ -2467,12 +2263,12 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.split_along_y": "Розрізати вздовж Y",
         "ui.split_along_z": "Розрізати вздовж Z",
         "ui.show_split_preview": "Показати попередній перегляд розрізу",
-        "ui.show_split_preview_desc": "Показати тимчасові помаранчеві площини у запланованих місцях rozrizu",
+        "ui.show_split_preview_desc": "Показати тимчасові помаранчеві площини у запланованих місцях розрізу",
         "ui.parts_count": "Кількість частин",
         "ui.parts_count_desc": "Бажана кількість сегментів (площини розрізу = частини - 1)",
 
-        "ui.cap_seams_during_split_short": "Закривати кромки під час rozrizu",
-        "ui.cap_seams_during_split_desc": "Автоматично закривати кромки після розрізу. З порожниною/внутрішньою оболонкою: точне заповнення зовнішніх/внутрішніх петель; без порожнини: просте заповнення. Може збільшити час в��конання.",
+        "ui.cap_seams_during_split_short": "Закривати кромки під час розрізу",
+        "ui.cap_seams_during_split_desc": "Автоматично закривати кромки після розрізу. З порожниною/внутрішньою оболонкою: точне заповнення зовнішніх/внутрішніх петель; без порожнини: просте заповнення. Може збільшити час виконання.",
 
         "ui.connector_type": "Тип з’єднувача",
         "ui.cyl_pin": "Циліндричний штифт",
@@ -2512,7 +2308,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.chamfer_mm": "Фаска (мм)",
 
         "ui.insert_depth_pct": "Глибина вставки (%)",
-        "ui.insert_depth_pct_desc": "Відсоток довжини з’єднувача, занурений у частину A",
+        "ui.insert_depth_pct_desc": "Відсоток довжини з’єднува��а, занурений у частину A",
 
         "ui.material_profiles": "Профілі матеріалів",
         "ui.material_profile_desc": "Виберіть профіль матеріалу, щоб автоматично заповнити допуск на сторону",
@@ -2529,24 +2325,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Більше налаштувань вирівнювання",
         "ui.foldout.more_align_desc": "Показати розширені параметри вирівнювання",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Розрізає вибрану геометрію площиною найкращого прилягання.",
         "tooltip.adjust": "Відкриває точні налаштування поточної операції.",
         "tooltip.show_split_preview": "Увімк./вимк. попередній перегляд перед застосуванням.",
-
-        "ui.segmentation_title": "Сегментація",
-        "ui.less": "Менше",
-        "ui.adjust": "Налаштувати",
-        "ui.cap_seams_during_split_slow": "Закривати кромки під час розрізу (повільніше)",
-        "ui.connections_title": "З’єднання",
-        "ui.add_connectors": "Додати з’єднувачі",
-        "ui.place_connectors_click": "Розмістити з’єднувачі (клік)",
-        "ui.pick_faces_hint": "Виберіть грані в режимі Об’єкт (A = ціль, B = рухомий)",
-        "ui.face_a_none": "A: немає",
-        "ui.face_b_none": "B: немає",
-        "ui.pick_face_a": "Вибрати грань A",
-        "ui.pick_face_b": "Вибрати грань B",
-        "ui.align_faces": "Вирівняти грані",
-        "ui.align_faces_desc": "Вирівняти грань B до грані A з локальним узгодженням та орієнтацією",
     },
 
     # Turkish (Turkey) - complete
@@ -2686,25 +2468,10 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.foldout.more_align": "Daha fazla hizalama ayarı",
         "ui.foldout.more_align_desc": "Gelişmiş hizalama seçeneklerini göster",
 
+        # New concise tooltips (hover)
         "tooltip.planar_split": "Seçili geometriyi en uygun düzlemle böler.",
         "tooltip.adjust": "Geçerli işlem için ince ayarları açar.",
         "tooltip.show_split_preview": "Uygulamadan önce görsel önizlemeyi aç/kapat.",
-
-        # Additional UI mentioned
-        "ui.segmentation_title": "Segmentasyon",
-        "ui.less": "Daha az",
-        "ui.adjust": "Ayarla",
-        "ui.cap_seams_during_split_slow": "Bölme sırasında kenarları kapat (daha yavaş)",
-        "ui.connections_title": "Bağlantılar",
-        "ui.add_connectors": "Bağlayıcı ekle",
-        "ui.place_connectors_click": "Bağlayıcı yerleştir (tıkla)",
-        "ui.pick_faces_hint": "Yüzleri Nesne Modunda seçin (A = hedef, B = hareketli)",
-        "ui.face_a_none": "A: yok",
-        "ui.face_b_none": "B: yok",
-        "ui.pick_face_a": "Yüz A’yı seç",
-        "ui.pick_face_b": "Yüz B’yi seç",
-        "ui.align_faces": "Yüzleri hizala",
-        "ui.align_faces_desc": "Yüz B’yi yerel uyum ve yönelimle Yüz A’ya hizala",
     },
 }
 

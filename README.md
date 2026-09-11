@@ -1,7 +1,7 @@
 # SnapSplit
 
 -------
-V_0.1.3
+V_0.1.5_more_languages -> This version is in development -> Switching the Addon to the Blender language system
 -------
 
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
