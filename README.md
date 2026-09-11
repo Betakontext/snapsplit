@@ -7,7 +7,7 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 ---------------------------
 This is V_0.1.5 -> Switching the UI to Blender's language system and adding further translations.
 For now I implemented: "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ja", "zh", "ru", "uk", "tr"
-Feel free to fork and further, for you missing language into -> languages.py. Then open a pull request. I'd be happy about paticipation.
+Feel free to fork and add further languages into -> languages.py. Then open a pull request. I'd be happy about any participation.
 ---------------------------
 ---------------------------
 
