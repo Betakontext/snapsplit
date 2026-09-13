@@ -1,4 +1,3 @@
-# profiles.py
 """
 Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
@@ -20,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# profiles.py
+
 import math
 import bpy
 from bpy.props import (
@@ -31,15 +32,16 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
-from .utils import current_language, is_lang_de
+# Only use the translation helper; remove any custom language branches
+from .languages import tr
+
 
 # ---------------------------
 # Material profiles (tolerance per side, in mm)
 # ---------------------------
 
-# Updated defaults per approved spec (more conservative PLA)
 MATERIAL_PROFILES = {
-    "PLA": 0.25,
+    "PLA": 0.20,
     "PETG": 0.30,
     "ABS": 0.25,
     "ASA": 0.25,
@@ -47,20 +49,16 @@ MATERIAL_PROFILES = {
     "SLA": 0.10,
 }
 
+
 def _snapsplit_update_preview(self, context):
     """Property update callback to refresh or clear split preview planes."""
     try:
         from . import ops_split
         ops_split.update_split_preview_plane(context)
     except Exception:
+        # Fail silently to not break UI interactions if preview operator is unavailable
         pass
 
-def _is_de():
-    """Return True if current UI language is German (best-effort)."""
-    try:
-        return current_language().lower().startswith("de")
-    except Exception:
-        return is_lang_de()
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
@@ -75,14 +73,25 @@ def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
         lo = 16
     return max(lo, min(hi, base))
 
+
 def _mat_item_desc(key: str, val: float) -> str:
-    """Build a localized tooltip text for a material profile entry."""
-    # The message is the same for EN/DE to keep it concise
-    return f"Recommended tolerance per side: {val:.2f} mm"
+    """
+    Build a localized tooltip text for a material profile entry.
+
+    Uses languages.py template key "profiles.mat.tooltip" and formats it
+    with {val} = tolerance value in mm, rounded to 2 decimals.
+    """
+    templ = tr("profiles.mat.tooltip", "Recommended tolerance per side: {val} mm")
+    try:
+        return templ.format(val=f"{val:.2f}")
+    except Exception:
+        return f"Recommended tolerance per side: {val:.2f} mm"
+
 
 def _material_items():
     """Return EnumProperty items for material profiles with localized tooltips."""
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
+
 
 # ---------------------------
 # Property group
@@ -90,13 +99,14 @@ def _material_items():
 
 class SnapSplitProps(PropertyGroup):
     """Scene-level settings for segmentation, preview, connectors, tolerances, and alignment."""
-    _DE = _is_de()
 
     # Split / Preview
     split_offset_mm: FloatProperty(
-        name="Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)",
-        description=("Offset of the cutting plane along the split axis (positive in axis direction)"
-                     if not _DE else "Verschiebung der Schnittebene entlang der Achse (positiv in Achsrichtung)"),
+        name=tr("ui.split_offset_mm", "Split Offset (mm)"),
+        description=tr(
+            "ui.split_offset_desc",
+            "Offset of the cutting plane along the split axis (positive in axis direction)"
+        ),
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
@@ -104,155 +114,124 @@ class SnapSplitProps(PropertyGroup):
     )
 
     split_axis: EnumProperty(
-        name="Split Axis" if not _DE else "Schnittachse",
+        name=tr("ui.split_axis", "Split Axis"),
         items=[
-            ("X", "X", "Split along X" if not _DE else "Entlang X schneiden"),
-            ("Y", "Y", "Split along Y" if not _DE else "Entlang Y schneiden"),
-            ("Z", "Z", "Split along Z" if not _DE else "Entlang Z schneiden"),
+            ("X", "X", tr("ui.split_along_x", "Split along X")),
+            ("Y", "Y", tr("ui.split_along_y", "Split along Y")),
+            ("Z", "Z", tr("ui.split_along_z", "Split along Z")),
         ],
         default="Z",
         update=_snapsplit_update_preview,
     )
 
     show_split_preview: BoolProperty(
-        name="Show split preview" if not _DE else "Schnittvorschau anzeigen",
-        description=("Show temporary orange planes at planned cut positions"
-                     if not _DE else "Temporäre orange Ebenen als geplante Schnittpositionen anzeigen"),
+        name=tr("ui.show_split_preview", "Show split preview"),
+        description=tr(
+            "ui.show_split_preview_desc",
+            "Show temporary orange planes at planned cut positions"
+        ),
         default=False,
         update=_snapsplit_update_preview,
     )
 
     parts_count: IntProperty(
-        name="Number of Parts" if not _DE else "Anzahl Teile",
+        name=tr("ui.parts_count", "Number of Parts"),
         default=2,
         min=2,
         max=64,
-        description=("Number of desired segments (cut planes = parts - 1)"
-                     if not _DE else "Anzahl gewünschter Segmente (Schnittebenen = Teile - 1)"),
+        description=tr(
+            "ui.parts_count_desc",
+            "Number of desired segments (cut planes = parts - 1)"
+        ),
         update=_snapsplit_update_preview,
     )
 
     # Performance/Workflow: Cap seams automatically during split
     cap_seams_during_split: BoolProperty(
-        name="Cap seams during split" if not _DE else "Nähte beim Schnitt schließen",
-        description=("Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."
-                     if not _DE else "Wendet nach dem Schnitt automatisch den Randverschluss an. Mit Hollow/Innenhülle: präzise Außen/Innen-Loop-Füllung; ohne Hollow: einfache Füllung. Kann die Laufzeit erhöhen."),
+        name=tr("ui.cap_seams_during_split_short", "Cap seams during split"),
+        description=tr(
+            "ui.cap_seams_during_split_desc",
+            "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime."
+        ),
         default=True,
     )
 
     # Connections
     connector_type: EnumProperty(
-        name="Connector Type" if not _DE else "Verbinder-Typ",
+        name=tr("ui.connector_type", "Connector Type"),
         items=[
-            ("CYL_PIN",
-             "Cylinder Pin" if not _DE else "Zylinder-Pin",
-             "Dowel pin + socket" if not _DE else "Holzdübel + Buchse"),
-            ("RECT_TENON",
-             "Rectangular Tenon" if not _DE else "Rechteck-Zapfen",
-             "Anti-rotation joint" if not _DE else "Verdrehsicherer Zapfen"),
-            ("SNAP_PIN",
-             "Snap Pin" if not _DE else "Snap-Pin",
-             "Connector with snap spheres" if not _DE else "Zylinder-/Zapfen-Verbinder mit Schnappnoppen"),
-            ("SNAP_TENON",
-             "Snap Tenon" if not _DE else "Snap-Zapfen",
-             "Rectangular tenon with snap spheres" if not _DE else "Rechteckiger Zapfen mit Schnapp-Sphären"),
-            # New connector families (Phase 1 scope includes PIN_HOLE + DOVETAIL_TAPER UI)
-            ("PIN_HOLE",
-             "Pin & Hole" if not _DE else "Pin & Bohrung",
-             "Cylindrical peg + fit-mode socket" if not _DE else "Zylindrischer Stift + Passungsbohrung"),
-            ("DOVETAIL_TAPER",
-             "Dovetail (Tapered)" if not _DE else "Schwalbenschwanz (mit Schräge)",
-             "Sliding dovetail with draft" if not _DE else "Schiebeschwalbenschwanz mit Schräge"),
-            ("SNAP_CANTILEVER",
-             "Snap-Fit (Cantilever)" if not _DE else "Schnapphaken (Kragarm)",
-             "Tool-less snap-fit hook" if not _DE else "Werkzeugloser Schnapphaken"),
-            ("BALL_SOCKET",
-             "Ball & Socket" if not _DE else "Kugel & Schale",
-             "Omni-directional friction joint" if not _DE else "Allseitiges Reibgelenk"),
-            ("PIP_HINGE",
-             "Print-in-Place Hinge" if not _DE else "Druckbares Scharnier (PiP)",
-             "Interleaved knuckles or living hinge" if not _DE else "Verzahnte Laschen oder Living Hinge"),
+            ("CYL_PIN", tr("ui.cyl_pin", "Cylinder Pin"), tr("ui.cyl_pin_desc", "Dowel pin + socket")),
+            ("RECT_TENON", tr("ui.rect_tenon", "Rectangular Tenon"), tr("ui.rect_tenon_desc", "Anti-rotation joint")),
+            ("SNAP_PIN", tr("ui.snap_pin", "Snap Pin"), tr("ui.snap_pin_desc", "Connector with snap spheres")),
+            ("SNAP_TENON", tr("ui.snap_tenon", "Snap Tenon"), tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres")),
+            ("DOVETAIL", tr("ui.dovetail", "Dovetail"), tr("ui.dovetail_desc", "Tapered wedge connector")),
+            ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
+            ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
         ],
         default="CYL_PIN",
     )
 
     # Placement distribution
     connector_distribution: EnumProperty(
-        name="Distribution" if not _DE else "Verteilung",
-        description=("Distribute connectors along a line or a grid across the seam face"
-                     if not _DE else "Verbinder entlang einer Linie oder als Raster über die Nahtfläche verteilen"),
+        name=tr("ui.distribution", "Distribution"),
+        description=tr(
+            "ui.distribution_desc",
+            "Distribute connectors along a line or a grid across the seam face"
+        ),
         items=[
-            ("LINE",
-             "Line" if not _DE else "Linie",
-             "Place connectors along a line in the seam face"
-             if not _DE else "Verbinder entlang einer Linie in der Nahtfläche platzieren"),
-            ("GRID",
-             "Grid" if not _DE else "Raster",
-             "Distribute connectors in a grid over the seam face"
-             if not _DE else "Verbinder als Raster über die Nahtfläche verteilen"),
+            ("LINE", tr("ui.line", "Line"), tr("ui.line_desc", "Place connectors along a line in the seam face")),
+            ("GRID", tr("ui.grid", "Grid"), tr("ui.grid_desc", "Distribute connectors in a grid over the seam face")),
         ],
         default="LINE",
     )
 
     connectors_per_seam: IntProperty(
-        name="Connectors per Seam" if not _DE else "Verbinder pro Naht",
+        name=tr("ui.connectors_per_seam", "Connectors per Seam"),
         default=3,
         min=1,
         max=128,
     )
 
     connectors_rows: IntProperty(
-        name="Rows (GRID)" if not _DE else "Reihen (RASTER)",
-        description=("Number of rows for grid distribution"
-                     if not _DE else "Anzahl der Reihen bei Raster-Verteilung"),
+        name=tr("ui.rows_grid", "Rows (GRID)"),
+        description=tr("ui.rows_grid_desc", "Number of rows for grid distribution"),
         default=2,
         min=1,
         max=128,
     )
 
     connector_margin_pct: FloatProperty(
-        name="Margin (%)" if not _DE else "Randabstand (%)",
-        description=("Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
-                     if not _DE else "Randabstand entlang der Naht (und senkrecht im Raster) als Prozent der Bauteillänge (0–40% empfohlen)"),
+        name=tr("ui.margin_pct", "Margin (%)"),
+        description=tr(
+            "ui.margin_pct_desc",
+            "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)"
+        ),
         default=10.0,
         min=0.0,
         soft_max=40.0,
         subtype='PERCENTAGE'
     )
 
-    # New: Absolute edge margin in mm (additional to percentage)
-    edge_margin_mm: FloatProperty(
-        name="Edge margin (mm)" if not _DE else "Randabstand (mm)",
-        description=("Minimum distance from seam edges (in mm) for connector placement"
-                     if not _DE else "Mindestabstand zu Nahtkanten (in mm) für die Verbinderplatzierung"),
-        default=2.0,
-        min=0.0,
-        soft_max=20.0,
-    )
-
-    # Snap options (active when connector_type == 'SNAP_PIN' or 'SNAP_TENON')
+    # Snap options (sphere ring; used by SNAP_PIN / SNAP_TENON)
     snap_spheres_per_side: IntProperty(
-        name="Spheres per side" if not _DE else "Sphären je Seite",
-        description=("Number of snap spheres per side/around"
-                     if not _DE else "Anzahl der Schnapp-Sphären je Seitenfläche/Umfang"),
+        name=tr("ui.spheres_per_side", "Spheres per side"),
+        description=tr("ui.spheres_per_side_desc", "Number of snap spheres per side/around"),
         default=2,
         min=1,
         max=32,
     )
 
     snap_sphere_diameter_mm: FloatProperty(
-        name="Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)",
-        description=("Diameter of snap spheres"
-                     if not _DE else "Durchmesser der Schnapp-Sphären"),
+        name=tr("ui.sphere_diameter_mm", "Sphere  (mm)"),
+        description=tr("ui.sphere_diameter_mm_desc", "Diameter of snap spheres"),
         default=2.0,
         min=0.5,
         soft_max=10.0,
     )
 
     snap_sphere_protrusion_mm: FloatProperty(
-        name="Protrusion (mm)" if not _DE else "Überstand (mm)",
-        description=("How far spheres protrude from side surface"
-                     if not _DE else "Wie weit die Sphären aus der Seitenfläche herausstehen"),
+        name=tr("ui.protrusion_mm", "Protrusion (mm)"),
+        description=tr("ui.protrusion_mm_desc", "How far spheres protrude from side surface"),
         default=1.0,
         min=0.0,
         soft_max=5.0,
@@ -260,44 +239,43 @@ class SnapSplitProps(PropertyGroup):
 
     # Pin / Tenon dimensions (mm)
     pin_diameter_mm: FloatProperty(
-        name="Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)",
+        name=tr("ui.pin_diameter_mm", "Pin Diameter (mm)"),
         default=5.0,
         min=0.5,
         soft_max=50.0,
     )
 
     pin_length_mm: FloatProperty(
-        name="Pin Length (mm)" if not _DE else "Pin-Länge (mm)",
+        name=tr("ui.pin_length_mm", "Pin Length (mm)"),
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
     pin_segments: IntProperty(
-        name="Segments" if not _DE else "Segmente",
-        description=("Cylinder pin radial segments (visual smoothness)"
-                     if not _DE else "Kreissegmente des Pins (nur Optik/Glätte)"),
+        name=tr("ui.segments", "Segments"),
+        description=tr("ui.segments_desc", "Cylinder pin radial segments (visual smoothness)"),
         default=32,
         min=8,
         max=128,
     )
 
     tenon_width_mm: FloatProperty(
-        name="Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)",
+        name=tr("ui.tenon_width_mm", "Tenon Width (mm)"),
         default=6.0,
         min=1.0,
         soft_max=100.0,
     )
 
     tenon_depth_mm: FloatProperty(
-        name="Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)",
+        name=tr("ui.tenon_depth_mm", "Tenon Depth (mm)"),
         default=8.0,
         min=1.0,
         soft_max=200.0,
     )
 
     add_chamfer_mm: FloatProperty(
-        name="Chamfer (mm)" if not _DE else "Fase (mm)",
+        name=tr("ui.chamfer_mm", "Chamfer (mm)"),
         default=0.3,
         min=0.0,
         soft_max=2.0,
@@ -305,227 +283,102 @@ class SnapSplitProps(PropertyGroup):
 
     # Insert depth
     pin_embed_pct: FloatProperty(
-        name="Insert Depth (%)" if not _DE else "Einstecktiefe (%)",
-        description=("Percentage of connector length recessed into part A"
-                     if not _DE else "Prozentualer Anteil der Verbinderlänge, die in Teil A steckt"),
+        name=tr("ui.insert_depth_pct", "Insert Depth (%)"),
+        description=tr("ui.insert_depth_pct_desc", "Percentage of connector length recessed into part A"),
         default=50.0,
         min=0.0,
         max=100.0,
         subtype='PERCENTAGE'
     )
 
+    # New: Dovetail parameters
+    dovetail_width_mm: FloatProperty(
+        name=tr("ui.dovetail_width_mm", "Dovetail Width (mm)"),
+        default=6.0,
+        min=2.0,
+        soft_max=60.0,
+    )
+
+    dovetail_depth_mm: FloatProperty(
+        name=tr("ui.dovetail_depth_mm", "Dovetail Depth (mm)"),
+        default=8.0,
+        min=2.0,
+        soft_max=120.0,
+    )
+
+    dovetail_taper_pct: FloatProperty(
+        name=tr("ui.dovetail_taper_pct", "Taper (%)"),
+        description=tr("ui.dovetail_taper_pct_desc", "Percentage by which the tip is narrower than the base"),
+        default=25.0,
+        min=5.0,
+        max=60.0,
+        subtype='PERCENTAGE',
+    )
+
+    # New: Flush snap barb parameters (shared for pin/tenon)
+    flush_barb_height_mm: FloatProperty(
+        name=tr("ui.flush_barb_height_mm", "Barb Height (mm)"),
+        description=tr("ui.flush_barb_height_desc", "Axial height of the shallow barb near the seam"),
+        default=0.6,
+        min=0.2,
+        soft_max=1.2,
+    )
+
+    flush_barb_lip_mm: FloatProperty(
+        name=tr("ui.flush_barb_lip_mm", "Barb Lip (mm)"),
+        description=tr("ui.flush_barb_lip_desc", "Radial/XY lip amount for the barb at the seam"),
+        default=0.25,
+        min=0.1,
+        soft_max=0.6,
+    )
+
     # Tolerances / material profile
     material_profile: EnumProperty(
-        name="Material Profiles" if not _DE else "Material-Profile",
+        name=tr("ui.material_profiles", "Material Profiles"),
         items=_material_items(),
-        default="PETG",  # per approved spec
-        description=("Select a material profile to auto-fill tolerance per side"
-                     if not _DE else "Materialprofil wählen, um die Toleranz pro Seite zu setzen"),
+        default="PLA",
+        description=tr(
+            "ui.material_profile_desc",
+            "Select a material profile to auto-fill tolerance per side"
+        ),
     )
 
     tol_override: FloatProperty(
-        name="Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)",
-        description=("Overrides material profile (0 = use profile value)"
-                     if not _DE else "Überschreibt das Materialprofil (0 = Profilwert verwenden)"),
+        name=tr("ui.tol_per_face_mm", "Tolerance per Face (mm)"),
+        description=tr("ui.tol_override_desc", "Overrides material profile (0 = use profile value)"),
         default=0.0,
         min=0.0,
-        soft_max=0.8,
+        soft_max=0.6,
     )
 
     def effective_tolerance(self) -> float:
         """Return the active tolerance per side, considering the override if set."""
-        prof = MATERIAL_PROFILES.get(self.material_profile, 0.3)
+        prof = MATERIAL_PROFILES.get(self.material_profile, 0.2)
         return prof if self.tol_override <= 0.0 else self.tol_override
-
-    # ---------------------------
-    # New per-type properties
-    # ---------------------------
-
-    # PIN_HOLE
-    pin_fit_mode: EnumProperty(
-        name="Fit mode" if not _DE else "Passung",
-        items=[
-            ("snug",
-             "Snug" if not _DE else "Stramm",
-             "~0.25 mm/side FDM, ~0.08 mm/side SLA"),
-            ("sliding",
-             "Sliding" if not _DE else "Leichtgängig",
-             "~0.45 mm/side FDM, ~0.12 mm/side SLA"),
-            ("glue_ready",
-             "Glue-ready" if not _DE else "Klebe-Bereit",
-             "~0.60 mm/side FDM, ~0.18 mm/side SLA"),
-        ],
-        default="snug",
-        description=("Fit mode maps to per-side clearance (FDM vs SLA)"
-                     if not _DE else "Passungsmodus bestimmt das Spiel je Seite (FDM vs SLA)"),
-    )
-
-    pin_hole_only: BoolProperty(
-        name="Hole only (for metal pins)" if not _DE else "Nur Bohrung (für Metallstifte)",
-        default=False,
-    )
-
-    # DOVETAIL_TAPER
-    dovetail_length_mm: FloatProperty(
-        name="Length (mm)" if not _DE else "Länge (mm)",
-        default=20.0, min=1.0, soft_max=400.0,
-    )
-    dovetail_depth_mm: FloatProperty(
-        name="Depth (mm)" if not _DE else "Tiefe (mm)",
-        default=8.0, min=1.0, soft_max=200.0,
-    )
-    dovetail_width_mm: FloatProperty(
-        name="Width (mm)" if not _DE else "Breite (mm)",
-        default=8.0, min=1.0, soft_max=200.0,
-    )
-    dovetail_draft_deg: FloatProperty(
-        name="Draft (°)" if not _DE else "Schräge (°)",
-        default=1.5, min=0.0, soft_max=5.0,
-        description=("Use 1–2° taper for progressive friction"
-                     if not _DE else "1–2° Schräge für progressiven Sitz"),
-    )
-    dovetail_leadin_chamfer_mm: FloatProperty(
-        name="Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)",
-        default=0.6, min=0.0, soft_max=3.0,
-    )
-    dovetail_clearance_scale: FloatProperty(
-        name="Clearance scale" if not _DE else "Spiel-Skalierung",
-        default=1.0, min=0.5, soft_max=2.0,
-        description=("Multiplies material tolerance per side"
-                     if not _DE else "Multipliziert Materialtoleranz je Seite"),
-    )
-    dovetail_slide_dir: EnumProperty(
-        name="Slide direction" if not _DE else "Schieberichtung",
-        items=[
-            ("+X", "+X", ""), ("-X", "-X", ""), ("+Y", "+Y", ""), ("-Y", "-Y", "")
-        ],
-        default="+X",
-    )
-
-    # SNAP_CANTILEVER (Phase 2 implementation, properties defined now)
-    snap_cant_arm_len_mm: FloatProperty(
-        name="Arm length (mm)" if not _DE else "Armlänge (mm)",
-        default=18.0, min=4.0, soft_max=60.0,
-    )
-    snap_cant_arm_thk_mm: FloatProperty(
-        name="Arm thickness (mm)" if not _DE else "Armdicke (mm)",
-        default=2.2, min=0.8, soft_max=6.0,
-    )
-    snap_cant_arm_w_mm: FloatProperty(
-        name="Arm width (mm)" if not _DE else "Armbreite (mm)",
-        default=6.0, min=2.0, soft_max=40.0,
-    )
-    snap_cant_hook_undercut_mm: FloatProperty(
-        name="Hook undercut (mm)" if not _DE else "Haken-Hinterschneidung (mm)",
-        default=0.8, min=0.2, soft_max=2.0,
-    )
-    snap_cant_fillet_mm: FloatProperty(
-        name="Base fillet (mm)" if not _DE else "Grundradius (mm)",
-        default=1.2, min=0.4, soft_max=4.0,
-        description=("≥ 0.5 × thickness recommended" if not _DE else "≥ 0,5 × Dicke empfohlen"),
-    )
-    snap_cant_leadin_chamfer_mm: FloatProperty(
-        name="Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)",
-        default=0.6, min=0.0, soft_max=2.0,
-    )
-    snap_cant_stop_offset_mm: FloatProperty(
-        name="Stop offset (mm)" if not _DE else "Anschlag-Versatz (mm)",
-        default=0.2, min=0.0, soft_max=2.0,
-    )
-    snap_cant_clearance_scale: FloatProperty(
-        name="Clearance scale" if not _DE else "Spiel-Skalierung",
-        default=1.1, min=0.5, soft_max=2.0,
-    )
-
-    # BALL_SOCKET (Phase 3 implementation, properties defined now)
-    ball_diameter_mm: FloatProperty(
-        name="Ball Ø (mm)" if not _DE else "Kugel-Ø (mm)",
-        default=12.0, min=4.0, soft_max=40.0,
-    )
-    ball_friction_target: EnumProperty(
-        name="Friction" if not _DE else "Reibung",
-        items=[
-            ("tight", "Tight" if not _DE else "Fest", ""),
-            ("medium", "Medium" if not _DE else "Mittel", ""),
-            ("loose", "Loose" if not _DE else "Locker", ""),
-        ],
-        default="medium",
-    )
-    ball_socket_clearance_mm: FloatProperty(
-        name="Socket clearance (mm)" if not _DE else "Buchsen-Spiel (mm)",
-        default=0.0, min=0.0, soft_max=0.8,
-        description=("0 uses friction + material profile" if not _DE else "0 nutzt Reibung + Materialprofil"),
-    )
-    ball_lip_thickness_mm: FloatProperty(
-        name="Retention lip (mm)" if not _DE else "Halte-Lippe (mm)",
-        default=1.2, min=0.0, soft_max=4.0,
-    )
-    ball_socket_open_angle_deg: FloatProperty(
-        name="Open angle (°)" if not _DE else "Öffnungswinkel (°)",
-        default=230.0, min=160.0, soft_max=300.0,
-    )
-    ball_leadin_fillet_mm: FloatProperty(
-        name="Lead-in fillet (mm)" if not _DE else "Einführ-Radius (mm)",
-        default=0.6, min=0.0, soft_max=2.0,
-    )
-
-    # PIP_HINGE (Phase 4 implementation, properties defined now)
-    pip_hinge_type: EnumProperty(
-        name="Hinge type" if not _DE else "Scharnier-Typ",
-        items=[
-            ("knuckle_pin",
-             "Knuckle (pin)" if not _DE else "Laschen (Bolzen)",
-             ""),
-            ("living_web",
-             "Living web" if not _DE else "Living Hinge",
-             ""),
-        ],
-        default="knuckle_pin",
-    )
-    pip_gap_mm: FloatProperty(
-        name="PIP gap (mm)" if not _DE else "PIP-Spalt (mm)",
-        default=0.30, min=0.05, soft_max=1.0,
-        description=("Typical: FDM 0.30 mm, SLA 0.10 mm" if not _DE else "Typisch: FDM 0,30 mm, SLA 0,10 mm"),
-    )
-    pip_hinge_width_mm: FloatProperty(
-        name="Hinge width (mm)" if not _DE else "Scharnier-Breite (mm)",
-        default=8.0, min=2.0, soft_max=60.0,
-    )
-    pip_hinge_thickness_mm: FloatProperty(
-        name="Thickness (mm)" if not _DE else "Dicke (mm)",
-        default=2.0, min=0.3, soft_max=6.0,
-    )
-    pip_segments_count: IntProperty(
-        name="Segments" if not _DE else "Segmente",
-        default=3, min=1, max=21,
-    )
-    pip_relief_fillet_mm: FloatProperty(
-        name="Relief fillet (mm)" if not _DE else "Entlastungs-Radius (mm)",
-        default=0.6, min=0.0, soft_max=2.0,
-    )
 
     # UI foldouts
     ui_more_seg: BoolProperty(
-        name="More segmentation settings",
-        description="Show advanced segmentation options",
+        name=tr("ui.foldout.more_seg", "More segmentation settings"),
+        description=tr("ui.foldout.more_seg_desc", "Show advanced segmentation options"),
         default=False
     )
 
     ui_more_conn: BoolProperty(
-        name="More connection settings",
-        description="Show advanced connection/geometry options",
+        name=tr("ui.foldout.more_conn", "More connection settings"),
+        description=tr("ui.foldout.more_conn_desc", "Show advanced connection/geometry options"),
         default=False
     )
 
     ui_more_tol: BoolProperty(
-        name="More tolerance settings",
-        description="Show advanced tolerance options",
+        name=tr("ui.foldout.more_tol", "More tolerance settings"),
+        description=tr("ui.foldout.more_tol_desc", "Show advanced tolerance options"),
         default=False
     )
 
+    # Alignment foldout
     ui_more_align: BoolProperty(
-        name="More alignment settings",
-        description="Show advanced alignment options",
+        name=tr("ui.foldout.more_align", "More alignment settings"),
+        description=tr("ui.foldout.more_align_desc", "Show advanced alignment options"),
         default=False
     )
 
@@ -536,11 +389,13 @@ class SnapSplitProps(PropertyGroup):
 
 classes = (SnapSplitProps,)
 
+
 def register():
     """Register property classes and attach to bpy.types.Scene."""
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.Scene.snapsplit = PointerProperty(type=SnapSplitProps)
+
 
 def unregister():
     """Unregister property classes and detach from bpy.types.Scene."""
@@ -548,3 +403,4 @@ def unregister():
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+

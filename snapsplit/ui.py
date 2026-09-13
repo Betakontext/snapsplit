@@ -1,4 +1,4 @@
-# ui.py
+# -*- coding: utf-8 -*-
 """
 Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
@@ -20,12 +20,26 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# ui.py
+
 import bpy
 from bpy.types import Panel
-from .utils import is_lang_de
-from .profiles import MATERIAL_PROFILES  # for tolerance info badge
+from .utils import is_lang_de  # kept import (may be used elsewhere)
+from .profiles import MATERIAL_PROFILES  # used for tolerance preview
+from .languages import tr  # language switch based on Blender UI language
+
+
+def _exists(obj, attr):
+    """Small helper to guard missing properties in early integration phases."""
+    try:
+        getattr(obj, attr)
+        return True
+    except Exception:
+        return False
+
 
 class SNAP_PT_panel(Panel):
+    """Main SnapSplit UI panel in the 3D Viewport N-Panel."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "SnapSplit"
@@ -33,323 +47,337 @@ class SNAP_PT_panel(Panel):
 
     @classmethod
     def poll(cls, context):
+        # Keep enabled as long as a scene exists.
         return context is not None and context.scene is not None
 
     def draw(self, context):
-        _DE = is_lang_de()
+        # Draw localized UI using tr(); do not alter underlying behavior.
         layout = self.layout
         props = getattr(context.scene, "snapsplit", None)
 
         if props is None:
-            layout.label(text=("SnapSplit properties not available." if not _DE else "SnapSplit-Eigenschaften nicht verfügbar."), icon="ERROR")
-            layout.label(text=("Please re-enable the Add-on." if not _DE else "Bitte das Add-on erneut aktivieren."))
+            layout.label(text=tr("ui.msg.props_missing", "SnapSplit properties not available."), icon="ERROR")
+            layout.label(text=tr("ui.msg.please_reenable", "Please re-enable the Add-on."))
             return
 
         # =========================
         # SEGMENTATION
         # =========================
-        seg_box = layout.box()
-        seg_header = seg_box.row(align=True)
-        seg_header.label(text=("Segmentation" if not _DE else "Segmentierung"), icon='MOD_BOOLEAN')
-        seg_header.prop(props, "ui_more_seg", text=("Less..." if props.ui_more_seg else "More...") if not _DE else ("Weniger..." if props.ui_more_seg else "Mehr..."), toggle=True)
 
-        col = seg_box.column(align=True)
-        col.prop(props, "split_axis", text=("Split Axis" if not _DE else "Schnittachse"))
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=tr("ui.segmentation_title", "Segmentation"), icon='MOD_BOOLEAN')
+        more_txt = tr("ui.less", "Less...") if getattr(props, "ui_more_seg", False) else tr("ui.more_less_more", "More...")
+        if _exists(props, "ui_more_seg"):
+            header.prop(props, "ui_more_seg", text=more_txt, toggle=True)
+
+        col = box.column(align=True)
+        if _exists(props, "split_axis"):
+            col.prop(props, "split_axis", text=tr("ui.split_axis", "Split Axis"))
 
         row = col.row(align=True)
-        row.prop(props, "show_split_preview", text=("Show split preview" if not _DE else "Schnittvorschau anzeigen"))
-        row.operator("snapsplit.adjust_split_axis", icon="EMPTY_AXIS", text=("Adjust" if not _DE else "Anpassen"))
+        if _exists(props, "show_split_preview"):
+            row.prop(props, "show_split_preview", text=tr("ui.show_split_preview", "Show split preview"))
+        row.operator("snapsplit.adjust_split_axis",
+                     icon="EMPTY_AXIS",
+                     text=tr("ui.adjust", "Adjust"))
 
-        if props.ui_more_seg:
-            adv = seg_box.column(align=True)
-            adv.prop(props, "parts_count", text=("Number of Parts" if not _DE else "Anzahl Teile"))
-            try:
-                if int(props.parts_count) >= 12:
-                    adv.label(icon='INFO', text=("High part count may be slow" if not _DE else "Hohe Teilzahl kann langsam sein"))
-            except Exception:
-                pass
-            adv.prop(props, "split_offset_mm", text=("Split Offset (mm)" if not _DE else "Schnitt-Offset (mm)"))
-            adv.prop(props, "cap_seams_during_split", text=("Cap seams during split (slower)" if not _DE else "Nähte beim Schnitt schließen (langsamer)"))
-            if not props.cap_seams_during_split:
-                sub = adv.column(align=True)
-                sub.operator("snapsplit.cap_open_seams_now", icon="OUTLINER_OB_SURFACE", text=("Cap seams now" if not _DE else "Nähte jetzt schließen"))
-                sub.label(text=("To close existing seams, run 'Cap seams now'." if not _DE else "Bestehende Nähte mit 'Nähte jetzt schließen' füllen."), icon='INFO')
+        if getattr(props, "ui_more_seg", False):
+            adv = box.column(align=True)
+            if _exists(props, "parts_count"):
+                adv.prop(props, "parts_count", text=tr("ui.parts_count", "Number of Parts"))
+                try:
+                    if int(getattr(props, "parts_count")) >= 12:
+                        adv.label(icon='INFO', text=tr("ui.high_part_count_slow", "High part count may be slow"))
+                except Exception:
+                    pass
+            if _exists(props, "split_offset_mm"):
+                adv.prop(props, "split_offset_mm", text=tr("ui.split_offset_mm", "Split Offset (mm)"))
+            if _exists(props, "cap_seams_during_split"):
+                adv.prop(props, "cap_seams_during_split",
+                         text=tr("ui.cap_seams_during_split_short", "Cap seams during split (slower)"))
+                if not getattr(props, "cap_seams_during_split", False):
+                    sub = adv.column(align=True)
+                    sub.operator("snapsplit.cap_open_seams_now",
+                                 icon="OUTLINER_OB_SURFACE",
+                                 text=tr("op.cap_now.label", "Cap seams now"))
+                    sub.label(text=tr("ui.cap_seams_hint",
+                                      "To close existing seams, run 'Cap seams now'."), icon='INFO')
 
-        seg_box.operator("snapsplit.planar_split", icon="MOD_BOOLEAN", text=("Planar Split" if not _DE else "Planarer Schnitt"))
+        col_bottom = box.column(align=True)
+        col_bottom.operator("snapsplit.planar_split",
+                            icon="MOD_BOOLEAN",
+                            text=tr("op.split.label", "Planar Split"))
 
         layout.separator()
 
         # =========================
         # CONNECTIONS
         # =========================
-        con_box = layout.box()
-        con_header = con_box.row(align=True)
-        con_header.label(text=("Connections" if not _DE else "Verbindungen"), icon='SNAP_FACE')
-        con_header.prop(props, "ui_more_conn", text=("Less..." if props.ui_more_conn else "More...") if not _DE else ("Weniger..." if props.ui_more_conn else "Mehr..."), toggle=True)
 
-        col = con_box.column(align=True)
-        col.prop(props, "connector_type", text=("Connector Type" if not _DE else "Verbinder-Typ"))
-        col.prop(props, "connector_distribution", text=("Distribution" if not _DE else "Verteilung"))
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=tr("ui.connections_title", "Connections"), icon='SNAP_FACE')
+        more_txt = tr("ui.less", "Less...") if getattr(props, "ui_more_conn", False) else tr("ui.more_less_more", "More...")
+        if _exists(props, "ui_more_conn"):
+            header.prop(props, "ui_more_conn", text=more_txt, toggle=True)
 
-        btns = layout.column(align=True)
-        btns.operator("snapsplit.add_connectors", icon="SNAP_FACE", text=("Add connectors" if not _DE else "Verbinder hinzufügen"))
-        btns.operator("snapsplit.place_connectors_click", icon="CURSOR", text=("Place connectors (click)" if not _DE else "Verbinder per Klick"))
+        col = box.column(align=True)
+        if _exists(props, "connector_type"):
+            col.prop(props, "connector_type", text=tr("ui.connector_type", "Connector Type"))
+        if _exists(props, "connector_distribution"):
+            col.prop(props, "connector_distribution", text=tr("ui.distribution", "Distribution"))
 
-        if props.ui_more_conn:
-            adv = con_box.column(align=True)
-            if props.connector_distribution == "LINE":
-                adv.prop(props, "connectors_per_seam", text=("Connectors per Seam" if not _DE else "Verbinder pro Naht"))
+        # Action buttons
+        col = layout.column(align=True)
+        col.operator("snapsplit.add_connectors", icon="SNAP_FACE", text=tr("ui.add_connectors", "Add connectors"))
+        col.operator("snapsplit.place_connectors_click", icon="CURSOR", text=tr("ui.place_connectors_click", "Place connectors (click)"))
+
+        if getattr(props, "ui_more_conn", False):
+            adv = box.column(align=True)
+            dist = getattr(props, "connector_distribution", "LINE")
+            if dist == "LINE":
+                if _exists(props, "connectors_per_seam"):
+                    adv.prop(props, "connectors_per_seam", text=tr("ui.connectors_per_seam", "Connectors per Seam"))
             else:
                 r = adv.row(align=True)
-                r.prop(props, "connectors_per_seam", text=("Columns" if not _DE else "Spalten"))
-                r.prop(props, "connectors_rows", text=("Rows" if not _DE else "Reihen"))
+                if _exists(props, "connectors_per_seam"):
+                    r.prop(props, "connectors_per_seam", text=tr("ui.columns", "Columns"))
+                if _exists(props, "connectors_rows"):
+                    r.prop(props, "connectors_rows", text=tr("ui.rows", "Rows"))
 
-            adv.prop(props, "connector_margin_pct", text=("Margin (%)" if not _DE else "Randabstand (%)"))
-            adv.prop(props, "edge_margin_mm", text=("Edge margin (mm)" if not _DE else "Randabstand (mm)"))
+            if _exists(props, "connector_margin_pct"):
+                adv.prop(props, "connector_margin_pct", text=tr("ui.margin_pct", "Margin (%)"))
 
-            gbox = con_box.box()
+            # Connector-specific geometry/settings
+            gbox = box.box()
+            ctype = getattr(props, "connector_type", "CYL_PIN")
 
-            # CYL_PIN / SNAP_PIN
-            if props.connector_type in {"CYL_PIN", "SNAP_PIN"}:
-                gbox.prop(props, "pin_prop_enabled", text=("Proportional scaling (Pins)" if not _DE else "Proportionale Skalierung (Pins)"))
-                gbox.prop(props, "pin_diameter_mm", text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
-                gbox.prop(props, "pin_length_mm", text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
-                gbox.prop(props, "pin_embed_pct", text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+            # --- Pin-like connectors ---
+            if ctype in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
+                if _exists(props, "pin_diameter_mm"):
+                    gbox.prop(props, "pin_diameter_mm", text=tr("ui.pin_diameter_mm", "Pin Diameter (mm)"))
+                if _exists(props, "pin_length_mm"):
+                    gbox.prop(props, "pin_length_mm", text=tr("ui.pin_length_mm", "Pin Length (mm)"))
+                if _exists(props, "pin_embed_pct"):
+                    gbox.prop(props, "pin_embed_pct", text=tr("ui.insert_depth_pct", "Insert Depth (%)"))
 
                 rr = gbox.row(align=True)
-                rr.prop(props, "pin_segments", text=("Segments" if not _DE else "Segmente"))
+                if _exists(props, "pin_segments"):
+                    rr.prop(props, "pin_segments", text=tr("ui.segments", "Segments"))
                 try:
                     from .profiles import _suggest_pin_segments_from_diameter
-                    suggested = _suggest_pin_segments_from_diameter(float(getattr(props, "pin_diameter_mm", 5.0)))
-                    sub = rr.row(align=True); sub.alignment = 'RIGHT'
-                    sub.label(text=(f"Suggested: {suggested}" if not _DE else f"Vorschlag: {suggested}"), icon='INFO')
+                    diameter = float(getattr(props, "pin_diameter_mm", 5.0))
+                    suggested = _suggest_pin_segments_from_diameter(diameter)
+                    hint = tr("ui.suggested", "Suggested: ") + f"{suggested}"
+                    sub = rr.row(align=True)
+                    sub.alignment = 'RIGHT'
+                    sub.label(text=hint, icon='INFO')
                 except Exception:
                     pass
 
-                sbox = gbox.box()
-                sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
-                sbox.prop(props, "snap_spheres_per_side", text=("Spheres per side" if not _DE else "Sphären je Seite"))
-                sbox.prop(props, "snap_sphere_diameter_mm", text=("Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)"))
-                sbox.prop(props, "snap_sphere_protrusion_mm", text=("Protrusion (mm)" if not _DE else "Überstand (mm)"))
-                sbox.label(text=("Auto-updated by Tolerance → Friction/Material" if not _DE else "Automatisch aus Toleranz → Reibung/Material"), icon='INFO')
+                if ctype == "CYL_PIN" and _exists(props, "add_chamfer_mm"):
+                    gbox.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
 
-            # RECT_TENON / SNAP_TENON
-            elif props.connector_type in {"RECT_TENON", "SNAP_TENON"}:
-                gbox.prop(props, "tenon_prop_enabled", text=("Proportional scaling (Tenon)" if not _DE else "Proportionale Skalierung (Zapfen)"))
-                gbox.prop(props, "tenon_width_mm", text=("Tenon Width (mm)" if not _DE else "Zapfen-Breite (mm)"))
-                gbox.prop(props, "tenon_depth_mm", text=("Tenon Depth (mm)" if not _DE else "Zapfen-Tiefe (mm)"))
-                gbox.prop(props, "pin_embed_pct", text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
+                if ctype == "SNAP_PIN" and _exists(props, "snap_spheres_per_side"):
+                    s = gbox.column(align=True)
+                    s.label(text=tr("ui.snap_group", "Snap spheres:"), icon='MESH_ICOSPHERE')
+                    s.prop(props, "snap_spheres_per_side", text=tr("ui.snap_spheres_per_side", "Spheres per side"))
+                    if _exists(props, "snap_sphere_diameter_mm"):
+                        s.prop(props, "snap_sphere_diameter_mm", text=tr("ui.snap_sphere_diameter_mm", "Sphere Diameter (mm)"))
+                    if _exists(props, "snap_sphere_protrusion_mm"):
+                        s.prop(props, "snap_sphere_protrusion_mm", text=tr("ui.snap_sphere_protrusion_mm", "Protrusion (mm)"))
 
-                if props.connector_type == "SNAP_TENON":
-                    sbox = gbox.box()
-                    sbox.label(text=("Snap spheres" if not _DE else "Schnapp-Sphären"), icon='SPHERE')
-                    sbox.prop(props, "snap_spheres_per_side", text=("Spheres per side" if not _DE else "Sphären je Seite"))
-                    sbox.prop(props, "snap_sphere_diameter_mm", text=("Sphere Ø (mm)" if not _DE else "Sphären-Ø (mm)"))
-                    sbox.prop(props, "snap_sphere_protrusion_mm", text=("Protrusion (mm)" if not _DE else "Überstand (mm)"))
-                    sbox.label(text=("Auto-updated by Tolerance → Friction/Material" if not _DE else "Automatisch aus Toleranz → Reibung/Material"), icon='INFO')
+                if ctype == "SNAP_FLUSH_PIN":
+                    s = gbox.column(align=True)
+                    s.label(text=tr("ui.flush_group", "Flush snap (barb near seam):"), icon='MOD_SOLIDIFY')
+                    if _exists(props, "flush_barb_height_mm"):
+                        s.prop(props, "flush_barb_height_mm", text=tr("ui.flush_barb_height_mm", "Barb Height (mm)"))
+                    if _exists(props, "flush_barb_lip_mm"):
+                        s.prop(props, "flush_barb_lip_mm", text=tr("ui.flush_barb_lip_mm", "Barb Lip (mm)"))
 
-            # PIN_HOLE
-            if props.connector_type == "PIN_HOLE":
-                pbox = con_box.box()
-                pbox.prop(props, "pin_prop_enabled", text=("Proportional scaling (Pins)" if not _DE else "Proportionale Skalierung (Pins)"))
-                pbox.label(text=("Pin & Hole (fit modes)" if not _DE else "Pin & Bohrung (Passungen)"), icon='MESH_CYLINDER')
-                pbox.prop(props, "pin_diameter_mm", text=("Pin Diameter (mm)" if not _DE else "Pin-Durchmesser (mm)"))
-                pbox.prop(props, "pin_length_mm", text=("Pin Length (mm)" if not _DE else "Pin-Länge (mm)"))
-                pbox.prop(props, "pin_embed_pct", text=("Insert Depth (%)" if not _DE else "Einstecktiefe (%)"))
-                pbox.prop(props, "pin_segments", text=("Segments" if not _DE else "Segmente"))
-                pbox.prop(props, "add_chamfer_mm", text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
-                pbox.prop(props, "pin_fit_mode", text=("Fit mode" if not _DE else "Passung"))
-                pbox.prop(props, "pin_hole_only", text=("Hole only (for metal pins)" if not _DE else "Nur Bohrung (für Metallstifte)"))
-                pbox.label(text=("Chamfer helps compensate elephant's foot" if not _DE else "Fase kompensiert Elephant's Foot"), icon='INFO')
+            # --- Tenon-like connectors ---
+            elif ctype in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON"}:
+                if _exists(props, "tenon_width_mm"):
+                    gbox.prop(props, "tenon_width_mm", text=tr("ui.tenon_width_mm", "Tenon Width (mm)"))
+                if _exists(props, "tenon_depth_mm"):
+                    gbox.prop(props, "tenon_depth_mm", text=tr("ui.tenon_depth_mm", "Tenon Depth (mm)"))
+                if _exists(props, "pin_embed_pct"):
+                    gbox.prop(props, "pin_embed_pct", text=tr("ui.insert_depth_pct", "Insert Depth (%)"))
 
-            # DOVETAIL_TAPER (tenon-based with angled side walls)
-            if props.connector_type == "DOVETAIL_TAPER":
-                dbox = con_box.box()
-                dbox.label(text=("Dovetail (angled)" if not _DE else "Schwalbenschwanz (Winkel)"), icon='MOD_SIMPLEDEFORM')
+                if ctype == "RECT_TENON" and _exists(props, "add_chamfer_mm"):
+                    gbox.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
 
-                # Toggle for proportional mode
-                dbox.prop(props, "dovetail_prop_enabled", text=("Proportional scaling (Dovetail)" if not _DE else "Proportionale Skalierung (Dovetail)"))
-                dbox.label(
-                    text=("When enabled, X drives Y and Z via ratios. Y/Z are shown as computed values."
-                          if not _DE else "Wenn aktiviert, steuert X Y/Z über Verhältnisse. Y/Z werden berechnet angezeigt."),
-                    icon='INFO'
-                )
+                if ctype == "SNAP_TENON" and _exists(props, "snap_spheres_per_side"):
+                    s = gbox.column(align=True)
+                    s.label(text=tr("ui.snap_group", "Snap spheres:"), icon='MESH_ICOSPHERE')
+                    s.prop(props, "snap_spheres_per_side", text=tr("ui.snap_spheres_per_side", "Spheres per side"))
+                    if _exists(props, "snap_sphere_diameter_mm"):
+                        s.prop(props, "snap_sphere_diameter_mm", text=tr("ui.snap_sphere_diameter_mm", "Sphere Diameter (mm)"))
+                    if _exists(props, "snap_sphere_protrusion_mm"):
+                        s.prop(props, "snap_sphere_protrusion_mm", text=tr("ui.snap_sphere_protrusion_mm", "Protrusion (mm)"))
 
-                # Dimensions
-                dims = dbox.column(align=True)
-                # X always editable
-                dims.prop(props, "dovetail_dim_x_mm", text=("Dim X (mm)" if not _DE else "Maß X (mm)"))
+                if ctype == "SNAP_FLUSH_TENON":
+                    s = gbox.column(align=True)
+                    s.label(text=tr("ui.flush_group", "Flush snap (barb near seam):"), icon='MOD_SOLIDIFY')
+                    if _exists(props, "flush_barb_height_mm"):
+                        s.prop(props, "flush_barb_height_mm", text=tr("ui.flush_barb_height_mm", "Barb Height (mm)"))
+                    if _exists(props, "flush_barb_lip_mm"):
+                        s.prop(props, "flush_barb_lip_mm", text=tr("ui.flush_barb_lip_mm", "Barb Lip (mm)"))
 
-                if props.dovetail_prop_enabled:
-                    # Show computed Y/Z as read-only labels
-                    try:
-                        x_eff, y_eff, z_eff = props.dovetail_effective_dims_x_driver()
-                    except Exception:
-                        x_eff, y_eff, z_eff = props.dovetail_dim_x_mm, props.dovetail_dim_y_mm, props.dovetail_dim_z_mm
+            # --- Dovetail connector ---
+            elif ctype == "DOVETAIL":
+                # Base size group — ordered: Width → Length → Depth
+                base_box = gbox.box()
+                base_box.label(text=tr("ui.dovetail_base", "Base size"), icon='MESH_CUBE')
+                if _exists(props, "dovetail_width_mm"):
+                    base_box.prop(props, "dovetail_width_mm", text=tr("ui.dovetail_width_mm", "Dovetail Width (mm)"))
+                # CRITICAL: Explicit Dovetail Length in UI
+                if _exists(props, "dovetail_length_mm"):
+                    base_box.prop(props, "dovetail_length_mm", text=tr("ui.dovetail_length_mm", "Dovetail Length (mm)"))
+                if _exists(props, "dovetail_depth_mm"):
+                    base_box.prop(props, "dovetail_depth_mm", text=tr("ui.dovetail_depth_mm", "Dovetail Depth (mm)"))
 
-                    row_y = dims.row(align=True); row_y.enabled = False
-                    row_y.prop(props, "dovetail_dim_y_mm", text=("Dim Y (mm)" if not _DE else "Maß Y (mm)"))
-                    row_y.label(text=f"{y_eff:.3f} mm", icon='INFO')
+                # Taper (signed) comes next
+                if _exists(props, "dovetail_signed_taper_pct"):
+                    taper_box = gbox.box()
+                    taper_box.label(text=tr("ui.dovetail_taper", "Taper"), icon='MOD_SIMPLEDEFORM')
+                    taper_box.prop(props, "dovetail_signed_taper_pct", text=tr("ui.dovetail_signed_taper_pct", "Signed Taper (%)"))
 
-                    row_z = dims.row(align=True); row_z.enabled = False
-                    row_z.prop(props, "dovetail_dim_z_mm", text=("Dim Z (mm)" if not _DE else "Maß Z (mm)"))
-                    row_z.label(text=f"{z_eff:.3f} mm", icon='INFO')
-                else:
-                    # All editable
-                    dims.prop(props, "dovetail_dim_y_mm", text=("Dim Y (mm)" if not _DE else "Maß Y (mm)"))
-                    dims.prop(props, "dovetail_dim_z_mm", text=("Dim Z (mm)" if not _DE else "Maß Z (mm)"))
+                # Span options after taper
+                span_box = gbox.box()
+                span_box.label(text=tr("ui.dovetail_span", "Span along seam"), icon='ORIENTATION_GLOBAL')
+                if _exists(props, "dovetail_span_mode"):
+                    span_box.prop(props, "dovetail_span_mode", text=tr("ui.dovetail_span_mode", "Span Mode"))
+                if _exists(props, "dovetail_margin_pct"):
+                    span_box.prop(props, "dovetail_margin_pct", text=tr("ui.dovetail_margin_pct", "Margin (%)"))
+                if _exists(props, "dovetail_auto_span"):
+                    span_box.prop(props, "dovetail_auto_span", text=tr("ui.dovetail_auto_span", "Auto span along seam"))
+                if _exists(props, "dovetail_span_margin_pct"):
+                    span_box.prop(props, "dovetail_span_margin_pct", text=tr("ui.dovetail_span_margin_pct", "Auto-span End Margin (%)"))
+                span_box.label(text=tr("ui.auto_span_hint", "AUTO span = edge-to-edge along seam; margin trims ends."), icon='INFO')
 
-                dbox.separator()
+                # Placement & sides
+                extra = gbox.box()
+                extra.label(text=tr("ui.dovetail_extra", "Placement & Sides"), icon='ORIENTATION_GLOBAL')
+                if _exists(props, "dovetail_span_axis"):
+                    extra.prop(props, "dovetail_span_axis", text=tr("ui.dovetail_span_axis", "Span Axis"))
+                if _exists(props, "dovetail_hard_side_cut"):
+                    extra.prop(props, "dovetail_hard_side_cut", text=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"))
 
-                # Side angles: when proportional is ON, show B as mirror of A (read-only label)
-                if props.dovetail_prop_enabled:
-                    dbox.prop(props, "dovetail_side_angle_a_deg", text=("Side angle (°)" if not _DE else "Seitenwinkel (°)"))
-                    try:
-                        a_deg, b_deg = props.dovetail_effective_angles()
-                    except Exception:
-                        a_deg, b_deg = props.dovetail_side_angle_a_deg, props.dovetail_side_angle_b_deg
-                    row = dbox.row(align=True); row.enabled = False
-                    row.prop(props, "dovetail_side_angle_b_deg", text=("Side angle B (°)" if not _DE else "Seitenwinkel B (°)"))
-                    row.label(text=f"{b_deg:.1f}°", icon='INFO')
-                else:
-                    dbox.prop(props, "dovetail_side_angle_a_deg", text=("Side angle A (°)" if not _DE else "Seitenwinkel A (°)"))
-                    dbox.prop(props, "dovetail_side_angle_b_deg", text=("Side angle B (°)" if not _DE else "Seitenwinkel B (°)"))
+                # In-plane placement controls (offset + rotation)
+                # Ensures "Rotation in plane" is visible; ops already apply it in placement and preview.
+                if _exists(props, "dovetail_inplane_offset_mm") or _exists(props, "dovetail_inplane_rotation_deg"):
+                    s = gbox.box()
+                    s.label(text=tr("ui.inplane_group", "In-plane adjustment"), icon='ORIENTATION_GIMBAL')
+                    if _exists(props, "dovetail_inplane_offset_mm"):
+                        s.prop(props, "dovetail_inplane_offset_mm", text=tr("ui.inplane_offset_mm", "Offset along seam (mm)"))
+                    if _exists(props, "dovetail_inplane_rotation_deg"):
+                        s.prop(props, "dovetail_inplane_rotation_deg", text=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"))
 
-                # Full span + Stretch axis
-                row_fs = dbox.row(align=True)
-                row_fs.prop(props, "dovetail_use_full_span", text=("Use full seam span" if not _DE else "Volle Nahtspanne"))
-                row_fs.prop(props, "dovetail_stretch_axis", text=("Stretch axis" if not _DE else "Streckachse"))
-
-                # Percent-of-span controls apply only when not using full span
-                pbox = dbox.box()
-                pbox.enabled = not props.dovetail_use_full_span
-                pbox.label(text=("Percent of seam span (applies to stretch axis)" if not _DE else "Prozent der Nahtspanne (gilt für Streckachse)"), icon='ARROW_LEFTRIGHT')
-                pbox.prop(props, "dovetail_fit_pct", text=("Span %" if not _DE else "Spanne %"))
-                pbox.prop(props, "dovetail_clip_to_edge", text=("Clip to edge" if not _DE else "Am Rand ausrichten"))
-
-                # End inset along the selected stretch axis projection
-                dbox.prop(props, "dovetail_end_inset_mm", text=("End inset (mm)" if not _DE else "Randabzug (mm)"))
-
-            # SNAP_CANTILEVER
-            if props.connector_type == "SNAP_CANTILEVER":
-                sbox = con_box.box()
-                sbox.label(text=("Snap-Fit (Cantilever)" if not _DE else "Schnapphaken (Kragarm)"), icon='MOD_BUILD')
-                sbox.prop(props, "snapcant_prop_enabled", text=("Proportional scaling (Cantilever)" if not _DE else "Proportionale Skalierung (Kragarm)"))
-                sbox.prop(props, "snap_cant_arm_w_mm", text=("Arm width (mm)" if not _DE else "Armbreite (mm)"))
-                sbox.prop(props, "snap_cant_arm_len_mm", text=("Arm length (mm)" if not _DE else "Armlänge (mm)"))
-                sbox.prop(props, "snap_cant_arm_thk_mm", text=("Arm thickness (mm)" if not _DE else "Armdicke (mm)"))
-                sbox.prop(props, "snap_cant_hook_undercut_mm", text=("Hook undercut (mm)" if not _DE else "Hinterschneidung (mm)"))
-                sbox.prop(props, "snap_cant_fillet_mm", text=("Base fillet (mm)" if not _DE else "Grundradius (mm)"))
-                smore = sbox.column(align=True)
-                smore.prop(props, "snap_cant_leadin_chamfer_mm", text=("Lead-in chamfer (mm)" if not _DE else "Einführfase (mm)"))
-                smore.prop(props, "snap_cant_stop_offset_mm", text=("Stop offset (mm)" if not _DE else "Anschlag (mm)"))
-                smore.prop(props, "snap_cant_clearance_scale", text=("Clearance scale" if not _DE else "Spiel-Skalierung"))
-                if props.material_profile == "PLA":
-                    sbox.label(text=("PLA is brittle for snap-fits; prefer PETG or tough resin." if not _DE else "PLA ist spröde für Schnapphaken; PETG oder zähe Harze bevorzugen."), icon='INFO')
-
-            # BALL_SOCKET
-            if props.connector_type == "BALL_SOCKET":
-                bsb = con_box.box()
-                bsb.label(text=("Ball & Socket" if not _DE else "Kugel & Schale"), icon='SPHERE')
-                bsb.prop(props, "ballsocket_prop_enabled", text=("Proportional scaling (Ball&Socket)" if not _DE else "Proportionale Skalierung (Kugel&Schale)"))
-                bsb.prop(props, "ball_diameter_mm", text=("Ball Ø (mm)" if not _DE else "Kugel-Ø (mm)"))
-                bsb.prop(props, "ball_friction_target", text=("Friction" if not _DE else "Reibung"))
-                bmore = bsb.column(align=True)
-                bmore.prop(props, "ball_socket_clearance_mm", text=("Socket clearance (mm)" if not _DE else "Buchsen-Spiel (mm)"))
-                bmore.prop(props, "ball_lip_thickness_mm", text=("Retention lip (mm)" if not _DE else "Halte-Lippe (mm)"))
-                bmore.prop(props, "ball_socket_open_angle_deg", text=("Open angle (°)" if not _DE else "Öffnungswinkel (°)"))
-                bmore.prop(props, "ball_leadin_fillet_mm", text=("Lead-in fillet (mm)" if not _DE else "Einführ-Radius (mm)"))
-                bsb.label(text=("Use wear-resistant materials (PETG, tough resin)." if not _DE else "Verschleißfeste Materialien verwenden (PETG, zähes Harz)."), icon='INFO')
-
-            # PIP_HINGE
-            if props.connector_type == "PIP_HINGE":
-                hib = con_box.box()
-                hib.label(text=("Print-in-Place Hinge" if not _DE else "Druckbares Scharnier (PiP)"), icon='MOD_SKIN')
-                hib.prop(props, "pip_prop_enabled", text=("Proportional scaling (PiP)" if not _DE else "Proportionale Skalierung (PiP)"))
-                hib.prop(props, "pip_hinge_width_mm", text=("Hinge width (mm)" if not _DE else "Scharnier-Breite (mm)"))
-                hib.prop(props, "pip_gap_mm", text=("PIP gap (mm)" if not _DE else "PIP-Spalt (mm)"))
-                hmore = hib.column(align=True)
-                hmore.prop(props, "pip_hinge_thickness_mm", text=("Thickness (mm)" if not _DE else "Dicke (mm)"))
-                hmore.prop(props, "pip_segments_count", text=("Segments" if not _DE else "Segmente"))
-                hmore.prop(props, "pip_relief_fillet_mm", text=("Relief fillet (mm)" if not _DE else "Entlastungs-Radius (mm)"))
-                hib.label(text=("Print-in-place requires excellent calibration; test a small sample first." if not _DE else "PiP erfordert sehr gute Kalibrierung; zuerst ein kleines Muster testen."), icon='INFO')
-                if props.material_profile == "PLA" and props.pip_hinge_type == "living_web":
-                    hib.label(text=("PLA prone to fatigue/breakage in living hinges." if not _DE else "PLA neigt bei Living Hinges zu Ermüdung/Bruch."), icon='INFO')
-
-            # Global chamfer
-            gbox.prop(props, "add_chamfer_mm", text=("Chamfer (mm)" if not _DE else "Fase (mm)"))
+            else:
+                gbox.label(text=tr("ui.unsupported_connector_type", "Unsupported connector type"), icon='INFO')
 
         layout.separator()
 
         # =========================
         # TOLERANCE
         # =========================
-        tol_box = layout.box()
-        tol_header = tol_box.row(align=True)
-        tol_header.label(text=("Tolerance" if not _DE else "Toleranz"), icon='MOD_SOLIDIFY')
-        tol_header.prop(props, "ui_more_tol", text=("Less..." if props.ui_more_tol else "More...") if not _DE else ("Weniger..." if props.ui_more_tol else "Mehr..."), toggle=True)
 
-        col = tol_box.column(align=True)
-        col.prop(props, "material_profile", text=("Material Profiles" if not _DE else "Material-Profile"))
-        col.prop(props, "snap_friction_target", text=("Friction" if not _DE else "Reibung"))
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=tr("ui.section.tolerance", "Tolerance"), icon='MOD_SOLIDIFY')
+        more_txt = tr("ui.less", "Less...") if getattr(props, "ui_more_tol", False) else tr("ui.more_less_more", "More...")
+        if _exists(props, "ui_more_tol"):
+            header.prop(props, "ui_more_tol", text=more_txt, toggle=True)
 
-        info = f"Spheres preset: Ø {props.snap_sphere_diameter_mm:.2f} mm, protr {props.snap_sphere_protrusion_mm:.2f} mm" if not _DE else f"Sphären-Preset: Ø {props.snap_sphere_diameter_mm:.2f} mm, Überstand {props.snap_sphere_protrusion_mm:.2f} mm"
-        col.label(text=info, icon='INFO')
+        col = box.column(align=True)
+        if _exists(props, "material_profile"):
+            col.prop(props, "material_profile", text=tr("ui.material_profiles", "Material Profiles"))
 
-        if props.ui_more_tol:
-            adv = tol_box.column(align=True)
-            row = adv.row(align=True)
-            row.prop(props, "tol_override", text=("Tolerance per Face (mm)" if not _DE else "Toleranz pro Fläche (mm)"))
-            prof_val = MATERIAL_PROFILES.get(props.material_profile, 0.3)
-            row = adv.row(align=True)
-            row.label(text=(f"Profile: {prof_val:.2f} mm" if not _DE else f"Profil: {prof_val:.2f} mm"))
+        if getattr(props, "ui_more_tol", False):
+            adv = box.column(align=True)
+            if _exists(props, "tol_override"):
+                row = adv.row(align=True)
+                row.prop(props, "tol_override", text=tr("ui.tol_per_face_mm", "Tolerance per Face (mm)"))
+
+            # Profile numeric hint
             try:
-                eff_tol = float(props.effective_tolerance())
-                row2 = adv.row(align=True)
-                row2.label(text=(f"Effective: {eff_tol:.2f} mm" if not _DE else f"Effektiv: {eff_tol:.2f} mm"))
+                prof_key = getattr(props, "material_profile", None)
+                prof_val = MATERIAL_PROFILES.get(prof_key, 0.2)
+                row = adv.row(align=True)
+                row.label(text=tr("ui.profile_value_mm", "Profile: ") + f"{prof_val:.2f} mm")
             except Exception:
                 pass
 
-        # =========================
-        # ALIGNMENT
-        # =========================
-        align_box = layout.box()
-        align_header = align_box.row(align=True)
-        align_header.label(text=("Alignment" if not _DE else "Ausrichtung"), icon='SNAP_ON')
-        align_header.prop(props, "ui_more_align", text=("Less..." if props.ui_more_align else "More...") if not _DE else ("Weniger..." if props.ui_more_align else "Mehr..."), toggle=True)
+            # Effective tolerance
+            try:
+                if hasattr(props, "effective_tolerance") and callable(props.effective_tolerance):
+                    eff_tol = float(props.effective_tolerance())
+                    row2 = adv.row(align=True)
+                    row2.label(text=tr("ui.effective_value_mm", "Effective: ") + f"{eff_tol:.2f} mm")
+            except Exception:
+                pass
 
-        if props.ui_more_align:
-            col = align_box.column(align=True)
-            col.label(text=("Pick faces in Object Mode (A = target, B = moving)" if not _DE else "Flächen im Objektmodus wählen (A = Ziel, B = bewegt)"))
+            # Short print-fit hint
+            adv.label(text=tr("ui.tolerance_hint",
+                              "For tight fit, reduce tolerance; for easy assembly, increase."), icon='INFO')
+
+        # =========================
+        # ALIGNMENT (Object Mode)
+        # =========================
+
+        box = layout.box()
+        header = box.row(align=True)
+        header.label(text=tr("ui.section.alignment", "Alignment"), icon='SNAP_ON')
+
+        more_txt = tr("ui.less", "Less...") if getattr(props, "ui_more_align", False) else tr("ui.more_less_more", "More...")
+        if _exists(props, "ui_more_align"):
+            header.prop(props, "ui_more_align", text=more_txt, toggle=True)
+
+        if getattr(props, "ui_more_align", False):
+            col = box.column(align=True)
+            col.label(text=tr("ui.pick_faces_hint", "Pick faces in Object Mode (A = target, B = moving)"))
 
             wm = context.window_manager
-            nameA = getattr(wm, "snapsplit_face_a_obj", ""); idxA = getattr(wm, "snapsplit_face_a_index", -1)
-            nameB = getattr(wm, "snapsplit_face_b_obj", ""); idxB = getattr(wm, "snapsplit_face_b_index", -1)
+            nameA = getattr(wm, "snapsplit_face_a_obj", "")
+            idxA = getattr(wm, "snapsplit_face_a_index", -1)
+            nameB = getattr(wm, "snapsplit_face_b_obj", "")
+            idxB = getattr(wm, "snapsplit_face_b_index", -1)
 
-            status_a = (f"A: {nameA} [#{idxA}]" if nameA and idxA >= 0 else ("A: none" if not _DE else "A: keine"))
-            status_b = (f"B: {nameB} [#{idxB}]" if nameB and idxB >= 0 else ("B: none" if not _DE else "B: keine"))
+            status_a = (f"{tr('ui.face_a', 'A')}: {nameA} [#{idxA}]" if nameA and idxA >= 0 else tr("ui.face_a_none", "A: none"))
+            status_b = (f"{tr('ui.face_b', 'B')}: {nameB} [#{idxB}]" if nameB and idxB >= 0 else tr("ui.face_b_none", "B: none"))
 
-            stat = align_box.row(align=True)
+            stat = box.row(align=True)
             stat.label(text=status_a, icon='INFO')
             stat.label(text=status_b, icon='INFO')
             stat.operator("snapsplit.clear_picks", text="", icon='X')
 
-            row = align_box.row(align=True)
-            row.operator("snapsplit.pick_face_a", text=("Pick Face A" if not _DE else "Fläche A wählen"), icon='MOUSE_LMB')
-            row.operator("snapsplit.pick_face_b", text=("Pick Face B" if not _DE else "Fläche B wählen"), icon='MOUSE_LMB')
+            row = box.row(align=True)
+            row.operator("snapsplit.pick_face_a", text=tr("ui.pick_face_a", "Pick Face A"), icon='MOUSE_LMB')
+            row.operator("snapsplit.pick_face_b", text=tr("ui.pick_face_b", "Pick Face B"), icon='MOUSE_LMB')
 
             can_align = (bool(nameA) and idxA >= 0 and bool(nameB) and idxB >= 0)
-            row_align = align_box.row(align=True); row_align.enabled = can_align
-            row_align.operator("snapsplit.align_faces", text=("Align Faces" if not _DE else "Flächen ausrichten"), icon='SNAP_ON')
+            row_align = box.row(align=True)
+            row_align.enabled = can_align
+            row_align.operator("snapsplit.align_faces", text=tr("ui.align_faces", "Align Faces"), icon='SNAP_ON')
 
+        # =========================
+        # Donate
+        # =========================
+
+        col = layout.column(align=True)
+        col.separator()
+        op = col.operator("wm.url_open", text=tr("ui.buy_me_coffee", "Buy me a coffee "), icon='FUND')
+        op.url = "https://buymeacoffee.com/betakontext"
         layout.separator()
-        cta = layout.column(align=True)
-        cta.operator("wm.url_open", text=("Buy me a coffee ❤️"), icon='FUND').url = "https://buymeacoffee.com/betakontext"
 
 
 def register():
+    """Register panel class with Blender."""
     bpy.utils.register_class(SNAP_PT_panel)
 
 
 def unregister():
+    """Unregister panel class from Blender."""
     bpy.utils.unregister_class(SNAP_PT_panel)

@@ -1,4 +1,3 @@
-# prefs.py
 '''
 Copyright (C) 2026 Christoph Medicus
 https://dev.betakontext.de
@@ -22,7 +21,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import StringProperty, BoolProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, FloatProperty
 
 class SNAPADDON_Preferences(AddonPreferences):
     """Add-on preferences for SnapSplit."""
@@ -30,7 +29,7 @@ class SNAPADDON_Preferences(AddonPreferences):
 
     default_profile: StringProperty(
         name="Default Profile",
-        default="PETG",
+        default="PLA",
         description="Default material/printer profile",
     )
     create_export_collection: BoolProperty(
@@ -39,24 +38,11 @@ class SNAPADDON_Preferences(AddonPreferences):
         description="Create a collection for parts ready to export",
     )
 
-    # New: preview density affects only lightweight preview geometry in ops_connectors click previews
-    preview_density: EnumProperty(
-        name="Preview density",
-        description="Controls segment counts for lightweight preview geometry",
-        items=[
-            ("low", "Low", "Fewer segments for fastest previews"),
-            ("medium", "Medium", "Balanced preview detail"),
-            ("high", "High", "More segments for smoother previews"),
-        ],
-        default="medium",
-    )
-
     def draw(self, context):
         """Draw the add-on preferences UI."""
         layout = self.layout
         layout.prop(self, "default_profile")
         layout.prop(self, "create_export_collection")
-        layout.prop(self, "preview_density")
 
 classes = (SNAPADDON_Preferences,)
 

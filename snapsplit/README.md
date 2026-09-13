@@ -1,16 +1,17 @@
 # SnapSplit
 
----------------------------
-This is V_0.1.4_more_connectors, currently in development. Last stable version is V_0.1.3_cleanup_and_align
----------------------------
-
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
+This is V_0.1.5 -> Switching the UI to Blender's language system and adding further translations.
+For now I implemented: "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ja", "zh", "ru", "uk", "tr"
+Feel free to fork and add further languages into -> languages.py. Then open a pull request. I'd be happy about any participation.
+---------------------------
+---------------------------
 
-For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0 and 5.1.1 which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1 and 5.2.0 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
 - Download the whole repository or only snapsplit.zip
@@ -25,7 +26,7 @@ For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0 and 5.1.1 wh
 - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
 - Select a watertight (manifold) mesh.
 - Ctrl + A -> Apply all transforms
-- This is also important after each change, f.e. rotatations or scale.
+- This is also important after each change, f.e. rotations or scale.
 - After splitting: visually check that all parts contain polygons.
 
 -------------------------
