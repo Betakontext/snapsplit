@@ -5,9 +5,7 @@ Addon for Blender to automate cut and connection building workflows for complex 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
-This is V_0.1.5 -> Switching the UI to Blender's language system and adding further translations.
-For now I implemented: "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ja", "zh", "ru", "uk", "tr"
-Feel free to fork and add further languages into -> languages.py. Then open a pull request. I'd be happy about any participation.
+This is V_0.1.4 -> Implementing more connectors
 ---------------------------
 ---------------------------
 
