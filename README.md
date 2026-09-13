@@ -26,7 +26,7 @@ For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1 and 5
 - Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
 - Select a watertight (manifold) mesh.
 - Ctrl + A -> Apply all transforms
-- This is also important after each change, f.e. rotatations or scale.
+- This is also important after each change, f.e. rotations or scale.
 - After splitting: visually check that all parts contain polygons.
 
 -------------------------
