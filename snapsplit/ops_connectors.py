@@ -19,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+# ops_connectors.py
+
 
 import bpy
 import bmesh
@@ -368,14 +370,17 @@ def _safe_mm(v, default):
 
 
 def create_dovetail_box_uvn(width_u_mm=10.0, length_v_mm=10.0, depth_n_mm=8.0,
-                            signed_taper_pct=0.0, name="SnapSplit_DovetailUVN"):
+                            signed_taper_pct=0.0, chamfer_mm=0.0, name="SnapSplit_DovetailUVN"):
     """Create a dovetail as a tapered rectangular prism in local (u,v,n):
 
     - Base face at n=0 (wider in u/v), tip at n=depth_n (narrower/wider per signed taper).
     - Signed taper applies only to in-plane axes (u and v) symmetrically.
       positive -> tip narrower; negative -> tip wider.
     - Depth is not tapered (pure extrusion along n).
+    - Optional chamfer_mm adds a Bevel modifier (same pattern as create_rect_tenon_quader);
+      caller is responsible for applying it before any boolean operation if needed.
     """
+
     mm = unit_mm()
     wu = max(0.1, _safe_mm(width_u_mm, 10.0)) * mm
     lv = max(0.1, _safe_mm(length_v_mm, 10.0)) * mm
@@ -410,7 +415,18 @@ def create_dovetail_box_uvn(width_u_mm=10.0, length_v_mm=10.0, depth_n_mm=8.0,
 
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me); bm.free()
-    return bpy.data.objects.new(name, me)
+    obj = bpy.data.objects.new(name, me)
+
+    # Optional chamfer via Bevel modifier (consistent with create_rect_tenon_quader
+    # and create_cyl_pin). Not applied here; call sites apply it before boolean ops.
+    if chamfer_mm and chamfer_mm > 0.0:
+        bev = obj.modifiers.new("Bevel", 'BEVEL')
+        bev.width = float(chamfer_mm) * mm
+        bev.segments = 1
+        bev.limit_method = 'NONE'
+
+    return obj
+
 
 
 # ---------------------------
@@ -876,15 +892,19 @@ def _orthonormal_frame_from_z(z: Vector):
     return x, y, z
 
 
-def _apply_inplane_offset_and_rotation(M: Matrix, offset_mm: float, rotation_deg: float):
-    """Apply an in-plane translation along local X (major axis) and a rotation around local Z."""
+def _apply_inplane_offset_and_rotation(M: Matrix, offset_u_mm: float, offset_v_mm: float, rotation_deg: float):
+    """Apply an in-plane translation along local X/Y (u = width, v = length seam axes)
+    and a rotation around local Z. Translation happens in the unrotated local frame,
+    so the u/v offsets stay tied to the fixed seam-plane axes regardless of rotation."""
     mm = unit_mm()
-    off = float(offset_mm) * mm
+    off_u = float(offset_u_mm) * mm
+    off_v = float(offset_v_mm) * mm
     ang = radians(float(rotation_deg))
-    # Local transforms: T_x(off) then R_z(ang)
-    T = Matrix.Translation((off, 0.0, 0.0))
+    # Local transforms: T_uv(off_u, off_v) then R_z(ang)
+    T = Matrix.Translation((off_u, off_v, 0.0))
     R = Matrix.Rotation(ang, 4, 'Z')
     return M @ T @ R
+
 
 
 def _compute_edge_to_edge_span_width(a, b, axis, seam_pos, margin_pct=5.0):
@@ -936,8 +956,51 @@ def _compute_edge_to_edge_span_along_dir(a, b, measure_dir: Vector, axis: str, s
     return effective
 
 
+# ---------------------------
+# NEW: fixed internal safety overshoot for the Dovetail SOCKET cutter only.
+#
+# Problem observed: when the socket cutter's in-plane (u/v) side faces land
+# exactly on / very close to the target's own outer surface (e.g. AUTO span
+# with margin, or a manually entered size that matches the stock exactly),
+# Blender's EXACT Boolean solver can leave a thin, un-cut strip of the outer
+# hull standing ("skin remains closed") instead of producing a clean cut all
+# the way through to the edge. Coincident/near-coincident faces are a known
+# weak spot of the EXACT solver.
+#
+# Fix: always enlarge ONLY the socket (DIFFERENCE) cutter's u/v dimensions by
+# a small fixed amount on each side. This guarantees genuine volume overlap
+# with the target's outer wall instead of a coplanar touch, without changing
+# the visible tenon geometry that gets unioned into part B.
+# ---------------------------------------------------------------------------
+
+# Fixed internal safety margin (mm), applied per side (so total growth in a
+# given in-plane dimension is 2 * this value). Kept small so it stays well
+# below typical tolerance/print accuracy and does not visibly change the fit.
+_DOVETAIL_SOCKET_SIDE_OVERSHOOT_MM = 0.5
+
+
+def _uvn_socket_size_with_overshoot(width_u_mm, length_v_mm, overshoot_mm=_DOVETAIL_SOCKET_SIDE_OVERSHOOT_MM):
+    """Return (width_u_mm, length_v_mm) enlarged symmetrically by a fixed overshoot per side.
+
+    This is used exclusively for the Dovetail socket (DIFFERENCE) cutter so its
+    side faces always cut slightly past the target's outer surface instead of
+    landing exactly on it (or just short of it after AUTO-span margin), which
+    avoids leftover "skin" from coplanar/near-coplanar Boolean faces. The
+    visible tenon geometry (UNION into part B) is intentionally NOT affected.
+    """
+    ow = max(0.0, float(overshoot_mm))
+    return (max(0.1, float(width_u_mm) + 2.0 * ow),
+            max(0.1, float(length_v_mm) + 2.0 * ow))
+
+
 def _combined_world_bounds(objects):
-    """Return combined world AABB (min, max) as 3D vectors for a list of objects."""
+    """Return combined world AABB (min, max) as 3D vectors for a list of objects.
+
+    NOTE: kept as a small generic utility. It is no longer used by the dovetail
+    hard-side-cut path (see _build_combined_solid_for_clip / _clip_helper_to_combined_surface
+    below), because an axis-aligned box cannot correctly trim connectors against
+    curved/organic outer surfaces.
+    """
     if not objects:
         z = Vector((0, 0, 0))
         return z.copy(), z.copy()
@@ -954,58 +1017,121 @@ def _combined_world_bounds(objects):
     return mins, maxs
 
 
-def _make_infinite_slab_cutter_along_span_axis(span_axis: str, bounds_min: Vector, bounds_max: Vector, thickness_scale=4.0, name="SnapSplit_DovetailSideSlab"):
-    """Create two large slab cutters that trim anything outside [min,max] along span_axis, centered on seam plane."""
-    slabs = []
-    idx = _axis_index(span_axis)
-    U = Vector((1, 0, 0)); V = Vector((0, 1, 0)); W = Vector((0, 0, 1))
-    axes = [U, V, W]
+# NEW: -------------------------------------------------------------
+# Hard-side cut v2: real surface clipping instead of axis-aligned slabs.
+#
+# The previous implementation trimmed overhanging dovetail geometry with two
+# thin (1 Blender-unit) axis-aligned slab cutters. This failed whenever the
+# overhang exceeded that thickness, or when the outer hull was curved/organic
+# (an AABB face can never follow a curved surface). The new approach clips the
+# connector geometry directly against the real combined solid of both split
+# parts (A union B), which reconstructs the object's true outer hull.
+# ---------------------------------------------------------------------------
 
-    other = [0, 1, 2]
-    other.remove(idx)
-    o1, o2 = other[0], other[1]
-
-    size_o1 = (bounds_max[o1] - bounds_min[o1]) * thickness_scale + 1.0
-    size_o2 = (bounds_max[o2] - bounds_min[o2]) * thickness_scale + 1.0
-
-    for side in ("LOW", "HIGH"):
-        bm = bmesh.new()
-        bmesh.ops.create_cube(bm, size=1.0)
-        me = bpy.data.meshes.new(f"{name}_{side}")
-        bm.to_mesh(me); bm.free()
-        slab = bpy.data.objects.new(f"{name}_{side}", me)
-
-        scale_vec = [size_o1 if i == o1 else (size_o2 if i == o2 else 1.0) for i in range(3)]
-        S = Matrix.Diagonal(Vector((scale_vec[0], scale_vec[1], scale_vec[2], 1.0)))
-
-        center = (bounds_min + bounds_max) * 0.5
-        pos = Vector((center.x, center.y, center.z))
-        if side == "LOW":
-            pos[idx] = bounds_min[idx] - 0.5
-        else:
-            pos[idx] = bounds_max[idx] + 0.5
-        T = Matrix.Translation(pos)
-
-        slab.matrix_world = T @ S
-        slabs.append(slab)
-
-    return slabs
+def _recalc_normals_outside(obj):
+    """Recalculate mesh normals to point outward; improves Boolean solver stability."""
+    try:
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        obj.select_set(False)
+    except Exception:
+        try:
+            if bpy.context.object and bpy.context.object.mode == 'EDIT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception:
+            pass
 
 
-def _intersect_keep_within_bounds(helper_obj, span_axis: str, bounds_min: Vector, bounds_max: Vector, cutters_coll):
-    """Trim helper_obj so that only the portion within [min,max] along span_axis survives."""
-    slabs = _make_infinite_slab_cutter_along_span_axis(span_axis, bounds_min, bounds_max, name="SnapSplit_DVT_SideSlab")
-    for s in slabs:
-        cutters_coll.objects.link(s)
+def _build_combined_solid_for_clip(a, b, cutters_coll, name="SnapSplit_ClipSolid"):
+    """Build a temporary watertight solid representing the true outer hull (A union B).
 
-    for s in slabs:
-        _apply_object_scale_if_needed(s)
-        mod = helper_obj.modifiers.new("SnapSplit_DVT_SideTrim", 'BOOLEAN')
-        mod.operation = 'DIFFERENCE'
+    This solid is later used as an INTERSECT target so that overhanging dovetail
+    geometry gets clipped exactly along the real object surface, including curved
+    or fully organic shapes. Returns the linked helper object on success, or None
+    if the union failed or produced an empty/degenerate mesh (e.g. seams not closed).
+    The caller is responsible for disposing the returned object via _dispose_object.
+    """
+    clip_obj = None
+    b_dup = None
+    try:
+        # Duplicate A as the base of the clip solid (independent mesh data)
+        clip_obj = a.copy()
+        clip_obj.data = a.data.copy()
+        clip_obj.name = name
+        for mod in list(clip_obj.modifiers):
+            clip_obj.modifiers.remove(mod)
+        cutters_coll.objects.link(clip_obj)
+
+        # Duplicate B to union into the clip solid without touching the real part B
+        b_dup = b.copy()
+        b_dup.data = b.data.copy()
+        b_dup.name = f"{name}_BPart"
+        for mod in list(b_dup.modifiers):
+            b_dup.modifiers.remove(mod)
+        cutters_coll.objects.link(b_dup)
+
+        _apply_object_scale_if_needed(clip_obj)
+        _apply_object_scale_if_needed(b_dup)
+
+        mod = clip_obj.modifiers.new("SnapSplit_ClipUnion", 'BOOLEAN')
+        mod.operation = 'UNION'
         _set_boolean_solver_with_fallback(mod)
-        mod.object = s
+        mod.object = b_dup
+        boolean_apply(clip_obj, mod)
+        _dispose_object(b_dup, remove_data=True)
+        b_dup = None
+
+        # Consistent outward normals reduce EXACT-solver artifacts on the next Boolean
+        _recalc_normals_outside(clip_obj)
+
+        if not clip_obj.data or len(clip_obj.data.polygons) == 0:
+            _dispose_object(clip_obj, remove_data=True)
+            return None
+
+        return clip_obj
+    except Exception:
+        try:
+            if b_dup is not None:
+                _dispose_object(b_dup, remove_data=True)
+        except Exception:
+            pass
+        try:
+            if clip_obj is not None:
+                _dispose_object(clip_obj, remove_data=True)
+        except Exception:
+            pass
+        return None
+
+
+def _clip_helper_to_combined_surface(helper_obj, clip_solid):
+    """Trim helper_obj (dovetail tenon or socket cutter) to the volume inside clip_solid.
+
+    Uses a real Boolean INTERSECT against the true combined outer surface (A union B),
+    so the cut follows curved/organic contours exactly instead of an axis-aligned box,
+    and there is no fixed cutting depth like the old 1-unit slabs.
+    Returns True on success (non-empty result). On failure the modifier attempt has
+    already run via boolean_apply(); the caller should warn the user and may keep the
+    untrimmed helper_obj rather than silently losing geometry.
+    """
+    if clip_solid is None or clip_solid.data is None:
+        return False
+    try:
+        mod = helper_obj.modifiers.new("SnapSplit_DVT_SurfaceClip", 'BOOLEAN')
+        mod.operation = 'INTERSECT'
+        _set_boolean_solver_with_fallback(mod)
+        mod.object = clip_solid
         boolean_apply(helper_obj, mod)
-        _dispose_object(s, remove_data=True)
+        try:
+            helper_obj.data.validate(verbose=False)
+        except Exception:
+            pass
+        return helper_obj.data is not None and len(helper_obj.data.polygons) > 0
+    except Exception:
+        return False
 
 
 # ---------------------------
@@ -1109,7 +1235,84 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
     return None, None
 
 
+# ---------------------------
+# NEW: forced Span Axis support for the Dovetail connector.
+#
+# Because _orthonormal_frame_from_z() always derives the in-plane u/v basis
+# from the seam normal (split axis) using world-aligned fallbacks, u and v are
+# always exactly one of the two remaining world axes (up to sign) for X/Y/Z
+# seam normals. This lets us resolve a user-forced world axis (X/Y/Z) to
+# either the "U" (width) or "V" (length) in-plane role with a simple dot
+# product, without needing to know the split axis explicitly.
+# ---------------------------------------------------------------------------
+
+def _dovetail_span_axis_role(span_axis_choice: str, x_dir: Vector, y_dir: Vector):
+    """Resolve a user-forced Span Axis choice ("NONE"/"AUTO"/"X"/"Y"/"Z") to the
+    dovetail's local in-plane role.
+
+    Returns "U" if the chosen world axis matches the local u (x_dir) direction,
+    "V" if it matches local v (y_dir), "V" unconditionally for "AUTO" (always
+    targets the Dovetail Length axis regardless of world alignment), or None
+    if NONE was chosen or the axis coincides with the seam normal itself
+    (not in the seam plane).
+    """
+    if span_axis_choice in (None, "NONE"):
+        return None
+    if span_axis_choice == "AUTO":
+        # Auto always stretches along the local U (Dovetail Length) axis,
+        # independent of which world axis it happens to correspond to.
+        return "U"
+    world_axis = {
+
+        "X": Vector((1.0, 0.0, 0.0)),
+        "Y": Vector((0.0, 1.0, 0.0)),
+        "Z": Vector((0.0, 0.0, 1.0)),
+    }.get(span_axis_choice)
+    if world_axis is None:
+        return None
+    if abs(world_axis.dot(x_dir.normalized())) > 0.99:
+        return "U"
+    if abs(world_axis.dot(y_dir.normalized())) > 0.99:
+        return "V"
+    return None
+
+
+def _world_axis_letter_from_direction(direction: Vector) -> str:
+    """Return the world axis letter ("X"/"Y"/"Z") whose basis vector is most
+    aligned with the given direction. Used to resolve the "AUTO" Span Axis
+    (which always targets the local V/length role) to a concrete world axis
+    for extent measurement in _dovetail_forced_span_size_mm(); u/v are always
+    exactly world-axis-aligned for X/Y/Z seam normals, so this is exact in
+    practice, not just an approximation."""
+    d = direction.normalized()
+    ax, ay, az = abs(d.x), abs(d.y), abs(d.z)
+    if ax >= ay and ax >= az:
+        return "X"
+    if ay >= ax and ay >= az:
+        return "Y"
+    return "Z"
+
+
+def _dovetail_forced_span_size_mm(a, b, axis_letter: str, safety_margin_mm: float = 10.0):
+
+    """Return an in-plane size (mm) along axis_letter (X/Y/Z world axis) that is
+    guaranteed to exceed the combined outer extent of A and B along that axis,
+    regardless of where the dovetail sits within the seam overlap.
+
+    Uses 2x the combined AABB extent plus a fixed safety margin per side, so
+    even a connector placed near one edge of the object still overshoots both
+    outer sides. The oversized geometry relies on the hard-side clip (against
+    the real A/B surface) to be trimmed back to the true outer contour.
+    """
+    mins, maxs = _combined_world_bounds([a, b])
+    idx = _axis_index(axis_letter)
+    extent_scene = maxs[idx] - mins[idx]
+    extent_mm = extent_scene / unit_mm()
+    return max(0.1, 2.0 * extent_mm + 2.0 * float(safety_margin_mm))
+
+
 def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
+
     """Place one dovetail wedge at a world point; union into B and cut socket into A.
 
     Updated behavior (only for Dovetail):
@@ -1118,6 +1321,15 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
     - Signed Taper applies in-plane (u/v) only; Depth is not tapered.
     - AUTO span per in-plane axis (optional): width_u/length_v can be derived from overlap extents.
     - Preview == final: same transforms including in-plane offset/rotation.
+    - Hard-side Cut clips against the real combined A/B surface (Boolean INTERSECT)
+      instead of axis-aligned slab cutters, so overhang is removed reliably even
+      on curved/organic outer hulls and regardless of how far the dovetail sticks out.
+    - NEW: the socket (DIFFERENCE) cutter's in-plane size always gets a small fixed
+      safety overshoot (_DOVETAIL_SOCKET_SIDE_OVERSHOOT_MM) so its side faces cut
+      slightly past the target's outer surface instead of landing exactly on it.
+      This fixes cases where a thin strip of the outer hull remained uncut (e.g.
+      AUTO span, or manual dimensions matching the stock size exactly). Only the
+      socket cutter is affected; the visible tenon unioned into part B is unchanged.
     """
     if props is None:
         props = bpy.context.scene.snapsplit
@@ -1153,8 +1365,35 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
         width_u_mm = max(span_u / unit_mm(), 0.1)
         length_v_mm = max(span_v / unit_mm(), 0.1)
 
+    # Forced Span Axis: if the user picked a world axis (X/Y/Z) that lies in the
+    # seam plane (matches local u or v), override that axis's size so the
+    # dovetail is guaranteed to overshoot both outer sides along it. The other
+    # in-plane axis is left untouched (manual size or AUTO span result).
+    span_axis_choice = str(getattr(props, "dovetail_span_axis", "NONE"))
+    span_role = _dovetail_span_axis_role(span_axis_choice, x, y)
+    force_hard_cut = False
+    if span_role == "U":
+        # For X/Y/Z the choice string is already the correct world axis letter;
+        # AUTO never resolves to "U" (see _dovetail_span_axis_role).
+        axis_letter = span_axis_choice if span_axis_choice in {"X", "Y", "Z"} else _world_axis_letter_from_direction(x)
+        width_u_mm = _dovetail_forced_span_size_mm(a, b, axis_letter)
+        force_hard_cut = True
+    elif span_role == "V":
+        # AUTO resolves to "V" but is not itself a valid axis letter for
+        # _dovetail_forced_span_size_mm(); resolve the actual world axis
+        # that the local v (length) direction corresponds to.
+        axis_letter = span_axis_choice if span_axis_choice in {"X", "Y", "Z"} else _world_axis_letter_from_direction(y)
+        length_v_mm = _dovetail_forced_span_size_mm(a, b, axis_letter)
+        force_hard_cut = True
+    elif span_axis_choice != "NONE" and span_role is None:
+        report_user(None, 'WARNING',
+                    tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                       "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
+
+
     # Build placement frame at click with embed percentage along n
     L_scene = float(depth_n_mm) * unit_mm()
+
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
     p_embed = point_world - z * (embed_pct * L_scene)
 
@@ -1164,14 +1403,33 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
         (x.z, y.z, z.z, p_embed.z),
         (0,   0,   0,   1.0),
     ))
-    # Apply in-plane controls (offset along u, rotation around n)
+
+
+
+    # Apply in-plane controls (offsets along u/width and v/length, rotation around n)
     M = _apply_inplane_offset_and_rotation(
         M,
-        offset_mm=float(getattr(props, "dovetail_inplane_offset_mm", 0.0)),
+        offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+        offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
         rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
     )
 
+
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
+
+    # NEW: Build the real combined-surface clip solid once (A union B), before A/B
+    # are modified by this connector's own union/difference operations below.
+    # A forced Span Axis always requires the hard-side clip, since the
+    # oversized in-plane geometry must be trimmed back to the real surface.
+    hard_cut_enabled = bool(getattr(props, "dovetail_hard_side_cut", False)) or force_hard_cut
+    clip_solid = None
+
+    if hard_cut_enabled:
+        clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
+        if clip_solid is None:
+            report_user(None, 'WARNING',
+                        tr("op.connect.dovetail.warn.hardcut_build_fail",
+                           "Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed."))
 
     # Create dovetail with axis-relative dimensions and signed in-plane taper
     signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
@@ -1179,26 +1437,35 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
                                   length_v_mm=length_v_mm,
                                   depth_n_mm=depth_n_mm,
                                   signed_taper_pct=signed_taper,
+                                  chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                   name=f"{name_prefix}")
     ten.matrix_world = M
     cutters_coll.objects.link(ten)
 
-    # Optional hard side trimming against combined bounds (keeps only within span along chosen axis)
-    if bool(getattr(props, "dovetail_hard_side_cut", False)):
-        bmin, bmax = _combined_world_bounds([a, b])
-        trim_axis = getattr(props, "dovetail_span_axis", None)
-        if trim_axis not in {"X", "Y", "Z"}:
-            # Derive a best-effort global axis to trim along the larger in-plane projection
-            idxn = _axis_index(axis)
-            ext = bmax - bmin
-            ext_list = [ext.x, ext.y, ext.z]
-            ext_list[idxn] = -1.0
-            order = ["X", "Y", "Z"]
-            trim_axis = order[max(range(3), key=lambda ii: ext_list[ii])]
-        _intersect_keep_within_bounds(ten, trim_axis, bmin, bmax, cutters_coll)
+    # Apply the chamfer bevel modifier now, before any boolean step below, so
+    # the clip/union operations work on the already-chamfered mesh data
+    # deterministically (same pattern as place_one_rect_tenon_at).
+    for mod in list(ten.modifiers):
+        if mod.type == 'BEVEL':
+            bpy.context.view_layer.objects.active = ten
+            ten.select_set(True)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            except Exception as e:
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+            ten.select_set(False)
+
+    # Clip the tenon against the real object surface instead of AABB slabs
+    if clip_solid is not None:
+        ok = _clip_helper_to_combined_surface(ten, clip_solid)
+        if not ok:
+            report_user(None, 'WARNING',
+                        tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                           "Hard-side cut failed on the tenon; keeping untrimmed connector geometry."))
 
     # UNION into B
     union_and_dispose(b, ten, name=f"{name_prefix}_Union")
+
 
     # DIFFERENCE socket in A with XY (u/v) tolerance scaling
     mm = unit_mm()
@@ -1207,28 +1474,41 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
     s_inplane = 1.0 + (float(props.effective_tolerance()) * mm) / half_min_plane
     sx = s_inplane; sy = s_inplane; sz = 1.0
 
-    socket = create_dovetail_box_uvn(width_u_mm=width_u_mm,
-                                     length_v_mm=length_v_mm,
+    # NEW: always enlarge the socket cutter's own u/v size by the fixed safety
+    # overshoot BEFORE the tolerance scale is applied, so the cutter's side
+    # faces genuinely overlap the target's outer wall instead of touching it
+    # exactly. This is independent of dovetail_hard_side_cut and of tolerance.
+    socket_width_u_mm, socket_length_v_mm = _uvn_socket_size_with_overshoot(width_u_mm, length_v_mm)
+
+    socket = create_dovetail_box_uvn(width_u_mm=socket_width_u_mm,
+                                     length_v_mm=socket_length_v_mm,
                                      depth_n_mm=depth_n_mm,
                                      signed_taper_pct=signed_taper,
+                                     chamfer_mm=0.0,  # socket cutter stays sharp-edged; see DIFFERENCE note below
                                      name=f"{name_prefix}_SocketCutter")
+
+
     socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
     cutters_coll.objects.link(socket)
 
-    if bool(getattr(props, "dovetail_hard_side_cut", False)):
-        bmin, bmax = _combined_world_bounds([a, b])
-        trim_axis = getattr(props, "dovetail_span_axis", None)
-        if trim_axis not in {"X", "Y", "Z"}:
-            idxn = _axis_index(axis)
-            ext = bmax - bmin
-            ext_list = [ext.x, ext.y, ext.z]
-            ext_list[idxn] = -1.0
-            order = ["X", "Y", "Z"]
-            trim_axis = order[max(range(3), key=lambda ii: ext_list[ii])]
-        _intersect_keep_within_bounds(socket, trim_axis, bmin, bmax, cutters_coll)
+    # NOTE: The socket cutter is intentionally NOT clipped against clip_solid.
+    # It only feeds a DIFFERENCE operation, which already removes just the
+    # material that geometrically overlaps A's real volume; excess cutter
+    # geometry outside A's outer wall has no effect. Re-clipping it to the
+    # exact combined surface (A union B) made its side faces coplanar with
+    # A's own outer wall again, undoing the fixed u/v overshoot above and
+    # causing the EXACT solver to leave a thin unremoved skin over the hole.
+    # The tenon clip above is unaffected and remains required (visible
+    # UNION geometry must not protrude past the real outer contour).
 
     cut_socket_with_cutter_and_dispose(a, socket)
+
+    # Dispose the shared clip solid (still needed above for the tenon clip)
+    if clip_solid is not None:
+        _dispose_object(clip_solid, remove_data=True)
+
     return None, None
+
 
 
 def place_one_flush_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="FlushPin_Click"):
@@ -1342,6 +1622,49 @@ def place_connectors_between(parts, axis, count, ctype, props):
             points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
         else:
             points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
+
+
+        ctype_for_pair = getattr(props, "connector_type", ctype)
+
+
+        dovetail_span_axis_choice = str(getattr(props, "dovetail_span_axis", "NONE"))
+        dovetail_span_role_pair = None
+        dovetail_force_hard_cut_pair = False
+        dovetail_span_axis_letter_pair = None  # resolved world axis letter (X/Y/Z) used for forced sizing
+        if ctype_for_pair == "DOVETAIL":
+            z_pair = naxis.normalized()
+            x_pair = Vector((1, 0, 0))
+            if abs(z_pair.dot(x_pair)) > 0.99:
+                x_pair = Vector((0, 1, 0))
+            y_pair = z_pair.cross(x_pair); y_pair.normalize()
+            x_pair = y_pair.cross(z_pair); x_pair.normalize()
+            dovetail_span_role_pair = _dovetail_span_axis_role(dovetail_span_axis_choice, x_pair, y_pair)
+            if dovetail_span_role_pair == "U":
+                dovetail_span_axis_letter_pair = (
+                    dovetail_span_axis_choice if dovetail_span_axis_choice in {"X", "Y", "Z"}
+                    else _world_axis_letter_from_direction(x_pair)
+                )
+                dovetail_force_hard_cut_pair = True
+            elif dovetail_span_role_pair == "V":
+                dovetail_span_axis_letter_pair = (
+                    dovetail_span_axis_choice if dovetail_span_axis_choice in {"X", "Y", "Z"}
+                    else _world_axis_letter_from_direction(y_pair)
+                )
+                dovetail_force_hard_cut_pair = True
+            elif dovetail_span_axis_choice != "NONE" and dovetail_span_role_pair is None:
+                report_user(None, 'WARNING',
+                            tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                               "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
+
+
+        dovetail_clip_solid = None
+        if ctype_for_pair == "DOVETAIL" and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
+            dovetail_clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
+            if dovetail_clip_solid is None:
+                report_user(None, 'WARNING',
+                            tr("op.connect.dovetail.warn.hardcut_build_fail",
+                               "Hard-side cut: could not build combined surface (seam may not be closed); connectors left untrimmed."))
+
 
         for i, p in enumerate(points):
             z = naxis.normalized()
@@ -1462,12 +1785,15 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     (x_d.z, y_d.z, z_d.z, p_embed_dv.z),
                     (0,     0,     0,     1.0),
                 ))
-                # Apply in-plane controls
+
+                # Apply in-plane controls (offsets along u/width and v/length)
                 M2 = _apply_inplane_offset_and_rotation(
                     M_base,
-                    offset_mm=float(getattr(props, "dovetail_inplane_offset_mm", 0.0)),
+                    offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                    offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
                     rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
                 )
+
 
                 # Compute per-axis in-plane spans if AUTO
                 auto_span = bool(getattr(props, "dovetail_auto_span", False))
@@ -1481,29 +1807,49 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     width_u_mm = max(span_u / unit_mm(), 0.1)
                     length_v_mm = max(span_v / unit_mm(), 0.1)
 
+                # Forced Span Axis: override the matching in-plane size so the
+                # dovetail overshoots both outer sides along that axis (batch path).
+                # dovetail_span_axis_letter_pair already resolves AUTO to a concrete
+                # world axis letter matching the local V (length) direction.
+                if dovetail_span_role_pair == "U":
+                    width_u_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+                elif dovetail_span_role_pair == "V":
+                    length_v_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+
+
                 signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
+
                 ten = create_dovetail_box_uvn(width_u_mm=width_u_mm,
                                               length_v_mm=length_v_mm,
                                               depth_n_mm=depth_n_mm,
                                               signed_taper_pct=signed_taper,
+                                              chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                               name=f"Dovetail_{i}")
                 ten.matrix_world = M2
                 cutters_coll.objects.link(ten)
 
-                # Hard side cut if enabled
-                if bool(getattr(props, "dovetail_hard_side_cut", False)):
-                    bmin, bmax = _combined_world_bounds([a, b])
-                    trim_axis = getattr(props, "dovetail_span_axis", None)
-                    if trim_axis not in {"X", "Y", "Z"}:
-                        idxn = _axis_index(axis)
-                        ext = bmax - bmin
-                        ext_list = [ext.x, ext.y, ext.z]
-                        ext_list[idxn] = -1.0
-                        order = ["X", "Y", "Z"]
-                        trim_axis = order[max(range(3), key=lambda ii: ext_list[ii])]
-                    _intersect_keep_within_bounds(ten, trim_axis, bmin, bmax, cutters_coll)
+                # Apply the chamfer bevel modifier now, before the hard-side clip
+                # and the union below (same rationale as the click path).
+                for mod in list(ten.modifiers):
+                    if mod.type == 'BEVEL':
+                        bpy.context.view_layer.objects.active = ten
+                        ten.select_set(True)
+                        try:
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                        except Exception as e:
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+                        ten.select_set(False)
+
+                # Hard-side cut clips against the pre-built combined surface
+                if dovetail_clip_solid is not None:
+                    ok = _clip_helper_to_combined_surface(ten, dovetail_clip_solid)
+                    if not ok:
+                        report_user(None, 'WARNING',
+                                    tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                                       f"Hard-side cut failed on Dovetail_{i}; keeping untrimmed connector geometry."))
 
                 union_and_dispose(b, ten, name=f"DovetailUnion_{i}")
+
 
                 # Socket with in-plane tolerance
                 mm = unit_mm()
@@ -1511,28 +1857,29 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 s_inplane = 1.0 + (float(props.effective_tolerance()) * mm) / half_min_plane
                 sx = s_inplane; sy = s_inplane; sz = 1.0
 
-                socket = create_dovetail_box_uvn(width_u_mm=width_u_mm,
-                                                 length_v_mm=length_v_mm,
+                # NEW: always enlarge the socket cutter's own u/v size by the fixed
+                # safety overshoot (same helper as the click-placement path), so
+                # both interaction modes produce identical, reliable cuts.
+                socket_width_u_mm, socket_length_v_mm = _uvn_socket_size_with_overshoot(width_u_mm, length_v_mm)
+
+                socket = create_dovetail_box_uvn(width_u_mm=socket_width_u_mm,
+                                                 length_v_mm=socket_length_v_mm,
                                                  depth_n_mm=depth_n_mm,
                                                  signed_taper_pct=signed_taper,
                                                  name=f"DovetailSocketCutter_{i}")
                 socket.matrix_world = M2 @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
 
-                if bool(getattr(props, "dovetail_hard_side_cut", False)):
-                    bmin, bmax = _combined_world_bounds([a, b])
-                    trim_axis = getattr(props, "dovetail_span_axis", None)
-                    if trim_axis not in {"X", "Y", "Z"}:
-                        idxn = _axis_index(axis)
-                        ext = bmax - bmin
-                        ext_list = [ext.x, ext.y, ext.z]
-                        ext_list[idxn] = -1.0
-                        order = ["X", "Y", "Z"]
-                        trim_axis = order[max(range(3), key=lambda ii: ext_list[ii])]
-                    _intersect_keep_within_bounds(socket, trim_axis, bmin, bmax, cutters_coll)
+                # NOTE: No clip against dovetail_clip_solid for the socket cutter
+                # (batch path). Same rationale as the click path in
+                # place_one_dovetail_at(): DIFFERENCE only removes overlapping
+                # material, so leaving the overshoot-enlarged cutter untrimmed
+                # avoids coplanar side faces with A's outer wall and the
+                # resulting EXACT-solver skin-rest artifact.
 
                 cut_socket_with_cutter_and_dispose(a, socket)
                 created.append(None)
+
 
             elif ctype_cur == "SNAP_FLUSH_PIN":
                 add_flush_barb_for_cyl(
@@ -1579,6 +1926,10 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 cutters_coll.objects.link(socket)
                 cut_socket_with_cutter_and_dispose(a, socket)
                 created.append(None)
+
+        # NEW: dispose the shared clip solid once this seam pair's connectors are done
+        if dovetail_clip_solid is not None:
+            _dispose_object(dovetail_clip_solid, remove_data=True)
 
     return created
 
@@ -1857,13 +2208,15 @@ class SNAP_OT_place_connectors_click(Operator):
                         M = self._build_frame_at(hit)
                         if self.preview_obj:
                             ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
-                            # For dovetail previews, apply in-plane offset+rotation so preview == result
+                            # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
                             if ctype_cur in {"DOVETAIL"}:
                                 M = _apply_inplane_offset_and_rotation(
                                     M,
-                                    offset_mm=float(getattr(self.props, "dovetail_inplane_offset_mm", 0.0)),
+                                    offset_u_mm=float(getattr(self.props, "dovetail_inplane_offset_u_mm", 0.0)),
+                                    offset_v_mm=float(getattr(self.props, "dovetail_inplane_offset_v_mm", 0.0)),
                                     rotation_deg=float(getattr(self.props, "dovetail_inplane_rotation_deg", 0.0))
                                 )
+
                             self.preview_obj.matrix_world = M
 
                         if getattr(self, "preview_objs", None) and len(self.preview_objs) > 1:
@@ -2089,3 +2442,5 @@ def unregister():
     """Unregister operators for connector placement."""
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+
+

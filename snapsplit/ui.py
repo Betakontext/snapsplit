@@ -176,8 +176,9 @@ class SNAP_PT_panel(Panel):
                 except Exception:
                     pass
 
-                if ctype == "CYL_PIN" and _exists(props, "add_chamfer_mm"):
+                if ctype in {"CYL_PIN", "SNAP_PIN"} and _exists(props, "add_chamfer_mm"):
                     gbox.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
+
 
                 if ctype == "SNAP_PIN" and _exists(props, "snap_spheres_per_side"):
                     s = gbox.column(align=True)
@@ -205,8 +206,9 @@ class SNAP_PT_panel(Panel):
                 if _exists(props, "pin_embed_pct"):
                     gbox.prop(props, "pin_embed_pct", text=tr("ui.insert_depth_pct", "Insert Depth (%)"))
 
-                if ctype == "RECT_TENON" and _exists(props, "add_chamfer_mm"):
+                if ctype in {"RECT_TENON", "SNAP_TENON"} and _exists(props, "add_chamfer_mm"):
                     gbox.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
+
 
                 if ctype == "SNAP_TENON" and _exists(props, "snap_spheres_per_side"):
                     s = gbox.column(align=True)
@@ -237,43 +239,52 @@ class SNAP_PT_panel(Panel):
                     base_box.prop(props, "dovetail_length_mm", text=tr("ui.dovetail_length_mm", "Dovetail Length (mm)"))
                 if _exists(props, "dovetail_depth_mm"):
                     base_box.prop(props, "dovetail_depth_mm", text=tr("ui.dovetail_depth_mm", "Dovetail Depth (mm)"))
+                if _exists(props, "add_chamfer_mm"):
+                    base_box.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
 
                 # Taper (signed) comes next
+
                 if _exists(props, "dovetail_signed_taper_pct"):
-                    taper_box = gbox.box()
-                    taper_box.label(text=tr("ui.dovetail_taper", "Taper"), icon='MOD_SIMPLEDEFORM')
-                    taper_box.prop(props, "dovetail_signed_taper_pct", text=tr("ui.dovetail_signed_taper_pct", "Signed Taper (%)"))
+                    base_box.prop(props, "dovetail_signed_taper_pct", text=tr("ui.dovetail_signed_taper_pct", "Signed Taper (%)"))
+
+                if _exists(props, "dovetail_span_axis"):
+                    base_box.prop(props, "dovetail_span_axis", text=tr("ui.dovetail_span_axis", "Span Axis"))
+                    if str(getattr(props, "dovetail_span_axis", "NONE")) != "NONE":
+                        base_box.label(text=tr("ui.span_axis_hint", "Forces hard-side cut along this axis."), icon='INFO')
+
+
+                 # Hard-side Cut
+                if _exists(props, "dovetail_hard_side_cut"):
+                    base_box.prop(props, "dovetail_hard_side_cut", text=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"))
 
                 # Span options after taper
-                span_box = gbox.box()
-                span_box.label(text=tr("ui.dovetail_span", "Span along seam"), icon='ORIENTATION_GLOBAL')
-                if _exists(props, "dovetail_span_mode"):
-                    span_box.prop(props, "dovetail_span_mode", text=tr("ui.dovetail_span_mode", "Span Mode"))
-                if _exists(props, "dovetail_margin_pct"):
-                    span_box.prop(props, "dovetail_margin_pct", text=tr("ui.dovetail_margin_pct", "Margin (%)"))
-                if _exists(props, "dovetail_auto_span"):
-                    span_box.prop(props, "dovetail_auto_span", text=tr("ui.dovetail_auto_span", "Auto span along seam"))
-                if _exists(props, "dovetail_span_margin_pct"):
-                    span_box.prop(props, "dovetail_span_margin_pct", text=tr("ui.dovetail_span_margin_pct", "Auto-span End Margin (%)"))
-                span_box.label(text=tr("ui.auto_span_hint", "AUTO span = edge-to-edge along seam; margin trims ends."), icon='INFO')
+                # span_box = gbox.box()
+                # span_box.label(text=tr("ui.dovetail_span", "Span along seam"), icon='ORIENTATION_GLOBAL')
+                # if _exists(props, "dovetail_span_mode"):
+                #     span_box.prop(props, "dovetail_span_mode", text=tr("ui.dovetail_span_mode", "Span Mode"))
+                # if _exists(props, "dovetail_margin_pct"):
+                #     span_box.prop(props, "dovetail_margin_pct", text=tr("ui.dovetail_margin_pct", "Margin (%)"))
+                # if _exists(props, "dovetail_auto_span"):
+                #     span_box.prop(props, "dovetail_auto_span", text=tr("ui.dovetail_auto_span", "Auto span along seam"))
+                # if _exists(props, "dovetail_span_margin_pct"):
+                #     span_box.prop(props, "dovetail_span_margin_pct", text=tr("ui.dovetail_span_margin_pct", "Auto-span End Margin (%)"))
+                # span_box.label(text=tr("ui.auto_span_hint", "AUTO span = edge-to-edge along seam; # margin trims ends."), icon='INFO')
 
-                # Placement & sides
+                # Placement
                 extra = gbox.box()
-                extra.label(text=tr("ui.dovetail_extra", "Placement & Sides"), icon='ORIENTATION_GLOBAL')
-                if _exists(props, "dovetail_span_axis"):
-                    extra.prop(props, "dovetail_span_axis", text=tr("ui.dovetail_span_axis", "Span Axis"))
-                if _exists(props, "dovetail_hard_side_cut"):
-                    extra.prop(props, "dovetail_hard_side_cut", text=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"))
-
-                # In-plane placement controls (offset + rotation)
+                # extra.label(text=tr("ui.dovetail_extra", "Placement & Sides"),  icon='ORIENTATION_GIMBAL')
+                # In-plane placement controls (offsets along width/length + rotation)
                 # Ensures "Rotation in plane" is visible; ops already apply it in placement and preview.
-                if _exists(props, "dovetail_inplane_offset_mm") or _exists(props, "dovetail_inplane_rotation_deg"):
+                extra.label(text=tr("ui.dovetail_extra", "Placement"), icon='ORIENTATION_GLOBAL')
+                if _exists(props, "dovetail_inplane_offset_u_mm") or _exists(props, "dovetail_inplane_offset_v_mm") or _exists(props, "dovetail_inplane_rotation_deg"):
                     s = gbox.box()
-                    s.label(text=tr("ui.inplane_group", "In-plane adjustment"), icon='ORIENTATION_GIMBAL')
-                    if _exists(props, "dovetail_inplane_offset_mm"):
-                        s.prop(props, "dovetail_inplane_offset_mm", text=tr("ui.inplane_offset_mm", "Offset along seam (mm)"))
+                    if _exists(props, "dovetail_inplane_offset_u_mm"):
+                        s.prop(props, "dovetail_inplane_offset_u_mm", text=tr("ui.inplane_offset_u_mm", "Offset along Width (mm)"))
+                    if _exists(props, "dovetail_inplane_offset_v_mm"):
+                        s.prop(props, "dovetail_inplane_offset_v_mm", text=tr("ui.inplane_offset_v_mm", "Offset along Length (mm)"))
                     if _exists(props, "dovetail_inplane_rotation_deg"):
                         s.prop(props, "dovetail_inplane_rotation_deg", text=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"))
+
 
             else:
                 gbox.label(text=tr("ui.unsupported_connector_type", "Unsupported connector type"), icon='INFO')

@@ -428,18 +428,27 @@ class SnapSplitProps(PropertyGroup):
         subtype='PERCENTAGE'
     )
 
-    # Force span axis for dovetail distribution/orientation.
+    # Force a fixed span axis for the dovetail so it always overshoots the
+    # object's outer sides along that axis (for automatic hard-side trimming).
+    # NONE keeps the normal margin-based sizing; edges are only trimmed if the
+    # separate Hard-side Cut option is enabled manually.
     dovetail_span_axis: EnumProperty(
         name=tr("ui.dovetail_span_axis", "Span Axis"),
-        description=tr("ui.dovetail_span_axis_desc", "Force the axis used for dovetail distribution/orientation"),
+        description=tr("ui.dovetail_span_axis_desc",
+                        "Auto stretches along the Dovetail Width axis and trims to the outer sides; "
+                        "X/Y/Z force overshoot along that world axis if it lies in the seam plane; "
+                        "None uses the manually configured Dovetail Length"),
         items=[
-            ("AUTO", tr("ui.auto", "Auto"), tr("ui.span_axis_auto", "Let operator choose dominant in-plane axis")),
-            ("X", "X", tr("ui.span_axis_x", "Force X as span axis")),
-            ("Y", "Y", tr("ui.span_axis_y", "Force Y as span axis")),
-            ("Z", "Z", tr("ui.span_axis_z", "Force Z as span axis")),
+            ("NONE", tr("ui.none", "None"), tr("ui.span_axis_none", "Use the manually configured Dovetail Length; only trim edges if Hard-side Cut is enabled")),
+            ("AUTO", tr("ui.auto", "Auto"), tr("ui.span_axis_auto", "Automatically stretch along the Dovetail Width axis and trim to the outer sides")),
+            ("X", "X", tr("ui.span_axis_x", "Force overshoot along world X, if it lies in the seam plane")),
+            ("Y", "Y", tr("ui.span_axis_y", "Force overshoot along world Y, if it lies in the seam plane")),
+            ("Z", "Z", tr("ui.span_axis_z", "Force overshoot along world Z, if it lies in the seam plane")),
         ],
         default="AUTO",
     )
+
+
 
     # Prefer a sharp side cut for socket/slot walls.
     dovetail_hard_side_cut: BoolProperty(
@@ -448,14 +457,24 @@ class SnapSplitProps(PropertyGroup):
         default=False,
     )
 
-    # In-plane placement: offset (mm) and rotation (deg) within the cut plane.
-    dovetail_inplane_offset_mm: FloatProperty(
-        name=tr("ui.inplane_offset_mm", "Offset along seam (mm)"),
-        description=tr("ui.inplane_offset_mm_desc", "Offset within the cut plane to shift the dovetail pattern"),
+    # In-plane placement: offsets (mm) along both seam-plane axes (u = width, v = length)
+    # and rotation (deg) within the cut plane.
+    dovetail_inplane_offset_u_mm: FloatProperty(
+        name=tr("ui.inplane_offset_u_mm", "Offset along Width (mm)"),
+        description=tr("ui.inplane_offset_u_mm_desc", "Offset within the cut plane along the width (u) axis to shift the dovetail pattern"),
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
     )
+
+    dovetail_inplane_offset_v_mm: FloatProperty(
+        name=tr("ui.inplane_offset_v_mm", "Offset along Length (mm)"),
+        description=tr("ui.inplane_offset_v_mm_desc", "Offset within the cut plane along the length (v) axis to shift the dovetail pattern"),
+        default=0.0,
+        soft_min=-100000.0,
+        soft_max=100000.0,
+    )
+
 
     dovetail_inplane_rotation_deg: FloatProperty(
         name=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"),
@@ -463,7 +482,6 @@ class SnapSplitProps(PropertyGroup):
         default=0.0,
         soft_min=-180.0,
         soft_max=180.0,
-        subtype='ANGLE',
     )
 
 
