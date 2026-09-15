@@ -8,5 +8,5 @@ maintainer = "Christoph Medicus"
 contact = "dev@betakontext.de"
 website = "https://dev.betakontext.de"
 type = "add-on"
-blender_version_min = "4.2.0"
+blender_version_min = "5.2.0"
 license = ["SPDX:GPL-3.0-or-later"]

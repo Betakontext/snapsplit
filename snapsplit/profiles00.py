@@ -291,20 +291,12 @@ class SnapSplitProps(PropertyGroup):
         subtype='PERCENTAGE'
     )
 
-    # Dovetail basics
+    # New: Dovetail parameters
     dovetail_width_mm: FloatProperty(
         name=tr("ui.dovetail_width_mm", "Dovetail Width (mm)"),
         default=6.0,
         min=2.0,
         soft_max=60.0,
-    )
-
-    dovetail_length_mm: FloatProperty(
-        name=tr("ui.dovetail_length_mm", "Dovetail Length (mm)"),
-        description=tr("ui.dovetail_length_mm_desc", "Length along seam plane (local v)"),
-        default=6.0,
-        min=2.0,
-        soft_max=200.0,
     )
 
     dovetail_depth_mm: FloatProperty(
@@ -323,7 +315,7 @@ class SnapSplitProps(PropertyGroup):
         subtype='PERCENTAGE',
     )
 
-    # Flush snap barb parameters (shared for pin/tenon)
+    # New: Flush snap barb parameters (shared for pin/tenon)
     flush_barb_height_mm: FloatProperty(
         name=tr("ui.flush_barb_height_mm", "Barb Height (mm)"),
         description=tr("ui.flush_barb_height_desc", "Axial height of the shallow barb near the seam"),
@@ -390,100 +382,6 @@ class SnapSplitProps(PropertyGroup):
         default=False
     )
 
-    # ------------------------------------------------------------
-    # NEW: Advanced Dovetail controls
-    # ------------------------------------------------------------
-
-
-    # Signed taper override in percent — if non-zero, overrides plain taper in ops.
-    dovetail_signed_taper_pct: FloatProperty(
-        name=tr("ui.dovetail_signed_taper_pct", "Signed Taper (%)"),
-        description=tr("ui.dovetail_signed_taper_desc", "Signed taper along insertion. Positive widens, negative narrows. If non-zero, overrides plain taper."),
-        default=0.0,
-        soft_min=-60.0,
-        soft_max=60.0,
-        min=-90.0,
-        max=90.0,
-    )
-
-    # Span mode across the seam; UI already supports this.
-    dovetail_span_mode: EnumProperty(
-        name=tr("ui.dovetail_span_mode", "Span Mode"),
-        description=tr("ui.dovetail_span_mode_desc", "How the dovetail spans along the seam"),
-        items=[
-            ("AUTO", tr("ui.auto", "Auto"), tr("ui.auto_span_tip", "Use full edge-to-edge span of the seam")),
-            ("FIXED", tr("ui.fixed", "Fixed"), tr("ui.fixed_span_tip", "Use a fixed repeating spacing")),
-            ("CENTERED", tr("ui.centered", "Centered"), tr("ui.centered_span_tip", "Center block(s) with margins")),
-        ],
-        default="AUTO",
-    )
-
-    # Margin already present as connector_margin_pct; keep dovetail-specific too if UI expects it.
-    dovetail_margin_pct: FloatProperty(
-        name=tr("ui.dovetail_margin_pct", "Margin (%)"),
-        description=tr("ui.dovetail_margin_pct_desc", "Trim percentage at both ends of seam span"),
-        default=10.0,
-        min=0.0,
-        soft_max=40.0,
-        subtype='PERCENTAGE'
-    )
-
-    # Force a fixed span axis for the dovetail so it always overshoots the
-    # object's outer sides along that axis (for automatic hard-side trimming).
-    # NONE keeps the normal margin-based sizing; edges are only trimmed if the
-    # separate Hard-side Cut option is enabled manually.
-    dovetail_span_axis: EnumProperty(
-        name=tr("ui.dovetail_span_axis", "Span Axis"),
-        description=tr("ui.dovetail_span_axis_desc",
-                        "Auto stretches along the Dovetail Width axis and trims to the outer sides; "
-                        "X/Y/Z force overshoot along that world axis if it lies in the seam plane; "
-                        "None uses the manually configured Dovetail Length"),
-        items=[
-            ("NONE", tr("ui.none", "None"), tr("ui.span_axis_none", "Use the manually configured Dovetail Length; only trim edges if Hard-side Cut is enabled")),
-            ("AUTO", tr("ui.auto", "Auto"), tr("ui.span_axis_auto", "Automatically stretch along the Dovetail Width axis and trim to the outer sides")),
-            ("X", "X", tr("ui.span_axis_x", "Force overshoot along world X, if it lies in the seam plane")),
-            ("Y", "Y", tr("ui.span_axis_y", "Force overshoot along world Y, if it lies in the seam plane")),
-            ("Z", "Z", tr("ui.span_axis_z", "Force overshoot along world Z, if it lies in the seam plane")),
-        ],
-        default="AUTO",
-    )
-
-
-
-    # Prefer a sharp side cut for socket/slot walls.
-    dovetail_hard_side_cut: BoolProperty(
-        name=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"),
-        description=tr("ui.dovetail_hard_side_cut_desc", "Prefer sharp side cut for dovetail socket/slot"),
-        default=False,
-    )
-
-    # In-plane placement: offsets (mm) along both seam-plane axes (u = width, v = length)
-    # and rotation (deg) within the cut plane.
-    dovetail_inplane_offset_u_mm: FloatProperty(
-        name=tr("ui.inplane_offset_u_mm", "Offset along Width (mm)"),
-        description=tr("ui.inplane_offset_u_mm_desc", "Offset within the cut plane along the width (u) axis to shift the dovetail pattern"),
-        default=0.0,
-        soft_min=-100000.0,
-        soft_max=100000.0,
-    )
-
-    dovetail_inplane_offset_v_mm: FloatProperty(
-        name=tr("ui.inplane_offset_v_mm", "Offset along Length (mm)"),
-        description=tr("ui.inplane_offset_v_mm_desc", "Offset within the cut plane along the length (v) axis to shift the dovetail pattern"),
-        default=0.0,
-        soft_min=-100000.0,
-        soft_max=100000.0,
-    )
-
-
-    dovetail_inplane_rotation_deg: FloatProperty(
-        name=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"),
-        description=tr("ui.inplane_rotation_deg_desc", "Rotation within the cut plane to orient the dovetail pattern"),
-        default=0.0,
-        soft_min=-180.0,
-        soft_max=180.0,
-    )
-
 
 # ---------------------------
 # Registration
@@ -505,3 +403,4 @@ def unregister():
         del bpy.types.Scene.snapsplit
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+

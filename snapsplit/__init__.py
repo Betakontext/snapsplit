@@ -23,7 +23,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 bl_info = {
     "name": "SnapSplit  Print-ready segmentation with connectors",
     "author": "Christoph Medicus",
-    "email": "dev@betakontext.de
+    "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
     "version": (0, 1, 5),
     "blender": (5, 2, 0),
