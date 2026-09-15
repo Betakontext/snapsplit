@@ -1259,9 +1259,9 @@ def _dovetail_span_axis_role(span_axis_choice: str, x_dir: Vector, y_dir: Vector
     if span_axis_choice in (None, "NONE"):
         return None
     if span_axis_choice == "AUTO":
-        # Auto always stretches along the local U (Dovetail Length) axis,
+        # Auto always stretches along the local V (Dovetail Width) axis,
         # independent of which world axis it happens to correspond to.
-        return "U"
+        return "V"
     world_axis = {
 
         "X": Vector((1.0, 0.0, 0.0)),

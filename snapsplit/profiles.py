@@ -58,7 +58,7 @@ def _snapsplit_update_preview(self, context):
     except Exception:
         # Fail silently to not break UI interactions if preview operator is unavailable
         pass
-
+z
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
