@@ -19,7 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
-# ops_connectors.py
+ops_connectors.py
 
 
 import bpy
@@ -1259,9 +1259,9 @@ def _dovetail_span_axis_role(span_axis_choice: str, x_dir: Vector, y_dir: Vector
     if span_axis_choice in (None, "NONE"):
         return None
     if span_axis_choice == "AUTO":
-        # Auto always stretches along the local V (Dovetail Width) axis,
+        # Auto always stretches along the local U (Dovetail Length) axis,
         # independent of which world axis it happens to correspond to.
-        return "V"
+        return "U"
     world_axis = {
 
         "X": Vector((1.0, 0.0, 0.0)),
