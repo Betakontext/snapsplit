@@ -423,6 +423,8 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Connector with snap spheres",
         "ui.snap_tenon": "Snap Tenon",
         "ui.snap_tenon_desc": "Rectangular tenon with snap spheres",
+        "ui.snap_dovetail": "Snap Dovetail",
+        "ui.snap_dovetail_desc": "Tapered wedge connector with snap spheres",
 
         # Distribution
         "ui.distribution": "Distribution",
@@ -591,6 +593,8 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Verbinder mit Schnappkugeln",
         "ui.snap_tenon": "Schnapp-Zapfen",
         "ui.snap_tenon_desc": "Rechteck-Zapfen mit Schnappkugeln",
+        "ui.snap_dovetail": "Schnapp-Schwalbenschwanz",
+        "ui.snap_dovetail_desc": "Schwalbenschwanz-Verbinder mit Schnappkugeln",
 
         # Distribution
         "ui.distribution": "Verteilung",

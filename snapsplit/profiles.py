@@ -58,7 +58,6 @@ def _snapsplit_update_preview(self, context):
     except Exception:
         # Fail silently to not break UI interactions if preview operator is unavailable
         pass
-z
 
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
@@ -162,11 +161,12 @@ class SnapSplitProps(PropertyGroup):
         items=[
             ("CYL_PIN", tr("ui.cyl_pin", "Cylinder Pin"), tr("ui.cyl_pin_desc", "Dowel pin + socket")),
             ("RECT_TENON", tr("ui.rect_tenon", "Rectangular Tenon"), tr("ui.rect_tenon_desc", "Anti-rotation joint")),
+            ("DOVETAIL", tr("ui.dovetail", "Dovetail"), tr("ui.dovetail_desc", "Tapered wedge connector")),
             ("SNAP_PIN", tr("ui.snap_pin", "Snap Pin"), tr("ui.snap_pin_desc", "Connector with snap spheres")),
             ("SNAP_TENON", tr("ui.snap_tenon", "Snap Tenon"), tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres")),
-            ("DOVETAIL", tr("ui.dovetail", "Dovetail"), tr("ui.dovetail_desc", "Tapered wedge connector")),
-            ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
-            ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
+            ("SNAP_DOVETAIL", tr("ui.snap_dovetail", "Snap Dovetail"), tr("ui.snap_dovetail_desc", "Tapered wedge connector with snap spheres")),
+            # ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
+            # ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
         ],
         default="CYL_PIN",
     )

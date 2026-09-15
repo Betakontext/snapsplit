@@ -228,8 +228,11 @@ class SNAP_PT_panel(Panel):
                         s.prop(props, "flush_barb_lip_mm", text=tr("ui.flush_barb_lip_mm", "Barb Lip (mm)"))
 
             # --- Dovetail connector ---
-            elif ctype == "DOVETAIL":
-                # Base size group — ordered: Width → Length → Depth
+            # NOTE: extended from "ctype == \"DOVETAIL\"" to also cover the new
+            # Snap Dovetail connector, which shares the exact same wedge geometry
+            # (Base size, Signed Taper, Span Axis, Hard-side Cut, Placement).
+            elif ctype in {"DOVETAIL", "SNAP_DOVETAIL"}:
+                # Base size group  ordered: Width  Length  Depth
                 base_box = gbox.box()
                 base_box.label(text=tr("ui.dovetail_base", "Base size"), icon='MESH_CUBE')
                 if _exists(props, "dovetail_width_mm"):
@@ -256,6 +259,18 @@ class SNAP_PT_panel(Panel):
                  # Hard-side Cut
                 if _exists(props, "dovetail_hard_side_cut"):
                     base_box.prop(props, "dovetail_hard_side_cut", text=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"))
+
+                # NEW: Snap Options box, only shown for the Snap Dovetail variant.
+                # Same label/prop pattern as SNAP_PIN / SNAP_TENON so the panel
+                # stays visually consistent across all snap-capable connectors.
+                if ctype == "SNAP_DOVETAIL" and _exists(props, "snap_spheres_per_side"):
+                    s = gbox.box()
+                    s.label(text=tr("ui.snap_group", "Snap spheres:"), icon='MESH_ICOSPHERE')
+                    s.prop(props, "snap_spheres_per_side", text=tr("ui.snap_spheres_per_side", "Spheres per side"))
+                    if _exists(props, "snap_sphere_diameter_mm"):
+                        s.prop(props, "snap_sphere_diameter_mm", text=tr("ui.snap_sphere_diameter_mm", "Sphere Diameter (mm)"))
+                    if _exists(props, "snap_sphere_protrusion_mm"):
+                        s.prop(props, "snap_sphere_protrusion_mm", text=tr("ui.snap_sphere_protrusion_mm", "Protrusion (mm)"))
 
                 # Span options after taper
                 # span_box = gbox.box()
@@ -392,3 +407,4 @@ def register():
 def unregister():
     """Unregister panel class from Blender."""
     bpy.utils.unregister_class(SNAP_PT_panel)
+

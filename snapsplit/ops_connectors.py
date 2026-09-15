@@ -19,7 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
-ops_connectors.py
+# ops_connectors.py
 
 
 import bpy
@@ -806,6 +806,87 @@ def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene
         created.append(None)
     return created
 
+# ---------------------------
+# Sphere-ring helper for tapered Dovetail cross-section.
+# ---------------------------
+
+def add_snap_spheres_for_dovetail_ring(base_matrix, width_u_mm, length_v_mm,
+                                        depth_n_mm, signed_taper_pct, props,
+                                        name_prefix, part_a, part_b, cutters_coll):
+    """Add a ring of snap spheres around a tapered dovetail wedge.
+
+    Unlike the constant-radius pin/tenon rings, the dovetail's u/v half-width
+    changes linearly along n (see create_dovetail_box_uvn). The ring radius is
+    therefore computed from the half-width at the ring height, interpolated
+    with the exact same formula used to build the wedge geometry, so the
+    spheres sit precisely on the real (possibly tapered or widened) side wall
+    instead of on the unverjuengt base width. Reference axis is u (Width),
+    analogous to half_w_scene in add_snap_spheres_for_rect_tenon_ring.
+    Union to B, socket to A, and dispose helpers — same pattern as the other
+    ring helpers (add_snap_spheres_for_cyl_pin / _for_rect_tenon_ring).
+    """
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    # depth_n acts as the "length" axis here (embed/protrusion direction n),
+    # guarded against zero/negative input to avoid a division by zero below.
+    depth_n_scene = max(0.1 * mm, float(depth_n_mm) * mm)
+    width_u_scene = max(0.1 * mm, float(width_u_mm) * mm)
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * depth_n_scene
+    zB = _ring_height_for_visible_half(depth_n_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+    # Safety clamp: _choose_visible_half_robust should already return zA or zB,
+    # but clamp defensively so the interpolation fraction below stays in [0, 1]
+    # even in edge cases (e.g. unusual embed percentages).
+    ring_z = max(0.0, min(depth_n_scene, ring_z))
+
+    # Interpolate the half-width at ring_z using the SAME taper formula as
+    # create_dovetail_box_uvn(): t = clamp(taper, -90, 90) * 0.01,
+    # s_tip = max(0.05, 1 - t), then linear lerp between base and tip half-width.
+    t = max(-90.0, min(90.0, float(signed_taper_pct))) * 0.01
+    s_tip = max(0.05, 1.0 - t)
+    half_wb_u = 0.5 * width_u_scene
+    half_wt_u = max(0.05 * mm, half_wb_u * s_tip)
+    frac = ring_z / depth_n_scene
+    half_u_at_ring = half_wb_u + (half_wt_u - half_wb_u) * frac
+
+    import math
+    created = []
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    r_center = half_u_at_ring + protrude_scene - sph_r_scene
+
+    for i in range(n_per_side):
+        ang = (2.0 * math.pi) * (i / n_per_side)
+        nx = math.cos(ang); ny = math.sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+
+        union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
+        cut_socket_with_cutter_and_dispose(part_a, sph_cut)
+
+        created.append(None)
+    return created
+
 
 # ---------------------------
 # Flush barb helper placement (new): no spheres, shallow ring near seam
@@ -1259,9 +1340,9 @@ def _dovetail_span_axis_role(span_axis_choice: str, x_dir: Vector, y_dir: Vector
     if span_axis_choice in (None, "NONE"):
         return None
     if span_axis_choice == "AUTO":
-        # Auto always stretches along the local U (Dovetail Length) axis,
+        # Auto always stretches along the local V (Dovetail Length) axis,
         # independent of which world axis it happens to correspond to.
-        return "U"
+        return "V"
     world_axis = {
 
         "X": Vector((1.0, 0.0, 0.0)),
@@ -1311,7 +1392,8 @@ def _dovetail_forced_span_size_mm(a, b, axis_letter: str, safety_margin_mm: floa
     return max(0.1, 2.0 * extent_mm + 2.0 * float(safety_margin_mm))
 
 
-def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
+def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None,
+name_prefix="Dovetail_Click", return_placement=False):
 
     """Place one dovetail wedge at a world point; union into B and cut socket into A.
 
@@ -1507,9 +1589,55 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
     if clip_solid is not None:
         _dispose_object(clip_solid, remove_data=True)
 
+    if return_placement:
+        # Return the final placement matrix and resolved axis-relative
+        # dimensions so callers (e.g. the Snap Dovetail wrapper below) can
+        # attach a sphere ring without duplicating the AUTO-span,
+        # Forced-Span-Axis, and Signed-Taper resolution logic above.
+        return M, width_u_mm, length_v_mm, depth_n_mm, signed_taper
+
     return None, None
 
 
+# Click-placement wrapper for Snap Dovetail.
+
+def place_one_snap_dovetail_at(a, b, axis, point_world, frame_z=None, props=None,
+                                name_prefix="SnapDovetail_Click"):
+    """Place one Snap Dovetail (tapered wedge + snap-sphere ring) at a world point.
+
+    Delegates the full geometry pipeline (AUTO-span, Forced-Span-Axis,
+    Hard-side Cut, Signed Taper) to place_one_dovetail_at(), then attaches a
+    sphere ring sized to the real tapered side-wall width at the ring height —
+    the same two-step pattern used for SNAP_PIN/SNAP_TENON in the modal
+    LEFTMOUSE handler.
+    """
+    if props is None:
+        props = bpy.context.scene.snapsplit
+
+    placement = place_one_dovetail_at(
+        a, b, axis, point_world,
+        frame_z=frame_z, props=props,
+        name_prefix=name_prefix,
+        return_placement=True
+    )
+    M, width_u_mm, length_v_mm, depth_n_mm, signed_taper = placement
+    if M is None:
+        return None, None
+
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+    add_snap_spheres_for_dovetail_ring(
+        base_matrix=M,
+        width_u_mm=width_u_mm,
+        length_v_mm=length_v_mm,
+        depth_n_mm=depth_n_mm,
+        signed_taper_pct=signed_taper,
+        props=props,
+        name_prefix=name_prefix,
+        part_a=a,   # A = DIFFERENCE
+        part_b=b,   # B = UNION
+        cutters_coll=cutters_coll
+    )
+    return None, None
 
 def place_one_flush_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="FlushPin_Click"):
     """Place one flush snap-fit cylindrical connector at click position."""
@@ -1631,7 +1759,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
         dovetail_span_role_pair = None
         dovetail_force_hard_cut_pair = False
         dovetail_span_axis_letter_pair = None  # resolved world axis letter (X/Y/Z) used for forced sizing
-        if ctype_for_pair == "DOVETAIL":
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"}:
             z_pair = naxis.normalized()
             x_pair = Vector((1, 0, 0))
             if abs(z_pair.dot(x_pair)) > 0.99:
@@ -1658,7 +1786,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
 
         dovetail_clip_solid = None
-        if ctype_for_pair == "DOVETAIL" and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"} and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
             dovetail_clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
             if dovetail_clip_solid is None:
                 report_user(None, 'WARNING',
@@ -1677,7 +1805,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL"}:
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL"}:
                 # For dovetail in batch we will override depth_n via dovetail_depth_mm later
                 L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * unit_mm()
             else:
@@ -1765,7 +1893,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         cutters_coll=cutters_coll
                     )
 
-            elif ctype_cur == "DOVETAIL":
+            elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                 # Build local u/v/n frame for dovetail specifically
                 z_d = naxis.normalized()
                 x_d = Vector((1, 0, 0))
@@ -1880,6 +2008,19 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 cut_socket_with_cutter_and_dispose(a, socket)
                 created.append(None)
 
+                if ctype_cur == "SNAP_DOVETAIL":
+                    add_snap_spheres_for_dovetail_ring(
+                        base_matrix=M2,
+                        width_u_mm=width_u_mm,
+                        length_v_mm=length_v_mm,
+                        depth_n_mm=depth_n_mm,
+                        signed_taper_pct=signed_taper,
+                        props=props,
+                        name_prefix=f"Dovetail_{i}",
+                        part_a=a,   # A = DIFFERENCE
+                        part_b=b,   # B = UNION
+                        cutters_coll=cutters_coll
+                    )
 
             elif ctype_cur == "SNAP_FLUSH_PIN":
                 add_flush_barb_for_cyl(
@@ -2017,8 +2158,8 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
 
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL"}:
-                if ctype_cur == "DOVETAIL":
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL"}:
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                     # Dovetail preview uses axis-relative dimensions and signed in-plane taper
                     width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
                     length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
@@ -2075,6 +2216,49 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
 
+                if ctype_cur == "SNAP_DOVETAIL":
+                    mm = unit_mm()
+                    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+                    depth_n_scene = max(0.1 * mm, depth_n_mm * mm)
+                    width_u_scene = max(0.1 * mm, width_u_mm * mm)
+
+                    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+                    L_free = max(0.0, (1.0 - embed_pct) * depth_n_scene)
+                    zA = 0.5 * embed_pct * depth_n_scene
+                    zB = embed_pct * depth_n_scene + 0.5 * L_free
+
+                    # Same taper interpolation as add_snap_spheres_for_dovetail_ring(),
+                    # evaluated separately at zA and zB since the tapered radius
+                    # differs between the embedded and the protruding half.
+                    t_prev = max(-90.0, min(90.0, signed_taper)) * 0.01
+                    s_tip_prev = max(0.05, 1.0 - t_prev)
+                    half_wb_u = 0.5 * width_u_scene
+                    half_wt_u = max(0.05 * mm, half_wb_u * s_tip_prev)
+
+                    def _half_u_at(z, _wb=half_wb_u, _wt=half_wt_u, _dn=depth_n_scene):
+                        frac = max(0.0, min(1.0, z / _dn))
+                        return _wb + (_wt - _wb) * frac
+
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+
+                    import math
+                    for i in range(n_per_side):
+                        ang = (2.0 * math.pi) * (i / n_per_side)
+                        nx = math.cos(ang); ny = math.sin(ang)
+                        r_A = _half_u_at(zA) + protr_scene - sph_r_scene
+                        r_B = _half_u_at(zB) + protr_scene - sph_r_scene
+                        local_A = (r_A * nx, r_A * ny, zA)
+                        local_B = (r_B * nx, r_B * ny, zB)
+                        sph_prev = create_uv_sphere_preview(d_mm=d_sph_mm, segments=12, rings=6,
+                                                            name=f"SnapSplit_Preview_SnapDvt_{i}")
+                        sph_prev["_snapsplit_local_offset_A"] = local_A
+                        sph_prev["_snapsplit_local_offset_B"] = local_B
+                        prev_coll.objects.link(sph_prev)
+                        self.preview_objs.append(sph_prev)
+
         except Exception:
             self.preview_obj = None
             self.preview_objs = []
@@ -2099,6 +2283,7 @@ class SNAP_OT_place_connectors_click(Operator):
                 "SnapSplit_Preview_",
                 "SnapSplit_Preview_Snap_",
                 "SnapSplit_Preview_SnapTen_",
+                "SnapSplit_Preview_SnapDvt_",
                 "SnapSplit_Preview_Conn",
                 "SnapSplit_Preview_FlushPin",
                 "SnapSplit_Preview_FlushTenon",
@@ -2209,7 +2394,7 @@ class SNAP_OT_place_connectors_click(Operator):
                         if self.preview_obj:
                             ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
                             # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
-                            if ctype_cur in {"DOVETAIL"}:
+                            if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                                 M = _apply_inplane_offset_and_rotation(
                                     M,
                                     offset_u_mm=float(getattr(self.props, "dovetail_inplane_offset_u_mm", 0.0)),
@@ -2291,6 +2476,8 @@ class SNAP_OT_place_connectors_click(Operator):
                             )
                         elif ctype_cur == "DOVETAIL":
                             place_one_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Dovetail_Click")
+                        elif ctype_cur == "SNAP_DOVETAIL":
+                            place_one_snap_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="SnapDovetail_Click")
                         elif ctype_cur == "SNAP_FLUSH_PIN":
                             place_one_flush_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="FlushPin_Click")
                         elif ctype_cur == "SNAP_FLUSH_TENON":
@@ -2366,8 +2553,8 @@ class SNAP_OT_place_connectors_click(Operator):
         ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
         if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
             L_scene = float(self.props.pin_length_mm) * unit_mm()
-        elif ctype_cur in {"DOVETAIL"}:
-            # For dovetail previews, use its own depth
+        elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+         # For dovetail previews, use its own depth
             L_scene = float(getattr(self.props, "dovetail_depth_mm", 8.0)) * unit_mm()
         else:
             L_scene = float(getattr(self.props, "tenon_depth_mm", 8.0)) * unit_mm()
