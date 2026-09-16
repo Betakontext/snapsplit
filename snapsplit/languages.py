@@ -19,6 +19,9 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
+
+# languages.py
+
 from __future__ import annotations
 
 from typing import Dict, Optional
@@ -423,6 +426,21 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Connector with snap spheres",
         "ui.snap_tenon": "Snap Tenon",
         "ui.snap_tenon_desc": "Rectangular tenon with snap spheres",
+        "ui.snap_dovetail": "Snap Dovetail",
+        "ui.snap_dovetail_desc": "Tapered wedge connector with snap spheres",
+        "ui.custom_connector": "Custom Connector",
+        "ui.custom_connector_desc": "Use another mesh object from the scene as connector shape",
+        "ui.custom_connector_object": "Select connector object",
+        "ui.custom_connector_object_desc": "Mesh object from this scene used as connector shape. Its local Z axis is treated as the insertion direction; it will be rescaled to the Width/Length/Depth values below.",
+        "ui.custom_connector_width_mm": "Custom Width (mm)",
+        "ui.custom_connector_width_desc": "Target size along the object's local X axis",
+        "ui.custom_connector_length_mm": "Custom Length (mm)",
+        "ui.custom_connector_length_desc": "Target size along the object's local Y axis",
+        "ui.custom_connector_depth_mm": "Custom Depth (mm)",
+        "ui.custom_connector_depth_desc": "Target size along the object's local Z axis (insertion depth)",
+        "op.connect.custom.err.no_object": "Please select a connector object for Custom Connector.",
+        "op.connect.custom.err.empty_mesh": "Selected connector object has no usable mesh data.",
+
 
         # Distribution
         "ui.distribution": "Distribution",
@@ -591,6 +609,21 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Verbinder mit Schnappkugeln",
         "ui.snap_tenon": "Schnapp-Zapfen",
         "ui.snap_tenon_desc": "Rechteck-Zapfen mit Schnappkugeln",
+        "ui.snap_dovetail": "Schnapp-Schwalbenschwanz",
+        "ui.snap_dovetail_desc": "Schwalbenschwanz-Verbinder mit Schnappkugeln",
+        "ui.custom_connector": "Benutzerdefinierter Verbinder",
+        "ui.custom_connector_desc": "Verwendet ein anderes Mesh-Objekt aus der Szene als Verbinder-Form",
+        "ui.custom_connector_object": "Verbinder-Objekt auswählen",
+        "ui.custom_connector_object_desc": "Mesh-Objekt aus dieser Szene, das als Verbinder-Form verwendet wird. Die lokale Z-Achse gilt als Einsteckrichtung; das Objekt wird auf die unten eingestellten Breite/Länge/Tiefe skaliert.",
+        "ui.custom_connector_width_mm": "Breite (mm)",
+        "ui.custom_connector_width_desc": "Zielgröße entlang der lokalen X-Achse des Objekts",
+        "ui.custom_connector_length_mm": "Länge (mm)",
+        "ui.custom_connector_length_desc": "Zielgröße entlang der lokalen Y-Achse des Objekts",
+        "ui.custom_connector_depth_mm": "Tiefe (mm)",
+        "ui.custom_connector_depth_desc": "Zielgröße entlang der lokalen Z-Achse des Objekts (Einstecktiefe)",
+        "op.connect.custom.err.no_object": "Bitte ein Verbinder-Objekt für den benutzerdefinierten Verbinder auswählen.",
+        "op.connect.custom.err.empty_mesh": "Das ausgewählte Verbinder-Objekt enthält keine verwertbaren Mesh-Daten.",
+
 
         # Distribution
         "ui.distribution": "Verteilung",

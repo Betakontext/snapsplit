@@ -59,7 +59,6 @@ def _snapsplit_update_preview(self, context):
         # Fail silently to not break UI interactions if preview operator is unavailable
         pass
 
-
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
     Return a heuristic segment count for cylindrical pins from diameter in mm.
@@ -92,6 +91,9 @@ def _material_items():
     """Return EnumProperty items for material profiles with localized tooltips."""
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
 
+def _poll_custom_connector_object(self, obj):
+    """Restrict the Custom Connector object picker to mesh objects only."""
+    return obj.type == 'MESH'
 
 # ---------------------------
 # Property group
@@ -162,11 +164,13 @@ class SnapSplitProps(PropertyGroup):
         items=[
             ("CYL_PIN", tr("ui.cyl_pin", "Cylinder Pin"), tr("ui.cyl_pin_desc", "Dowel pin + socket")),
             ("RECT_TENON", tr("ui.rect_tenon", "Rectangular Tenon"), tr("ui.rect_tenon_desc", "Anti-rotation joint")),
+            ("DOVETAIL", tr("ui.dovetail", "Dovetail"), tr("ui.dovetail_desc", "Tapered wedge connector")),
             ("SNAP_PIN", tr("ui.snap_pin", "Snap Pin"), tr("ui.snap_pin_desc", "Connector with snap spheres")),
             ("SNAP_TENON", tr("ui.snap_tenon", "Snap Tenon"), tr("ui.snap_tenon_desc", "Rectangular tenon with snap spheres")),
-            ("DOVETAIL", tr("ui.dovetail", "Dovetail"), tr("ui.dovetail_desc", "Tapered wedge connector")),
-            ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
-            ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
+            ("SNAP_DOVETAIL", tr("ui.snap_dovetail", "Snap Dovetail"), tr("ui.snap_dovetail_desc", "Tapered wedge connector with snap spheres")),
+            ("CUSTOM", tr("ui.custom_connector", "Custom Connector"), tr("ui.custom_connector_desc", "Use another mesh object from the scene as connector shape")),
+            # ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
+            # ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
         ],
         default="CYL_PIN",
     )
@@ -280,6 +284,44 @@ class SnapSplitProps(PropertyGroup):
         min=0.0,
         soft_max=2.0,
     )
+
+    # Custom connector (arbitrary mesh object, rescaled to target dimensions)
+    custom_connector_object: PointerProperty(
+        type=bpy.types.Object,
+        name=tr("ui.custom_connector_object", "Select connector object"),
+        description=tr(
+            "ui.custom_connector_object_desc",
+            "Mesh object from this scene used as connector shape. Its local Z axis "
+            "is treated as the insertion direction; it will be rescaled to the "
+            "Width/Length/Depth values below."
+        ),
+        poll=_poll_custom_connector_object,
+    )
+
+    custom_connector_width_mm: FloatProperty(
+        name=tr("ui.custom_connector_width_mm", "Custom Width (mm)"),
+        description=tr("ui.custom_connector_width_desc", "Target size along the object's local X axis"),
+        default=6.0,
+        min=0.1,
+        soft_max=100.0,
+    )
+
+    custom_connector_length_mm: FloatProperty(
+        name=tr("ui.custom_connector_length_mm", "Custom Length (mm)"),
+        description=tr("ui.custom_connector_length_desc", "Target size along the object's local Y axis"),
+        default=6.0,
+        min=0.1,
+        soft_max=100.0,
+    )
+
+    custom_connector_depth_mm: FloatProperty(
+        name=tr("ui.custom_connector_depth_mm", "Custom Depth (mm)"),
+        description=tr("ui.custom_connector_depth_desc", "Target size along the object's local Z axis (insertion depth)"),
+        default=8.0,
+        min=0.1,
+        soft_max=200.0,
+    )
+
 
     # Insert depth
     pin_embed_pct: FloatProperty(

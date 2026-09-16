@@ -31,6 +31,9 @@ from bpy_extras import view3d_utils
 
 from .utils import ensure_collection, unit_mm, report_user
 from .languages import tr  # centralized translation helper
+from .ops_split import warn_if_unapplied_transforms
+
+
 
 
 # ---------------------------
@@ -314,6 +317,53 @@ def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="Sna
         bev.limit_method = 'NONE'
     return obj
 
+def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name="SnapSplit_Custom"):
+    """Duplicate source_obj's local mesh shape and rescale it to the target Width (X) /
+    Length (Y) / Depth (Z) in mm, following the same authoring convention as the
+    built-in Pin/Tenon connectors (local Z = insertion direction).
+
+    The shape is re-centered on X/Y and its lowest local Z point becomes the embed
+    base (z=0), regardless of where the source object's own origin sits, so the
+    picked object does not need a specially prepared origin.
+    """
+    if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+        return None
+
+    mm = unit_mm()
+    bm = bmesh.new()
+    bm.from_mesh(source_obj.data)
+    if len(bm.verts) == 0:
+        bm.free()
+        return None
+
+    # Measure the raw local-space bounding box of the authored shape
+    xs = [v.co.x for v in bm.verts]
+    ys = [v.co.y for v in bm.verts]
+    zs = [v.co.z for v in bm.verts]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    min_z, max_z = min(zs), max(zs)
+    ex = max(max_x - min_x, 1e-9)
+    ey = max(max_y - min_y, 1e-9)
+    ez = max(max_z - min_z, 1e-9)
+    cx = 0.5 * (min_x + max_x)
+    cy = 0.5 * (min_y + max_y)
+
+    # Re-center X/Y on the shape's own center and drop the base to Z=0
+    bmesh.ops.translate(bm, vec=Vector((-cx, -cy, -min_z)), verts=bm.verts)
+
+    # Rescale non-uniformly so the final extents match the requested target size
+    target_x = max(float(width_mm), 1e-6) * mm
+    target_y = max(float(length_mm), 1e-6) * mm
+    target_z = max(float(depth_mm), 1e-6) * mm
+    S = Matrix.Diagonal((target_x / ex, target_y / ey, target_z / ez, 1.0))
+    bmesh.ops.transform(bm, matrix=S, verts=bm.verts)
+
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    obj = bpy.data.objects.new(name, me)
+    return obj
 
 def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     """Create a UV sphere mesh object with given diameter and segment counts."""
@@ -806,6 +856,87 @@ def add_snap_spheres_for_rect_tenon_ring(base_matrix, half_w_scene, length_scene
         created.append(None)
     return created
 
+# ---------------------------
+# Sphere-ring helper for tapered Dovetail cross-section.
+# ---------------------------
+
+def add_snap_spheres_for_dovetail_ring(base_matrix, width_u_mm, length_v_mm,
+                                        depth_n_mm, signed_taper_pct, props,
+                                        name_prefix, part_a, part_b, cutters_coll):
+    """Add a ring of snap spheres around a tapered dovetail wedge.
+
+    Unlike the constant-radius pin/tenon rings, the dovetail's u/v half-width
+    changes linearly along n (see create_dovetail_box_uvn). The ring radius is
+    therefore computed from the half-width at the ring height, interpolated
+    with the exact same formula used to build the wedge geometry, so the
+    spheres sit precisely on the real (possibly tapered or widened) side wall
+    instead of on the unverjuengt base width. Reference axis is u (Width),
+    analogous to half_w_scene in add_snap_spheres_for_rect_tenon_ring.
+    Union to B, socket to A, and dispose helpers — same pattern as the other
+    ring helpers (add_snap_spheres_for_cyl_pin / _for_rect_tenon_ring).
+    """
+    mm = unit_mm()
+    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+    protrude_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+    # depth_n acts as the "length" axis here (embed/protrusion direction n),
+    # guarded against zero/negative input to avoid a division by zero below.
+    depth_n_scene = max(0.1 * mm, float(depth_n_mm) * mm)
+    width_u_scene = max(0.1 * mm, float(width_u_mm) * mm)
+
+    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+    zA = 0.5 * embed_pct * depth_n_scene
+    zB = _ring_height_for_visible_half(depth_n_scene, embed_pct)
+    ring_z = _choose_visible_half_robust(base_matrix, zA, zB)
+    # Safety clamp: _choose_visible_half_robust should already return zA or zB,
+    # but clamp defensively so the interpolation fraction below stays in [0, 1]
+    # even in edge cases (e.g. unusual embed percentages).
+    ring_z = max(0.0, min(depth_n_scene, ring_z))
+
+    # Interpolate the half-width at ring_z using the SAME taper formula as
+    # create_dovetail_box_uvn(): t = clamp(taper, -90, 90) * 0.01,
+    # s_tip = max(0.05, 1 - t), then linear lerp between base and tip half-width.
+    t = max(-90.0, min(90.0, float(signed_taper_pct))) * 0.01
+    s_tip = max(0.05, 1.0 - t)
+    half_wb_u = 0.5 * width_u_scene
+    half_wt_u = max(0.05 * mm, half_wb_u * s_tip)
+    frac = ring_z / depth_n_scene
+    half_u_at_ring = half_wb_u + (half_wt_u - half_wb_u) * frac
+
+    import math
+    created = []
+    sph_r_scene = 0.5 * float(d_sph_mm) * mm
+    r_center = half_u_at_ring + protrude_scene - sph_r_scene
+
+    for i in range(n_per_side):
+        ang = (2.0 * math.pi) * (i / n_per_side)
+        nx = math.cos(ang); ny = math.sin(ang)
+
+        local_pos = Vector((r_center * nx, r_center * ny, ring_z))
+        world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+        world_pos = Vector((world_pos.x, world_pos.y, world_pos.z))
+
+        sphere = create_uv_sphere(d_mm=d_sph_mm, segments=24, rings=12, name=f"{name_prefix}_Snap_{i}")
+        M = Matrix.Translation(world_pos)
+        sphere.matrix_world = M
+        cutters_coll.objects.link(sphere)
+
+        tol = float(props.effective_tolerance())
+        scale = 1.0 + (tol * mm) / max(sph_r_scene, 1e-9)
+
+        sph_cut = sphere.copy()
+        sph_cut.data = sphere.data.copy()
+        sph_cut.name = f"{name_prefix}_SnapC_{i}"
+        cutters_coll.objects.link(sph_cut)
+        sph_cut.matrix_world = M @ Matrix.Diagonal(Vector((scale, scale, scale, 1.0)))
+
+        union_and_dispose(part_b, sphere, name=f"{name_prefix}_SnapU_{i}")
+        cut_socket_with_cutter_and_dispose(part_a, sph_cut)
+
+        created.append(None)
+    return created
+
 
 # ---------------------------
 # Flush barb helper placement (new): no spheres, shallow ring near seam
@@ -1134,8 +1265,79 @@ def _clip_helper_to_combined_surface(helper_obj, clip_solid):
         return False
 
 
+
 # ---------------------------
-# Single-placement helpers (click)
+# Flush barb helper placement (new): no spheres, shallow ring near seam
+# ---------------------------
+
+def add_flush_barb_for_cyl(base_matrix, d_mm, length_mm, props, name_prefix, part_a, part_b, cutters_coll):
+    """Create flush barb cylinder, union to B and tolerant socket in A."""
+    seg = int(getattr(props, "pin_segments", 32))
+    pin = create_flush_barb_cylinder(d_mm=d_mm,
+                                     length_mm=length_mm,
+                                     barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                     barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                     segments=seg,
+                                     name=f"{name_prefix}_FlushPin")
+    pin.matrix_world = base_matrix
+    cutters_coll.objects.link(pin)
+    union_and_dispose(part_b, pin, name=f"{name_prefix}_FlushPinUnion")
+
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    socket_d = float(d_mm) + 2.0 * tol
+    socket = create_flush_barb_cylinder(d_mm=socket_d,
+                                        length_mm=length_mm,
+                                        barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                        barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                        segments=seg,
+                                        name=f"{name_prefix}_FlushPinSocketCutter")
+    socket.matrix_world = base_matrix
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(part_a, socket)
+    return None
+
+
+def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, part_a, part_b, cutters_coll):
+    """Create flush barb rectangular tenon, union to B and tolerant socket in A."""
+    ten = create_flush_barb_rect(w_mm=w_mm,
+                                 length_mm=length_mm,
+                                 barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                 barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                 name=f"{name_prefix}_FlushTenon")
+    ten.matrix_world = base_matrix
+    cutters_coll.objects.link(ten)
+    # Apply possible bevel modifier prior to boolean
+    for mod in list(ten.modifiers):
+        if mod.type == 'BEVEL':
+            bpy.context.view_layer.objects.active = ten
+            ten.select_set(True)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            except Exception as e:
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+            ten.select_set(False)
+    union_and_dispose(part_b, ten, name=f"{name_prefix}_FlushTenonUnion")
+
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    half_w = max(0.5 * float(w_mm) * mm, 1e-9)
+    sx = 1.0 + (tol * mm) / half_w
+    sy = sx
+    sz = 1.0
+    socket = create_flush_barb_rect(w_mm=w_mm,
+                                    length_mm=length_mm,
+                                    barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                    barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                    name=f"{name_prefix}_FlushTenonSocketCutter")
+    socket.matrix_world = base_matrix @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(part_a, socket)
+    return None
+
+
+# ---------------------------
+# Dovetail helpers: span width, frame ops, side-cut
 # ---------------------------
 
 def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click"):
@@ -1234,6 +1436,66 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
     cut_socket_with_cutter_and_dispose(a, socket)
     return None, None
 
+def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Custom_Click"):
+    """Place one Custom Connector (arbitrary source mesh, rescaled) at a world point;
+    union into B and cut a tolerant socket into A. Mirrors place_one_rect_tenon_at()."""
+    if props is None:
+        props = bpy.context.scene.snapsplit
+
+    source_obj = getattr(props, "custom_connector_object", None)
+    if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+        report_user(None, 'ERROR', tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
+        return None, None
+
+    warn_if_unapplied_transforms(source_obj)
+
+    z = {
+        "X": Vector((1, 0, 0)),
+        "Y": Vector((0, 1, 0)),
+        "Z": Vector((0, 0, 1)),
+    }.get(axis, Vector((0, 0, 1))).normalized()
+    if frame_z is not None:
+        z = frame_z.normalized()
+    x, y, z = _orthonormal_frame_from_z(z)
+
+    width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
+    length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
+    depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+
+    L_scene = depth_mm * unit_mm()
+    embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
+    p_embed = point_world - z * (embed_pct * L_scene)
+
+    M = Matrix((
+        (x.x, y.x, z.x, p_embed.x),
+        (x.y, y.y, z.y, p_embed.y),
+        (x.z, y.z, z.z, p_embed.z),
+        (0,   0,   0,   1.0),
+    ))
+
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+
+    conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"{name_prefix}")
+    if conn is None:
+        report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
+        return None, None
+    conn.matrix_world = M
+    cutters_coll.objects.link(conn)
+    union_and_dispose(b, conn, name=f"{name_prefix}_Union")
+
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    half_w = max(0.5 * width_mm * mm, 1e-9)
+    half_l = max(0.5 * length_mm * mm, 1e-9)
+    sx = 1.0 + (tol * mm) / half_w
+    sy = 1.0 + (tol * mm) / half_l
+    sz = 1.0
+
+    socket = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"{name_prefix}_SocketCutter")
+    socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(a, socket)
+    return None, None
 
 # ---------------------------
 # NEW: forced Span Axis support for the Dovetail connector.
@@ -1259,9 +1521,9 @@ def _dovetail_span_axis_role(span_axis_choice: str, x_dir: Vector, y_dir: Vector
     if span_axis_choice in (None, "NONE"):
         return None
     if span_axis_choice == "AUTO":
-        # Auto always stretches along the local U (Dovetail Length) axis,
+        # Auto always stretches along the local V (Dovetail Length) axis,
         # independent of which world axis it happens to correspond to.
-        return "U"
+        return "V"
     world_axis = {
 
         "X": Vector((1.0, 0.0, 0.0)),
@@ -1311,7 +1573,8 @@ def _dovetail_forced_span_size_mm(a, b, axis_letter: str, safety_margin_mm: floa
     return max(0.1, 2.0 * extent_mm + 2.0 * float(safety_margin_mm))
 
 
-def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Dovetail_Click"):
+def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None,
+name_prefix="Dovetail_Click", return_placement=False):
 
     """Place one dovetail wedge at a world point; union into B and cut socket into A.
 
@@ -1507,9 +1770,55 @@ def place_one_dovetail_at(a, b, axis, point_world, frame_z=None, props=None, nam
     if clip_solid is not None:
         _dispose_object(clip_solid, remove_data=True)
 
+    if return_placement:
+        # Return the final placement matrix and resolved axis-relative
+        # dimensions so callers (e.g. the Snap Dovetail wrapper below) can
+        # attach a sphere ring without duplicating the AUTO-span,
+        # Forced-Span-Axis, and Signed-Taper resolution logic above.
+        return M, width_u_mm, length_v_mm, depth_n_mm, signed_taper
+
     return None, None
 
 
+# Click-placement wrapper for Snap Dovetail.
+
+def place_one_snap_dovetail_at(a, b, axis, point_world, frame_z=None, props=None,
+                                name_prefix="SnapDovetail_Click"):
+    """Place one Snap Dovetail (tapered wedge + snap-sphere ring) at a world point.
+
+    Delegates the full geometry pipeline (AUTO-span, Forced-Span-Axis,
+    Hard-side Cut, Signed Taper) to place_one_dovetail_at(), then attaches a
+    sphere ring sized to the real tapered side-wall width at the ring height —
+    the same two-step pattern used for SNAP_PIN/SNAP_TENON in the modal
+    LEFTMOUSE handler.
+    """
+    if props is None:
+        props = bpy.context.scene.snapsplit
+
+    placement = place_one_dovetail_at(
+        a, b, axis, point_world,
+        frame_z=frame_z, props=props,
+        name_prefix=name_prefix,
+        return_placement=True
+    )
+    M, width_u_mm, length_v_mm, depth_n_mm, signed_taper = placement
+    if M is None:
+        return None, None
+
+    cutters_coll = ensure_collection("_SnapSplit_Cutters")
+    add_snap_spheres_for_dovetail_ring(
+        base_matrix=M,
+        width_u_mm=width_u_mm,
+        length_v_mm=length_v_mm,
+        depth_n_mm=depth_n_mm,
+        signed_taper_pct=signed_taper,
+        props=props,
+        name_prefix=name_prefix,
+        part_a=a,   # A = DIFFERENCE
+        part_b=b,   # B = UNION
+        cutters_coll=cutters_coll
+    )
+    return None, None
 
 def place_one_flush_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="FlushPin_Click"):
     """Place one flush snap-fit cylindrical connector at click position."""
@@ -1602,6 +1911,17 @@ def place_connectors_between(parts, axis, count, ctype, props):
     if not pairs:
         return []
 
+    # Validate the Custom Connector source object once, before processing any pairs/points,
+    # to avoid repeating the same error report for every generated point.
+    if getattr(props, "connector_type", ctype) == "CUSTOM":
+        _custom_src = getattr(props, "custom_connector_object", None)
+        if _custom_src is None or _custom_src.type != 'MESH' or _custom_src.data is None:
+            report_user(None, 'ERROR',
+                        tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
+            return []
+        warn_if_unapplied_transforms(_custom_src)
+
+
     created = []
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
@@ -1631,7 +1951,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
         dovetail_span_role_pair = None
         dovetail_force_hard_cut_pair = False
         dovetail_span_axis_letter_pair = None  # resolved world axis letter (X/Y/Z) used for forced sizing
-        if ctype_for_pair == "DOVETAIL":
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"}:
             z_pair = naxis.normalized()
             x_pair = Vector((1, 0, 0))
             if abs(z_pair.dot(x_pair)) > 0.99:
@@ -1658,7 +1978,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
 
         dovetail_clip_solid = None
-        if ctype_for_pair == "DOVETAIL" and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"} and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
             dovetail_clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
             if dovetail_clip_solid is None:
                 report_user(None, 'WARNING',
@@ -1677,9 +1997,11 @@ def place_connectors_between(parts, axis, count, ctype, props):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL"}:
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
                 # For dovetail in batch we will override depth_n via dovetail_depth_mm later
                 L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * unit_mm()
+            elif ctype_cur == "CUSTOM":
+                L_scene = float(getattr(props, "custom_connector_depth_mm", 8.0)) * unit_mm()
             else:
                 L_scene = float(props.tenon_depth_mm) * unit_mm()
 
@@ -1764,8 +2086,40 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         part_b=b,  # B = UNION
                         cutters_coll=cutters_coll
                     )
+            elif ctype_cur == "CUSTOM":
+                source_obj = getattr(props, "custom_connector_object", None)
+                if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+                    report_user(None, 'ERROR', tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
+                    created.append(None)
+                    continue
 
-            elif ctype_cur == "DOVETAIL":
+                width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
+                length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
+                depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+
+                conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"Custom_{i}")
+                if conn is None:
+                    report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
+                    created.append(None)
+                    continue
+                conn.matrix_world = M
+                cutters_coll.objects.link(conn)
+                union_and_dispose(b, conn, name=f"CustomUnion_{i}")
+
+                mm = unit_mm()
+                half_w = max(0.5 * width_mm * mm, 1e-9)
+                half_l = max(0.5 * length_mm * mm, 1e-9)
+                sx = 1.0 + (tol * mm) / half_w
+                sy = 1.0 + (tol * mm) / half_l
+                sz = 1.0
+                socket = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"CustomSocketCutter_{i}")
+                socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+                cutters_coll.objects.link(socket)
+                cut_socket_with_cutter_and_dispose(a, socket)
+                created.append(None)
+
+
+            elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                 # Build local u/v/n frame for dovetail specifically
                 z_d = naxis.normalized()
                 x_d = Vector((1, 0, 0))
@@ -1880,6 +2234,19 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 cut_socket_with_cutter_and_dispose(a, socket)
                 created.append(None)
 
+                if ctype_cur == "SNAP_DOVETAIL":
+                    add_snap_spheres_for_dovetail_ring(
+                        base_matrix=M2,
+                        width_u_mm=width_u_mm,
+                        length_v_mm=length_v_mm,
+                        depth_n_mm=depth_n_mm,
+                        signed_taper_pct=signed_taper,
+                        props=props,
+                        name_prefix=f"Dovetail_{i}",
+                        part_a=a,   # A = DIFFERENCE
+                        part_b=b,   # B = UNION
+                        cutters_coll=cutters_coll
+                    )
 
             elif ctype_cur == "SNAP_FLUSH_PIN":
                 add_flush_barb_for_cyl(
@@ -2017,8 +2384,8 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
 
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL"}:
-                if ctype_cur == "DOVETAIL":
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                     # Dovetail preview uses axis-relative dimensions and signed in-plane taper
                     width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
                     length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
@@ -2029,6 +2396,31 @@ class SNAP_OT_place_connectors_click(Operator):
                                                        depth_n_mm=depth_n_mm,
                                                        signed_taper_pct=signed_taper,
                                                        name="SnapSplit_Preview_Dovetail")
+
+                elif ctype_cur == "CUSTOM":
+                    # NEW: Custom Connector preview — instantiate the picked source mesh,
+                    # rescale it to the configured Width/Length/Depth, and show it as a
+                    # wireframe preview object that follows the mouse cursor, mirroring
+                    # the built-in Pin/Tenon preview behavior above.
+                    source_obj = getattr(props, "custom_connector_object", None)
+                    if source_obj is not None and source_obj.type == 'MESH' and source_obj.data is not None:
+                        width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
+                        length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
+                        depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+                        custom_prev = create_custom_connector_instance(
+                            source_obj, width_mm, length_mm, depth_mm,
+                            name="SnapSplit_Preview_Custom"
+                        )
+                        if custom_prev is not None:
+                            custom_prev.display_type = 'WIRE'
+                            custom_prev.hide_select = True
+                            prev_coll.objects.link(custom_prev)
+                            self.preview_obj = custom_prev
+                            self.preview_objs.append(custom_prev)
+                    # If no source object is picked yet, silently skip the preview here;
+                    # the actual LEFTMOUSE placement already reports a clear error in that case.
+
+
                 elif ctype_cur == "SNAP_FLUSH_TENON":
                     ten_prev = create_flush_barb_rect(
                         w_mm=getattr(props, "tenon_width_mm", 6.0),
@@ -2040,11 +2432,20 @@ class SNAP_OT_place_connectors_click(Operator):
                 else:
                     ten_prev = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                         name="SnapSplit_Preview_Conn")
-                ten_prev.display_type = 'WIRE'
-                ten_prev.hide_select = True
-                prev_coll.objects.link(ten_prev)
-                self.preview_obj = ten_prev
-                self.preview_objs.append(ten_prev)
+
+                # IMPORTANT: the CUSTOM branch above already fully sets up (or
+                # intentionally skips) its own preview object and never assigns
+                # ten_prev. Running this unconditionally for CUSTOM raised a
+                # NameError, silently swallowed by the outer try/except, which
+                # then reset self.preview_obj/self.preview_objs to None/[] and
+                # discarded the already-created custom_prev reference.
+                if ctype_cur != "CUSTOM":
+                    ten_prev.display_type = 'WIRE'
+                    ten_prev.hide_select = True
+                    prev_coll.objects.link(ten_prev)
+                    self.preview_obj = ten_prev
+                    self.preview_objs.append(ten_prev)
+
 
                 if ctype_cur == "SNAP_TENON":
                     mm = unit_mm()
@@ -2075,6 +2476,49 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
 
+                if ctype_cur == "SNAP_DOVETAIL":
+                    mm = unit_mm()
+                    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+
+                    depth_n_scene = max(0.1 * mm, depth_n_mm * mm)
+                    width_u_scene = max(0.1 * mm, width_u_mm * mm)
+
+                    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+                    L_free = max(0.0, (1.0 - embed_pct) * depth_n_scene)
+                    zA = 0.5 * embed_pct * depth_n_scene
+                    zB = embed_pct * depth_n_scene + 0.5 * L_free
+
+                    # Same taper interpolation as add_snap_spheres_for_dovetail_ring(),
+                    # evaluated separately at zA and zB since the tapered radius
+                    # differs between the embedded and the protruding half.
+                    t_prev = max(-90.0, min(90.0, signed_taper)) * 0.01
+                    s_tip_prev = max(0.05, 1.0 - t_prev)
+                    half_wb_u = 0.5 * width_u_scene
+                    half_wt_u = max(0.05 * mm, half_wb_u * s_tip_prev)
+
+                    def _half_u_at(z, _wb=half_wb_u, _wt=half_wt_u, _dn=depth_n_scene):
+                        frac = max(0.0, min(1.0, z / _dn))
+                        return _wb + (_wt - _wb) * frac
+
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+
+                    import math
+                    for i in range(n_per_side):
+                        ang = (2.0 * math.pi) * (i / n_per_side)
+                        nx = math.cos(ang); ny = math.sin(ang)
+                        r_A = _half_u_at(zA) + protr_scene - sph_r_scene
+                        r_B = _half_u_at(zB) + protr_scene - sph_r_scene
+                        local_A = (r_A * nx, r_A * ny, zA)
+                        local_B = (r_B * nx, r_B * ny, zB)
+                        sph_prev = create_uv_sphere_preview(d_mm=d_sph_mm, segments=12, rings=6,
+                                                            name=f"SnapSplit_Preview_SnapDvt_{i}")
+                        sph_prev["_snapsplit_local_offset_A"] = local_A
+                        sph_prev["_snapsplit_local_offset_B"] = local_B
+                        prev_coll.objects.link(sph_prev)
+                        self.preview_objs.append(sph_prev)
+
         except Exception:
             self.preview_obj = None
             self.preview_objs = []
@@ -2099,6 +2543,7 @@ class SNAP_OT_place_connectors_click(Operator):
                 "SnapSplit_Preview_",
                 "SnapSplit_Preview_Snap_",
                 "SnapSplit_Preview_SnapTen_",
+                "SnapSplit_Preview_SnapDvt_",
                 "SnapSplit_Preview_Conn",
                 "SnapSplit_Preview_FlushPin",
                 "SnapSplit_Preview_FlushTenon",
@@ -2209,7 +2654,7 @@ class SNAP_OT_place_connectors_click(Operator):
                         if self.preview_obj:
                             ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
                             # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
-                            if ctype_cur in {"DOVETAIL"}:
+                            if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                                 M = _apply_inplane_offset_and_rotation(
                                     M,
                                     offset_u_mm=float(getattr(self.props, "dovetail_inplane_offset_u_mm", 0.0)),
@@ -2291,10 +2736,14 @@ class SNAP_OT_place_connectors_click(Operator):
                             )
                         elif ctype_cur == "DOVETAIL":
                             place_one_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Dovetail_Click")
+                        elif ctype_cur == "SNAP_DOVETAIL":
+                            place_one_snap_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="SnapDovetail_Click")
                         elif ctype_cur == "SNAP_FLUSH_PIN":
                             place_one_flush_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="FlushPin_Click")
                         elif ctype_cur == "SNAP_FLUSH_TENON":
                             place_one_flush_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="FlushTenon_Click")
+                        elif ctype_cur == "CUSTOM":
+                            place_one_custom_connector_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Custom_Click")
 
                         try:
                             remove_cutters_collection()
@@ -2366,11 +2815,15 @@ class SNAP_OT_place_connectors_click(Operator):
         ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
         if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
             L_scene = float(self.props.pin_length_mm) * unit_mm()
-        elif ctype_cur in {"DOVETAIL"}:
-            # For dovetail previews, use its own depth
+        elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
             L_scene = float(getattr(self.props, "dovetail_depth_mm", 8.0)) * unit_mm()
+        elif ctype_cur == "CUSTOM":
+            # Use the Custom Connector's own depth so the preview/embed offset
+            # matches the actual placement in place_one_custom_connector_at().
+            L_scene = float(getattr(self.props, "custom_connector_depth_mm", 8.0)) * unit_mm()
         else:
             L_scene = float(getattr(self.props, "tenon_depth_mm", 8.0)) * unit_mm()
+
 
         embed_pct = float(getattr(self.props, "pin_embed_pct", 50.0)) * 0.01
         p_embed = point_world - z * (embed_pct * L_scene)
