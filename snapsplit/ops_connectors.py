@@ -2499,7 +2499,9 @@ def update_connector_placement_preview(context):
 
                     dt_prev = create_dovetail_box_uvn(
                         width_u_mm=width_u_mm, length_v_mm=length_v_mm, depth_n_mm=depth_n_mm,
-                        signed_taper_pct=signed_taper, name=name_base
+                        signed_taper_pct=signed_taper,
+                        chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                        name=name_base
                     )
                     dt_prev.matrix_world = M
                     dt_prev.display_type = 'WIRE'
@@ -2742,6 +2744,7 @@ class SNAP_OT_place_connectors_click(Operator):
                                                        length_v_mm=length_v_mm,
                                                        depth_n_mm=depth_n_mm,
                                                        signed_taper_pct=signed_taper,
+                                                       chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                                        name="SnapSplit_Preview_Dovetail")
 
                 elif ctype_cur == "CUSTOM":
