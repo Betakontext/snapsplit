@@ -35,6 +35,7 @@ from .ops_split import warn_if_unapplied_transforms
 
 
 
+
 # ---------------------------
 # Collection cleanup utilities
 # ---------------------------
@@ -1264,8 +1265,79 @@ def _clip_helper_to_combined_surface(helper_obj, clip_solid):
         return False
 
 
+
 # ---------------------------
-# Single-placement helpers (click)
+# Flush barb helper placement (new): no spheres, shallow ring near seam
+# ---------------------------
+
+def add_flush_barb_for_cyl(base_matrix, d_mm, length_mm, props, name_prefix, part_a, part_b, cutters_coll):
+    """Create flush barb cylinder, union to B and tolerant socket in A."""
+    seg = int(getattr(props, "pin_segments", 32))
+    pin = create_flush_barb_cylinder(d_mm=d_mm,
+                                     length_mm=length_mm,
+                                     barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                     barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                     segments=seg,
+                                     name=f"{name_prefix}_FlushPin")
+    pin.matrix_world = base_matrix
+    cutters_coll.objects.link(pin)
+    union_and_dispose(part_b, pin, name=f"{name_prefix}_FlushPinUnion")
+
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    socket_d = float(d_mm) + 2.0 * tol
+    socket = create_flush_barb_cylinder(d_mm=socket_d,
+                                        length_mm=length_mm,
+                                        barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                        barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                        segments=seg,
+                                        name=f"{name_prefix}_FlushPinSocketCutter")
+    socket.matrix_world = base_matrix
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(part_a, socket)
+    return None
+
+
+def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, part_a, part_b, cutters_coll):
+    """Create flush barb rectangular tenon, union to B and tolerant socket in A."""
+    ten = create_flush_barb_rect(w_mm=w_mm,
+                                 length_mm=length_mm,
+                                 barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                 barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                 name=f"{name_prefix}_FlushTenon")
+    ten.matrix_world = base_matrix
+    cutters_coll.objects.link(ten)
+    # Apply possible bevel modifier prior to boolean
+    for mod in list(ten.modifiers):
+        if mod.type == 'BEVEL':
+            bpy.context.view_layer.objects.active = ten
+            ten.select_set(True)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            except Exception as e:
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+            ten.select_set(False)
+    union_and_dispose(part_b, ten, name=f"{name_prefix}_FlushTenonUnion")
+
+    mm = unit_mm()
+    tol = float(props.effective_tolerance())
+    half_w = max(0.5 * float(w_mm) * mm, 1e-9)
+    sx = 1.0 + (tol * mm) / half_w
+    sy = sx
+    sz = 1.0
+    socket = create_flush_barb_rect(w_mm=w_mm,
+                                    length_mm=length_mm,
+                                    barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                                    barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                                    name=f"{name_prefix}_FlushTenonSocketCutter")
+    socket.matrix_world = base_matrix @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+    cutters_coll.objects.link(socket)
+    cut_socket_with_cutter_and_dispose(part_a, socket)
+    return None
+
+
+# ---------------------------
+# Dovetail helpers: span width, frame ops, side-cut
 # ---------------------------
 
 def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Pin_Click"):
