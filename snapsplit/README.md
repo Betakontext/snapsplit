@@ -3,20 +3,16 @@
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
----------------------------
----------------------------
-This is V_0.1.5 -> more languages:
 
-Switching the UI to Blender's language system and adding further translations.
-For now I implemented: "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ja", "zh", "ru", "uk", "tr"
-Feel free to fork and further, for you missing language into -> languages.py. Then open a pull request. I'd be happy about paticipation.
 ---------------------------
+This is V_0.1.5 -> more languages
 ---------------------------
 
-For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1 and 5.2.0 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+
+For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
-- Download the whole repository or only snapsplit.zip
+- Download the repository and zip the snapsplit folder
 - In Blender: Edit → Preferences → Add-ons → Install… → select the *.ZIP → enable.
 
 ### Blender setup:
@@ -111,9 +107,10 @@ Operators:
 
 The UI is fully localized and automatically follows Blender's interface language setting. Supported languages:
 
-English, German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe)
+English (US), German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe), Slovenian (Slovenščina), Korean (한국어), Swahili (Kiswahili), Arabic (العربية), Persian (فارسی), Hindi (हिन्दी), Bengali (বাংলা)
 
 - If your Blender UI language is not among the fully translated set, SnapSplit falls back to English.
+- If your language is missing feel free to fork and add your language into languages.py and open a pull request.
 - A "Reload UI Language" button in the Add-on Preferences lets you refresh translations after changing Blender's language without restarting Blender.
 
 #### Add-on Preferences:
@@ -160,12 +157,15 @@ snapsplit
 ---------------------------
 
 ### Changelog:
+**V_0.1.6**
+- Added toggle for live preview while creating connectors in Line/Grid mode for all connector types.
 
+**V_0.1.5** (current)
+- Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
 
-**V_0.1.4** (current)
+**V_0.1.4**
 - Added Dovetail and Snap-Dovetail connector types.
 - Added Custom Connector: use any mesh object from your scene as a connector shape, scaled to Width/Length/Depth, with click placement support.
-- Full UI localization: 13 languages (EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR) with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
 - Added Add-on Preferences panel: Default Profile selection and automatic export collection creation.
 
 **V_0.1.3**
@@ -180,7 +180,7 @@ snapsplit
 
 ### Roadmap of ideas:
 
-- More languages beyond the current 13.
+- More languages beyond the current 16.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
