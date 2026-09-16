@@ -19,9 +19,6 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
-
-# languages.py
-
 from __future__ import annotations
 
 from typing import Dict, Optional
@@ -426,21 +423,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Connector with snap spheres",
         "ui.snap_tenon": "Snap Tenon",
         "ui.snap_tenon_desc": "Rectangular tenon with snap spheres",
-        "ui.snap_dovetail": "Snap Dovetail",
-        "ui.snap_dovetail_desc": "Tapered wedge connector with snap spheres",
-        "ui.custom_connector": "Custom Connector",
-        "ui.custom_connector_desc": "Use another mesh object from the scene as connector shape",
-        "ui.custom_connector_object": "Select connector object",
-        "ui.custom_connector_object_desc": "Mesh object from this scene used as connector shape. Its local Z axis is treated as the insertion direction; it will be rescaled to the Width/Length/Depth values below.",
-        "ui.custom_connector_width_mm": "Custom Width (mm)",
-        "ui.custom_connector_width_desc": "Target size along the object's local X axis",
-        "ui.custom_connector_length_mm": "Custom Length (mm)",
-        "ui.custom_connector_length_desc": "Target size along the object's local Y axis",
-        "ui.custom_connector_depth_mm": "Custom Depth (mm)",
-        "ui.custom_connector_depth_desc": "Target size along the object's local Z axis (insertion depth)",
-        "op.connect.custom.err.no_object": "Please select a connector object for Custom Connector.",
-        "op.connect.custom.err.empty_mesh": "Selected connector object has no usable mesh data.",
-
 
         # Distribution
         "ui.distribution": "Distribution",
@@ -609,21 +591,6 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.snap_pin_desc": "Verbinder mit Schnappkugeln",
         "ui.snap_tenon": "Schnapp-Zapfen",
         "ui.snap_tenon_desc": "Rechteck-Zapfen mit Schnappkugeln",
-        "ui.snap_dovetail": "Schnapp-Schwalbenschwanz",
-        "ui.snap_dovetail_desc": "Schwalbenschwanz-Verbinder mit Schnappkugeln",
-        "ui.custom_connector": "Benutzerdefinierter Verbinder",
-        "ui.custom_connector_desc": "Verwendet ein anderes Mesh-Objekt aus der Szene als Verbinder-Form",
-        "ui.custom_connector_object": "Verbinder-Objekt auswählen",
-        "ui.custom_connector_object_desc": "Mesh-Objekt aus dieser Szene, das als Verbinder-Form verwendet wird. Die lokale Z-Achse gilt als Einsteckrichtung; das Objekt wird auf die unten eingestellten Breite/Länge/Tiefe skaliert.",
-        "ui.custom_connector_width_mm": "Breite (mm)",
-        "ui.custom_connector_width_desc": "Zielgröße entlang der lokalen X-Achse des Objekts",
-        "ui.custom_connector_length_mm": "Länge (mm)",
-        "ui.custom_connector_length_desc": "Zielgröße entlang der lokalen Y-Achse des Objekts",
-        "ui.custom_connector_depth_mm": "Tiefe (mm)",
-        "ui.custom_connector_depth_desc": "Zielgröße entlang der lokalen Z-Achse des Objekts (Einstecktiefe)",
-        "op.connect.custom.err.no_object": "Bitte ein Verbinder-Objekt für den benutzerdefinierten Verbinder auswählen.",
-        "op.connect.custom.err.empty_mesh": "Das ausgewählte Verbinder-Objekt enthält keine verwertbaren Mesh-Daten.",
-
 
         # Distribution
         "ui.distribution": "Verteilung",
@@ -853,6 +820,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Choisir face B",
         "ui.align_faces": "Aligner les faces",
         "ui.align_faces_desc": "Aligner la face B sur la face A avec ajustement local et orientation",
+        "ui.buy_me_coffee": "Offrez-moi un café ",
     },
 
     # Spanish (Spain) - complete
@@ -1010,6 +978,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Elegir Cara B",
         "ui.align_faces": "Alinear caras",
         "ui.align_faces_desc": "Alinear la cara B con la cara A usando ajuste local y orientación",
+        "ui.buy_me_coffee": "Invítame a un café ",
     },
 
     # Italian (Italy) - complete
@@ -1167,6 +1136,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Scegli Faccia B",
         "ui.align_faces": "Allinea facce",
         "ui.align_faces_desc": "Allinea la faccia B alla faccia A con adattamento locale e orientamento",
+        "ui.buy_me_coffee": "Offrimi un caffè ",
     },
 
     # Portuguese (Brazil) - complete
@@ -1324,6 +1294,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Escolher Face B",
         "ui.align_faces": "Alinhar faces",
         "ui.align_faces_desc": "Alinhar a face B à face A com ajuste local e orientação",
+        "ui.buy_me_coffee": "Pague-me um café ",
     },
 
     # Portuguese (Portugal) - complete
@@ -1369,7 +1340,7 @@ translations: Dict[str, Dict[str, str]] = {
 
         "op.cap_now.label": "Fechar arestas agora",
         "op.cap_now.desc": "Preencher entre exatamente dois loops de arestas de corte (externo+interno) por plano. Seeds preferidos.",
-        "op.cap_now.only_selected.name": "Apenas objetos selecionados",
+        "op.cap_now.only_selected.name": "Apenas objetos seleccionados",
         "op.cap_now.max_planes.name": "Máx. planos",
         "op.cap_now.max_planes.desc": "0 = todos os planos por objeto, 1 = apenas o maior",
         "op.cap_now.select_only.name": "Apenas selecionar (sem preencher)",
@@ -1481,6 +1452,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Escolher Face B",
         "ui.align_faces": "Alinhar faces",
         "ui.align_faces_desc": "Alinhar a face B à face A com ajuste local e orientação",
+        "ui.buy_me_coffee": "Oferece-me um café ",
     },
 
     # Dutch (Netherlands) - complete
@@ -1638,6 +1610,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Kies Vlak B",
         "ui.align_faces": "Vlakken uitlijnen",
         "ui.align_faces_desc": "Lijn vlak B uit met vlak A met lokale passing en oriëntatie",
+        "ui.buy_me_coffee": "Trakteer me op een koffie ",
     },
 
     # Polish (Poland) - complete
@@ -1795,6 +1768,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Wybierz Powierzchnię B",
         "ui.align_faces": "Wyrównaj powierzchnie",
         "ui.align_faces_desc": "Wyrównaj powierzchnię B do A z lokalnym dopasowaniem i orientacją",
+        "ui.buy_me_coffee": "Postaw mi kawę ",
     },
 
     # Japanese (Japan) - complete
@@ -1952,6 +1926,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "面Bを選択",
         "ui.align_faces": "面を整列",
         "ui.align_faces_desc": "ローカルフィットと向きを用いて面Bを面Aに整列",
+        "ui.buy_me_coffee": "コーヒーをご馳走してください ",
     },
 
     # Chinese (Simplified, China) - complete
@@ -2109,6 +2084,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "选择面 B",
         "ui.align_faces": "对齐面",
         "ui.align_faces_desc": "使用局部拟合与方向将面 B 对齐到面 A",
+        "ui.buy_me_coffee": "请我喝杯咖啡 ",
     },
 
     # Chinese (Traditional, Taiwan) - complete
@@ -2266,6 +2242,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "選擇面 B",
         "ui.align_faces": "對齊面",
         "ui.align_faces_desc": "使用在地擬合與方向將面 B 對齊至面 A",
+        "ui.buy_me_coffee": "請我喝杯咖啡 ",
     },
 
     # Russian (Russia) - complete
@@ -2423,6 +2400,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Выбрать грань B",
         "ui.align_faces": "Выровнять грани",
         "ui.align_faces_desc": "Выровнять грань B по грани A с локальным соответствием и ориентацией",
+        "ui.buy_me_coffee": "Купите мне кофе ",
     },
 
     # Ukrainian (Ukraine) - complete
@@ -2499,7 +2477,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.split_along_x": "Розрізати вздовж X",
         "ui.split_along_y": "Розрізати вздовж Y",
         "ui.split_along_z": "Розрізати вздовж Z",
-        "ui.show_split_preview": "Показати попередній перегляд розрізу",
+        "ui.show_split_preview": "Показати попередній перегляд rozrizu",
         "ui.show_split_preview_desc": "Показати тимчасові помаранчеві площини у запланованих місцях rozrizu",
         "ui.parts_count": "Кількість частин",
         "ui.parts_count_desc": "Бажана кількість сегментів (площини розрізу = частини - 1)",
@@ -2580,6 +2558,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Вибрати грань B",
         "ui.align_faces": "Вирівняти грані",
         "ui.align_faces_desc": "Вирівняти грань B до грані A з локальним узгодженням та орієнтацією",
+        "ui.buy_me_coffee": "Пригостіть мене кавою ",
     },
 
     # Turkish (Turkey) - complete
@@ -2738,6 +2717,7 @@ translations: Dict[str, Dict[str, str]] = {
         "ui.pick_face_b": "Yüz B’yi seç",
         "ui.align_faces": "Yüzleri hizala",
         "ui.align_faces_desc": "Yüz B’yi yerel uyum ve yönelimle Yüz A’ya hizala",
+        "ui.buy_me_coffee": "Bana bir kahve ısmarla ",
     },
 }
 
@@ -2761,3 +2741,4 @@ def _debug_list_missing_keys() -> Dict[str, set]:
         if miss:
             missing[loc] = miss
     return missing
+

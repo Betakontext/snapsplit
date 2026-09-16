@@ -21,8 +21,6 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 
 # utils.py
 
-# utils.py
-
 import bpy
 from mathutils import Vector
 
