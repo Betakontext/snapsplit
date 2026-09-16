@@ -3,7 +3,6 @@
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
-
 ---------------------------
 ---------------------------
 This is V_0.1.6 -> Preparing a live preview for all connectors.
@@ -46,7 +45,6 @@ Unfold the segmentation part (More...) to get ready for the split.
 -> For larger part numbers you can deselect "cap seams" and create the caps afterwards.
 -> Cap seams closes walls, if hollow or solidify is detected. If none it closes the whole cut area. You can also use it per part afterwards if "Cap seams" is deselected
 
-
 -> Run "Planar Split"
 
 ![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_02.png?cache=1)
@@ -61,7 +59,7 @@ Unfold the conections part (More...) to choose and place your connectors.
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png?cache=1)
 
 -> Select two or more adjacent parts (order does not matter).
--> Choose pins or tenons distributed along a seam line or spread across a grid, with or without Snap-Pins for glueless connection.
+-> Choose pins, tenons or dovetails distributed along a seam line or spread across a grid, with or without Snap-Pins/Snap-Tenons/Snap-Dovetails for glueless connection, or use your own custom mesh as a connector shape.
 -> Define your tolerance profile (under Connections UI) for your material.
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_02.png?cache=1)
@@ -70,6 +68,14 @@ Unfold the conections part (More...) to choose and place your connectors.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_03.png?cache=1)
+
+#### Custom Connector:
+
+Instead of the built-in pin/tenon/dovetail shapes, you can pick any watertight mesh object from your scene as a connector shape (`Custom Connector Object` field). SnapSplit scales a copy of it to your specified Width / Length / Depth (mm) and inserts it exactly like the built-in connector types — either via "Add connectors" or via individual click placement.
+
+- The object's local Z axis defines the insertion direction (depth into the socket).
+- Works with both seam-line and grid distribution as well as per-click placement.
+- Ideal for logos, keyed/anti-rotation shapes, or custom-designed glueless mechanisms.
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -81,10 +87,9 @@ or   ->  Choose "Place connectors (click)" to set individualized connectors with
 Property group with:
 
 - Segmentation: Number of parts. Unclick "cap seams" for larger part numbers
-- Connections:  Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon 
+- Connections:  Cylindrical Pin, Rectangular Tenon, Dovetail, Snap-Pin, Snap-Tenon, Snap-Dovetail, Custom Connector
 - Tolerance:    Material profiles (PLA, PETG, ABS, ASA, TPU, SLA)
 - Alignment:    Face to face alignment option in object mode
-
 
 Operators:
 
@@ -93,21 +98,39 @@ Operators:
 - Decap and cap seams toggle, pre and post split
 - Percentage-based edge margin for connector placement
 - Seam line connectors, Grid connectors with rows and columns input and individual per click connectors placement on the cut face.
-- Pin and Snap-Pin adjustments
+- Pin, Tenon, Dovetail and Snap-variant adjustments
+- Custom Connector placement using a user-selected mesh object, scaled to Width/Length/Depth
 - Adjustable insertion depth. Default: 50%
 - Alignment with face selection in object mode
 
-Tolerance profiles (guidelines, adjustable):
+#### Languages:
+
+The UI is fully localized and automatically follows Blender's interface language setting. Supported languages:
+
+English, German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe)
+
+- If your Blender UI language is not among the fully translated set, SnapSplit falls back to English.
+- A "Reload UI Language" button in the Add-on Preferences lets you refresh translations after changing Blender's language without restarting Blender.
+
+#### Add-on Preferences:
+
+Accessible via Edit → Preferences → Add-ons → SnapSplit:
+
+- **Default Profile**: Choose which material tolerance profile (PLA, PETG, ABS, ASA, TPU, SLA) is pre-selected whenever the SnapSplit panel is opened on a new file or object.
+- **Create export collection**: When enabled, SnapSplit automatically organizes split/connected parts into a dedicated collection to keep your outliner clean before export.
+- **Reload UI Language**: Manually re-applies translations, e.g. after switching Blender's interface language.
+
+Tolerance profiles (defaults, adjustable per project):
 
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
-- PLA: 0.15–0.25 mm per side
-- PETG: 0.25–0.35 mm per side
-- ABS/ASA: 0.20–0.30 mm per side
-- TPU: 0.30–0.45 mm per side
-- SLA: 0.05–0.15 mm per side
+- PLA: 0.20 mm per side
+- PETG: 0.30 mm per side
+- ABS/ASA: 0.25 mm per side
+- TPU: 0.35 mm per side
+- SLA: 0.10 mm per side
 
-Tolerances are provided as presets and can be overridden by the user.
+Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
 
 ---------------------------
 ---------------------------
@@ -132,12 +155,29 @@ snapsplit
 ---------------------------
 ---------------------------
 
+### Changelog:
+
+
+**V_0.1.4** (current)
+- Added Dovetail and Snap-Dovetail connector types.
+- Added Custom Connector: use any mesh object from your scene as a connector shape, scaled to Width/Length/Depth, with click placement support.
+- Full UI localization: 13 languages (EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR) with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
+- Added Add-on Preferences panel: Default Profile selection and automatic export collection creation.
+
+**V_0.1.3**
+- Initial public connector set: Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon.
+- Planar split with adjustable axis/offset, cap seams toggle.
+- Seam-line and grid connector distribution, per-click placement.
+- Material tolerance profiles (PLA, PETG, ABS, ASA, TPU, SLA).
+- Face-to-face alignment operator.
+
+---------------------------
+---------------------------
+
 ### Roadmap of ideas:
 
-More languages, more connector types and new options to integrate custom forms and meshes as connectors
-
--> Development branch for further connector types is V_0.1.4_more_connectors
--> Development branch to add more languages is V_0.1.5_more_languages
+- More languages beyond the current 13.
+- Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
