@@ -149,9 +149,17 @@ class SNAP_PT_panel(Panel):
             if _exists(props, "connector_margin_pct"):
                 adv.prop(props, "connector_margin_pct", text=tr("ui.margin_pct", "Margin (%)"))
 
+            # Live wireframe preview toggle for LINE/GRID connector placement.
+            # Independent of connector_type, since the preview builder itself
+            # decides per-type what shape/ring to draw. Capped at 200 objects
+            # internally (see ops_connectors.update_connector_placement_preview).
+            if _exists(props, "connector_live_preview"):
+                adv.prop(props, "connector_live_preview", text=tr("ui.connector_live_preview", "Live Preview"))
+
             # Connector-specific geometry/settings
             gbox = box.box()
             ctype = getattr(props, "connector_type", "CYL_PIN")
+
 
             # --- Pin-like connectors ---
             if ctype in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:

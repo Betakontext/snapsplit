@@ -175,71 +175,35 @@ def warn_if_unapplied_transforms(obj, operator=None):
 
 _last_preview_active_obj = None
 
-# Separate, independent state for the connector live-preview branch below.
-# Kept as a simple tuple signature of selected mesh object names so we can
-# cheaply detect "selection changed" without depending on the split-preview
-# state above. None means "not initialized yet" (forces an initial check).
-_last_connector_preview_selection_key = None
-
-
 def _snapsplit_depsgraph_update(scene, depsgraph):
-    """Depsgraph post-update handler to refresh preview planes/objects on relevant data changes.
-
-    This handler drives two fully independent preview systems:
-      1) The split-plane preview (unchanged, reacts to active-object changes
-         and depsgraph updates on that object/its mesh data).
-      2) The connector placement live preview (new), which reacts only to
-         changes in the current selection set and is entirely gated by its
-         own 'connector_live_preview' toggle. Neither branch's early-return
-         affects the other, so turning off "Show split preview" no longer
-         disables the connector live preview and vice versa.
-    """
-    global _last_preview_active_obj, _last_connector_preview_selection_key
-
-    props = getattr(scene, "snapsplit", None)
-    ctx = bpy.context
-
-    # --- Branch 1: split-plane preview (unchanged behavior) ---
+    """Depsgraph post-update handler to refresh preview planes on relevant data changes."""
+    # Guard: if update_split_preview_plane is not present, exit silently
     if 'update_split_preview_plane' not in globals():
-        pass
-    elif not props or not getattr(props, "show_split_preview", False):
+        return
+    global _last_preview_active_obj
+    props = getattr(scene, "snapsplit", None)
+    if not props or not getattr(props, "show_split_preview", False):
         _last_preview_active_obj = None
-    else:
-        obj = ctx.active_object
-
-        if obj is not _last_preview_active_obj:
-            try:
-                update_split_preview_plane(ctx)
-            except Exception:
-                pass
-            _last_preview_active_obj = obj
-        elif obj:
-            try:
-                for up in depsgraph.updates:
-                    id_orig = getattr(up.id, "original", None)
-                    if id_orig is obj or id_orig is obj.data:
-                        update_split_preview_plane(ctx)
-                        break
-            except Exception:
-                pass
-
-    # --- Branch 2: connector placement live preview (new, independent) ---
-    if not props or not getattr(props, "connector_live_preview", False):
-        # Reset the tracked selection so a fresh selection is always detected
-        # once the toggle is switched back on.
-        _last_connector_preview_selection_key = None
         return
 
-    try:
-        sel_key = tuple(sorted(o.name for o in ctx.selected_objects if o.type == 'MESH'))
-    except Exception:
-        sel_key = None
+    ctx = bpy.context
+    obj = ctx.active_object
 
-    if sel_key != _last_connector_preview_selection_key:
-        _last_connector_preview_selection_key = sel_key
+    if obj is not _last_preview_active_obj:
         try:
-            from . import ops_connectors
-            ops_connectors.update_connector_placement_preview(ctx)
+            update_split_preview_plane(ctx)
+        except Exception:
+            pass
+        _last_preview_active_obj = obj
+        return
+
+    if obj:
+        try:
+            for up in depsgraph.updates:
+                id_orig = getattr(up.id, "original", None)
+                if id_orig is obj or id_orig is obj.data:
+                    update_split_preview_plane(ctx)
+                    break
         except Exception:
             pass
 
