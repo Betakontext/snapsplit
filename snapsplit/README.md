@@ -5,7 +5,7 @@ Addon for Blender to automate cut and connection building workflows for complex 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 ---------------------------
 ---------------------------
-This is V_0.1.4 -> more connectors, custom connectors, full localization
+This is V_0.1.6 -> Preparing a live preview for all connectors.
 ---------------------------
 ---------------------------
 
@@ -151,6 +151,7 @@ snapsplit
 ├── ui.py
 └── utils.py
 
+
 ---------------------------
 ---------------------------
 
@@ -191,7 +192,7 @@ Please try it out. If you like SnapSplit and continue using it
 
 -> fork + star the repo to take it further.
 
-Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences.
+Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
 Have fun splitting and printing, and feel free to join in for further developments.
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de |

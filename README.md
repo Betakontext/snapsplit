@@ -6,7 +6,7 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 
 ---------------------------
 ---------------------------
-This is V_0.1.4 -> more connectors, custom connectors, full localization
+This is V_0.1.6 -> Preparing a live preview for all connectors.
 ---------------------------
 ---------------------------
 
