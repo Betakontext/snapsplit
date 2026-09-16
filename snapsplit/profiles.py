@@ -59,6 +59,25 @@ def _snapsplit_update_preview(self, context):
         # Fail silently to not break UI interactions if preview operator is unavailable
         pass
 
+
+def _snapsplit_update_connector_preview(self, context):
+    """Property update callback to refresh or clear the connector placement live preview.
+
+    This is fully independent from the split-plane preview above. The called
+    function itself checks the 'connector_live_preview' toggle and the current
+    selection/distribution mode, and performs cleanup when preview is not
+    applicable. Kept in a try/except so UI interactions never break, even if
+    the preview builder raises under unusual context states (e.g. during
+    file load or when running from a background context).
+    """
+    try:
+        from . import ops_connectors
+        ops_connectors.update_connector_placement_preview(context)
+    except Exception:
+        # Fail silently to not break UI interactions if the preview function is unavailable
+        pass
+
+
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
     Return a heuristic segment count for cylindrical pins from diameter in mm.
@@ -173,6 +192,7 @@ class SnapSplitProps(PropertyGroup):
             # ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
         ],
         default="CYL_PIN",
+        update=_snapsplit_update_connector_preview,
     )
 
     # Placement distribution
@@ -187,6 +207,7 @@ class SnapSplitProps(PropertyGroup):
             ("GRID", tr("ui.grid", "Grid"), tr("ui.grid_desc", "Distribute connectors in a grid over the seam face")),
         ],
         default="LINE",
+        update=_snapsplit_update_connector_preview,
     )
 
     connectors_per_seam: IntProperty(
@@ -194,6 +215,7 @@ class SnapSplitProps(PropertyGroup):
         default=3,
         min=1,
         max=128,
+        update=_snapsplit_update_connector_preview,
     )
 
     connectors_rows: IntProperty(
@@ -202,6 +224,7 @@ class SnapSplitProps(PropertyGroup):
         default=2,
         min=1,
         max=128,
+        update=_snapsplit_update_connector_preview,
     )
 
     connector_margin_pct: FloatProperty(
@@ -213,7 +236,22 @@ class SnapSplitProps(PropertyGroup):
         default=10.0,
         min=0.0,
         soft_max=40.0,
-        subtype='PERCENTAGE'
+        subtype='PERCENTAGE',
+        update=_snapsplit_update_connector_preview,
+    )
+
+    # Live preview toggle for the LINE/GRID connector distribution.
+    # When enabled, non-boolean wireframe placeholders are drawn in the
+    # viewport for the currently selected parts, refreshed whenever the
+    # selection or any relevant connector property changes.
+    connector_live_preview: BoolProperty(
+        name=tr("ui.connector_live_preview", "Live Preview"),
+        description=tr(
+            "ui.connector_live_preview_desc",
+            "Show a live wireframe preview of connector placement (LINE/GRID) for the current selection. Capped at 200 preview objects for performance."
+        ),
+        default=False,
+        update=_snapsplit_update_connector_preview,
     )
 
     # Snap options (sphere ring; used by SNAP_PIN / SNAP_TENON)
@@ -223,6 +261,7 @@ class SnapSplitProps(PropertyGroup):
         default=2,
         min=1,
         max=32,
+        update=_snapsplit_update_connector_preview,
     )
 
     snap_sphere_diameter_mm: FloatProperty(
@@ -231,6 +270,7 @@ class SnapSplitProps(PropertyGroup):
         default=2.0,
         min=0.5,
         soft_max=10.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     snap_sphere_protrusion_mm: FloatProperty(
@@ -239,6 +279,7 @@ class SnapSplitProps(PropertyGroup):
         default=1.0,
         min=0.0,
         soft_max=5.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     # Pin / Tenon dimensions (mm)
@@ -247,6 +288,7 @@ class SnapSplitProps(PropertyGroup):
         default=5.0,
         min=0.5,
         soft_max=50.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     pin_length_mm: FloatProperty(
@@ -254,6 +296,7 @@ class SnapSplitProps(PropertyGroup):
         default=8.0,
         min=1.0,
         soft_max=200.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     pin_segments: IntProperty(
@@ -262,6 +305,7 @@ class SnapSplitProps(PropertyGroup):
         default=32,
         min=8,
         max=128,
+        update=_snapsplit_update_connector_preview,
     )
 
     tenon_width_mm: FloatProperty(
@@ -269,6 +313,7 @@ class SnapSplitProps(PropertyGroup):
         default=6.0,
         min=1.0,
         soft_max=100.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     tenon_depth_mm: FloatProperty(
@@ -276,6 +321,7 @@ class SnapSplitProps(PropertyGroup):
         default=8.0,
         min=1.0,
         soft_max=200.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     add_chamfer_mm: FloatProperty(
@@ -283,6 +329,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.3,
         min=0.0,
         soft_max=2.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     # Custom connector (arbitrary mesh object, rescaled to target dimensions)
@@ -296,6 +343,7 @@ class SnapSplitProps(PropertyGroup):
             "Width/Length/Depth values below."
         ),
         poll=_poll_custom_connector_object,
+        update=_snapsplit_update_connector_preview,
     )
 
     custom_connector_width_mm: FloatProperty(
@@ -304,6 +352,7 @@ class SnapSplitProps(PropertyGroup):
         default=6.0,
         min=0.1,
         soft_max=100.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     custom_connector_length_mm: FloatProperty(
@@ -312,6 +361,7 @@ class SnapSplitProps(PropertyGroup):
         default=6.0,
         min=0.1,
         soft_max=100.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     custom_connector_depth_mm: FloatProperty(
@@ -320,6 +370,7 @@ class SnapSplitProps(PropertyGroup):
         default=8.0,
         min=0.1,
         soft_max=200.0,
+        update=_snapsplit_update_connector_preview,
     )
 
 
@@ -330,7 +381,8 @@ class SnapSplitProps(PropertyGroup):
         default=50.0,
         min=0.0,
         max=100.0,
-        subtype='PERCENTAGE'
+        subtype='PERCENTAGE',
+        update=_snapsplit_update_connector_preview,
     )
 
     # Dovetail basics
@@ -339,6 +391,7 @@ class SnapSplitProps(PropertyGroup):
         default=6.0,
         min=2.0,
         soft_max=60.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     dovetail_length_mm: FloatProperty(
@@ -347,6 +400,7 @@ class SnapSplitProps(PropertyGroup):
         default=6.0,
         min=2.0,
         soft_max=200.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     dovetail_depth_mm: FloatProperty(
@@ -354,6 +408,7 @@ class SnapSplitProps(PropertyGroup):
         default=8.0,
         min=2.0,
         soft_max=120.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     dovetail_taper_pct: FloatProperty(
@@ -363,6 +418,7 @@ class SnapSplitProps(PropertyGroup):
         min=5.0,
         max=60.0,
         subtype='PERCENTAGE',
+        update=_snapsplit_update_connector_preview,
     )
 
     # Flush snap barb parameters (shared for pin/tenon)
@@ -372,6 +428,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.6,
         min=0.2,
         soft_max=1.2,
+        update=_snapsplit_update_connector_preview,
     )
 
     flush_barb_lip_mm: FloatProperty(
@@ -380,6 +437,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.25,
         min=0.1,
         soft_max=0.6,
+        update=_snapsplit_update_connector_preview,
     )
 
     # Tolerances / material profile
@@ -446,6 +504,7 @@ class SnapSplitProps(PropertyGroup):
         soft_max=60.0,
         min=-90.0,
         max=90.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     # Span mode across the seam; UI already supports this.
@@ -458,6 +517,7 @@ class SnapSplitProps(PropertyGroup):
             ("CENTERED", tr("ui.centered", "Centered"), tr("ui.centered_span_tip", "Center block(s) with margins")),
         ],
         default="AUTO",
+        update=_snapsplit_update_connector_preview,
     )
 
     # Margin already present as connector_margin_pct; keep dovetail-specific too if UI expects it.
@@ -467,7 +527,8 @@ class SnapSplitProps(PropertyGroup):
         default=10.0,
         min=0.0,
         soft_max=40.0,
-        subtype='PERCENTAGE'
+        subtype='PERCENTAGE',
+        update=_snapsplit_update_connector_preview,
     )
 
     # Force a fixed span axis for the dovetail so it always overshoots the
@@ -488,11 +549,15 @@ class SnapSplitProps(PropertyGroup):
             ("Z", "Z", tr("ui.span_axis_z", "Force overshoot along world Z, if it lies in the seam plane")),
         ],
         default="AUTO",
+        update=_snapsplit_update_connector_preview,
     )
 
 
 
     # Prefer a sharp side cut for socket/slot walls.
+    # NOTE: intentionally has no live-preview update callback, since the
+    # wireframe live preview never performs the boolean hard-side cut
+    # (identical behavior to the existing click-placement preview).
     dovetail_hard_side_cut: BoolProperty(
         name=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"),
         description=tr("ui.dovetail_hard_side_cut_desc", "Prefer sharp side cut for dovetail socket/slot"),
@@ -507,6 +572,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
+        update=_snapsplit_update_connector_preview,
     )
 
     dovetail_inplane_offset_v_mm: FloatProperty(
@@ -515,6 +581,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
+        update=_snapsplit_update_connector_preview,
     )
 
 
@@ -524,6 +591,7 @@ class SnapSplitProps(PropertyGroup):
         default=0.0,
         soft_min=-180.0,
         soft_max=180.0,
+        update=_snapsplit_update_connector_preview,
     )
 
 
