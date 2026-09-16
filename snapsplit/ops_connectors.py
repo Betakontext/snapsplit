@@ -1925,7 +1925,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL"}:
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
                 # For dovetail in batch we will override depth_n via dovetail_depth_mm later
                 L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * unit_mm()
             elif ctype_cur == "CUSTOM":
@@ -2312,7 +2312,7 @@ class SNAP_OT_place_connectors_click(Operator):
                         prev_coll.objects.link(sph_prev)
                         self.preview_objs.append(sph_prev)
 
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL"}:
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON", "DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
                 if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                     # Dovetail preview uses axis-relative dimensions and signed in-plane taper
                     width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
@@ -2360,11 +2360,20 @@ class SNAP_OT_place_connectors_click(Operator):
                 else:
                     ten_prev = create_rect_tenon_quader(props.tenon_width_mm, props.tenon_depth_mm, props.add_chamfer_mm,
                                                         name="SnapSplit_Preview_Conn")
-                ten_prev.display_type = 'WIRE'
-                ten_prev.hide_select = True
-                prev_coll.objects.link(ten_prev)
-                self.preview_obj = ten_prev
-                self.preview_objs.append(ten_prev)
+
+                # IMPORTANT: the CUSTOM branch above already fully sets up (or
+                # intentionally skips) its own preview object and never assigns
+                # ten_prev. Running this unconditionally for CUSTOM raised a
+                # NameError, silently swallowed by the outer try/except, which
+                # then reset self.preview_obj/self.preview_objs to None/[] and
+                # discarded the already-created custom_prev reference.
+                if ctype_cur != "CUSTOM":
+                    ten_prev.display_type = 'WIRE'
+                    ten_prev.hide_select = True
+                    prev_coll.objects.link(ten_prev)
+                    self.preview_obj = ten_prev
+                    self.preview_objs.append(ten_prev)
+
 
                 if ctype_cur == "SNAP_TENON":
                     mm = unit_mm()
