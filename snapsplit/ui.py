@@ -300,6 +300,18 @@ class SNAP_PT_panel(Panel):
                     if _exists(props, "dovetail_inplane_rotation_deg"):
                         s.prop(props, "dovetail_inplane_rotation_deg", text=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"))
 
+            # --- Custom connector ---
+            elif ctype == "CUSTOM":
+                if _exists(props, "custom_connector_object"):
+                    gbox.prop(props, "custom_connector_object", text=tr("ui.custom_connector_object", "Select connector object"))
+                if _exists(props, "custom_connector_width_mm"):
+                    gbox.prop(props, "custom_connector_width_mm", text=tr("ui.custom_connector_width_mm", "Custom Width (mm)"))
+                if _exists(props, "custom_connector_length_mm"):
+                    gbox.prop(props, "custom_connector_length_mm", text=tr("ui.custom_connector_length_mm", "Custom Length (mm)"))
+                if _exists(props, "custom_connector_depth_mm"):
+                    gbox.prop(props, "custom_connector_depth_mm", text=tr("ui.custom_connector_depth_mm", "Custom Depth (mm)"))
+                if _exists(props, "pin_embed_pct"):
+                    gbox.prop(props, "pin_embed_pct", text=tr("ui.insert_depth_pct", "Insert Depth (%)"))
 
             else:
                 gbox.label(text=tr("ui.unsupported_connector_type", "Unsupported connector type"), icon='INFO')
