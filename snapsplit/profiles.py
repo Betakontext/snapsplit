@@ -89,6 +89,8 @@ def _mat_item_desc(key: str, val: float) -> str:
 
 def _material_items():
     """Return EnumProperty items for material profiles with localized tooltips."""
+    # Enum items: (identifier, name, description)
+    # Keep labels as the well-known material codes (PLA, PETG, ...) for clarity.
     return [(k, k, _mat_item_desc(k, v)) for k, v in MATERIAL_PROFILES.items()]
 
 def _poll_custom_connector_object(self, obj):
