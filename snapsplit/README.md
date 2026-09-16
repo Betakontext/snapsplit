@@ -3,7 +3,6 @@
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
-
 ---------------------------
 ---------------------------
 This is V_0.1.4 -> more connectors, custom connectors, full localization
