@@ -3,10 +3,13 @@
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
+---------------------------
+---------------------------
+This is V_0.1.5 -> more languages:
 
----------------------------
----------------------------
-This is V_0.1.4 -> more connectors, custom connectors, full localization
+Switching the UI to Blender's language system and adding further translations.
+For now I implemented: "en", "de", "fr", "es", "it", "pt", "nl", "pl", "ja", "zh", "ru", "uk", "tr"
+Feel free to fork and further, for you missing language into -> languages.py. Then open a pull request. I'd be happy about paticipation.
 ---------------------------
 ---------------------------
 
@@ -136,7 +139,21 @@ Tolerances are provided as presets and can be overridden by the user via the tol
 ---------------------------
 ---------------------------
 
-### Folder structure (files inside snapsplit.zip):
+### Folder structure (file structure for snapsplit.zip):
+
+snapsplit
+├── blender_manifest.toml
+├── __init__.py
+├── languages.py
+├── LICENCE.txt
+├── ops_align.py
+├── ops_connectors.py
+├── ops_split.py
+├── prefs.py
+├── profiles.py
+├── README.md
+├── ui.py
+└── utils.py
 
 ---------------------------
 ---------------------------
@@ -165,23 +182,25 @@ Tolerances are provided as presets and can be overridden by the user via the tol
 - More languages beyond the current 13.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
+I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
+---------------------------
+---------------------------
 
-The project is made with AI assistance and under the terms of the GNU General Public License.
-
-Please try it out. 
-
-If you like SnapSplit and continue using it
+Please try it out. If you like SnapSplit and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
-
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
+-> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
--> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
+-> fork + star the repo to take it further.
 
-Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
+Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences.
+Have fun splitting and printing, and feel free to join in for further developments.
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+CONTACT: dev@betakontext.de | https://dev.betakontext.de |
 
-CONTACT: dev@betakontext.de | https://dev.betakontext.de
+---------------------------
+---------------------------
 
+The project is made with AI assistance and under the terms of the GNU General Public License.
