@@ -5,15 +5,16 @@ Addon for Blender to automate cut and connection building workflows for complex 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
----------------------------
-This is V_0.1.4 -> more connectors, custom connectors, full localization
----------------------------
+
+This is V_0.1.4 -> Adding and fixing new connector types
+
 ---------------------------
 
-For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1 and 5.2.0 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+
+For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
-- Download the whole repository or only snapsplit.zip
+- Download the repository and zip the snapsplit folder
 - In Blender: Edit → Preferences → Add-ons → Install… → select the *.ZIP → enable.
 
 ### Blender setup:
@@ -33,8 +34,9 @@ For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1 and 5
 
 Unfold the segmentation part (More...) to get ready for the split.
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
+
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
 
 -> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
 
@@ -54,6 +56,7 @@ Unfold the segmentation part (More...) to get ready for the split.
 ### Build Connections:
 
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
 Unfold the conections part (More...) to choose and place your connectors.
 
@@ -77,6 +80,17 @@ Instead of the built-in pin/tenon/dovetail shapes, you can pick any watertight m
 - The object's local Z axis defines the insertion direction (depth into the socket).
 - Works with both seam-line and grid distribution as well as per-click placement.
 - Ideal for logos, keyed/anti-rotation shapes, or custom-designed glueless mechanisms.
+
+#### Tolerance profiles (defaults, adjustable per project):
+
+- PLA: 0.20 mm per side
+- PETG: 0.30 mm per side
+- ABS/ASA: 0.25 mm per side
+- TPU: 0.35 mm per side
+- SLA: 0.10 mm per side
+
+Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
+
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -108,9 +122,10 @@ Operators:
 
 The UI is fully localized and automatically follows Blender's interface language setting. Supported languages:
 
-English, German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe)
+English (US), German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe), Slovenian (Slovenščina), Korean (한국어), Swahili (Kiswahili), Arabic (العربية), Persian (فارسی), Hindi (हिन्दी), Bengali (বাংলা)
 
 - If your Blender UI language is not among the fully translated set, SnapSplit falls back to English.
+- If your language is missing feel free to fork and add your language into languages.py and open a pull request.
 - A "Reload UI Language" button in the Add-on Preferences lets you refresh translations after changing Blender's language without restarting Blender.
 
 #### Add-on Preferences:
@@ -121,33 +136,40 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 - **Create export collection**: When enabled, SnapSplit automatically organizes split/connected parts into a dedicated collection to keep your outliner clean before export.
 - **Reload UI Language**: Manually re-applies translations, e.g. after switching Blender's interface language.
 
-Tolerance profiles (defaults, adjustable per project):
-
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
-
-- PLA: 0.20 mm per side
-- PETG: 0.30 mm per side
-- ABS/ASA: 0.25 mm per side
-- TPU: 0.35 mm per side
-- SLA: 0.10 mm per side
-
-Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
 
 ---------------------------
 ---------------------------
 
-### Folder structure (files inside snapsplit.zip):
+### Folder structure (file structure for snapsplit.zip):
+
+    snapsplit
+    ├── blender_manifest.toml
+    ├── __init__.py
+    ├── languages.py
+    ├── LICENCE.txt
+    ├── ops_align.py
+    ├── ops_connectors.py
+    ├── ops_split.py
+    ├── prefs.py
+    ├── profiles.py
+    ├── README.md
+    ├── ui.py
+    └── utils.py
+
 
 ---------------------------
 ---------------------------
 
 ### Changelog:
+**V_0.1.6** 
+- Added toggle for live preview while creating connectors in Line/Grid mode for all connector types.
 
+**V_0.1.5**
+- Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
 
 **V_0.1.4** (current)
 - Added Dovetail and Snap-Dovetail connector types.
 - Added Custom Connector: use any mesh object from your scene as a connector shape, scaled to Width/Length/Depth, with click placement support.
-- Full UI localization: 13 languages (EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR) with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
 - Added Add-on Preferences panel: Default Profile selection and automatic export collection creation.
 
 **V_0.1.3**
@@ -162,26 +184,28 @@ Tolerances are provided as presets and can be overridden by the user via the tol
 
 ### Roadmap of ideas:
 
-- More languages beyond the current 13.
+- More languages beyond the current 16.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
+I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
+---------------------------
+---------------------------
 
-The project is made with AI assistance and under the terms of the GNU General Public License.
-
-Please try it out. 
-
-If you like SnapSplit and continue using it
+Please try it out. If you like SnapSplit and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
-
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
+-> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
--> or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
+-> fork + star the repo to take it further.
 
 Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
+Have fun splitting and printing, and feel free to join in for further developments.
 
-Have fun splitting and printing, and feel free to fork and join in to further developments.
+CONTACT: dev@betakontext.de | https://dev.betakontext.de |
 
-CONTACT: dev@betakontext.de | https://dev.betakontext.de
+---------------------------
+---------------------------
 
+The project is made with AI assistance and under the terms of the GNU General Public License.
