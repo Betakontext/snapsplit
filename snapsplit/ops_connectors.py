@@ -167,6 +167,13 @@ def _clear_connector_placement_preview():
                         sc.collection.children.unlink(pc)
                 except Exception:
                     pass
+            # Fully remove the now-empty collection data-block so it does not
+            # linger as an empty folder in the Outliner after live preview
+            # is switched off (matches ops_split.py behavior).
+            try:
+                bpy.data.collections.remove(pc)
+            except Exception:
+                pass
     except Exception:
         pass
 
