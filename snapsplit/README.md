@@ -5,7 +5,9 @@ Addon for Blender to automate cut and connection building workflows for complex 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 ---------------------------
+
 This is V_0.1.6 -> Adding live preview for Line/Grid connector building.
+
 ---------------------------
 
 
