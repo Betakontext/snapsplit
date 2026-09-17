@@ -111,6 +111,67 @@ def remove_cutters_collection():
 
 
 # ---------------------------
+# Live preview (LINE/GRID connector placement) — cleanup
+# ---------------------------
+
+# Dedicated name prefix so this preview system never collides with the
+# click-placement preview ("SnapSplit_Preview_*") or the split-plane preview
+# ("_SnapSplit_PreviewPlane_*"). Sphere rings reuse the same prefix with an
+# extra "_Ring_" segment so a single startswith() check in cleanup covers both.
+AUTOPREVIEW_PREFIX = "SnapSplit_AutoPreview_"
+AUTOPREVIEW_CAP = 200
+
+# Module-level flag so the cap warning is reported only once per "session"
+# of being at/above the cap, instead of spamming on every property tweak
+# while the preview keeps rebuilding.
+_connector_preview_cap_warned = False
+
+
+def _clear_connector_placement_preview():
+    """Remove all connector live-preview objects (wireframe shapes + sphere
+    rings) created by update_connector_placement_preview(). Only touches
+    objects named with AUTOPREVIEW_PREFIX, so other preview systems sharing
+    the same '_SnapSplit_Preview' collection (click-placement preview,
+    split-plane preview) are never affected.
+    """
+    try:
+        for o in [o for o in bpy.data.objects if o.name.startswith(AUTOPREVIEW_PREFIX)]:
+            mesh_data = getattr(o, "data", None)
+            for coll in list(o.users_collection):
+                try:
+                    coll.objects.unlink(o)
+                except Exception:
+                    pass
+            try:
+                bpy.data.objects.remove(o)
+            except Exception:
+                pass
+            try:
+                if mesh_data and hasattr(mesh_data, "users") and mesh_data.users == 0:
+                    if mesh_data.__class__.__name__ == "Mesh":
+                        bpy.data.meshes.remove(mesh_data)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Drop the shared preview collection only if it is now truly empty, so
+    # objects from other preview systems (e.g. an active click-placement
+    # modal) are never removed by this cleanup pass.
+    try:
+        pc = bpy.data.collections.get("_SnapSplit_Preview")
+        if pc and len(pc.objects) == 0:
+            for sc in bpy.data.scenes:
+                try:
+                    if pc in sc.collection.children:
+                        sc.collection.children.unlink(pc)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+# ---------------------------
 # BBox and projection
 # ---------------------------
 
@@ -2300,6 +2361,294 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
     return created
 
+# ---------------------------
+# Live preview (LINE/GRID connector placement) — builder
+# ---------------------------
+
+def update_connector_placement_preview(context):
+    """Create/refresh or remove the LINE/GRID connector placement live preview.
+
+    Mirrors place_connectors_between()'s point distribution and per-point
+    frame construction (same axis handling, seam-plane computation, and
+    embed-depth math), but only creates lightweight WIRE preview objects
+    (plus sphere-ring previews for SNAP_* types) instead of running any
+    boolean union/socket operation. No hard-side clipping and no forced
+    span-axis resizing are applied here, matching the existing behavior of
+    the click-placement preview (SNAP_OT_place_connectors_click), so this
+    stays a fast, side-effect-free visual approximation.
+    """
+    global _connector_preview_cap_warned
+    try:
+        scene = context.scene
+        props = getattr(scene, "snapsplit", None)
+        if not props:
+            _clear_connector_placement_preview()
+            return
+
+        live = bool(getattr(props, "connector_live_preview", False))
+        distribution = getattr(props, "connector_distribution", "LINE")
+        sel = [o for o in context.selected_objects if o.type == 'MESH']
+
+        # Guard: preview disabled, wrong distribution mode, or not enough parts
+        if not live or distribution not in {"LINE", "GRID"} or len(sel) < 2:
+            _clear_connector_placement_preview()
+            return
+
+        # Always rebuild from scratch so stale points/rings never linger
+        _clear_connector_placement_preview()
+
+        axis = getattr(props, "split_axis", "Z")
+        idx = _axis_index(axis)
+        ordered = sorted(sel, key=lambda o: o.location[idx])
+        pairs = [(ordered[i], ordered[i + 1]) for i in range(len(ordered) - 1)]
+        if not pairs:
+            return
+
+        ctype_cur = getattr(props, "connector_type", "CYL_PIN")
+
+        # For CUSTOM, silently skip if no valid source object is picked yet
+        # (mirrors the click-placement preview; avoids repeated error spam).
+        if ctype_cur == "CUSTOM":
+            source_obj = getattr(props, "custom_connector_object", None)
+            if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+                return
+
+        prev_coll = ensure_collection("_SnapSplit_Preview")
+
+        axis_map = {"X": Vector((1, 0, 0)), "Y": Vector((0, 1, 0)), "Z": Vector((0, 0, 1))}
+        naxis = axis_map.get(axis, Vector((0, 0, 1)))
+
+        embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+        margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
+        cols = max(1, int(getattr(props, "connectors_per_seam", 3)))
+        mm = unit_mm()
+
+        import math  # local import, consistent with the sphere-ring helpers above
+
+        created_count = 0
+        point_counter = 0
+        cap_hit = False
+
+        def _make_ring(base_matrix, ring_z, r_ring, d_sph_mm, name_base):
+            """Create up to n_per_side wireframe sphere previews around a ring."""
+            nonlocal created_count, cap_hit
+            n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+            for k in range(n_per_side):
+                if created_count >= AUTOPREVIEW_CAP:
+                    cap_hit = True
+                    return
+                ang = (2.0 * math.pi) * (k / n_per_side)
+                nx = math.cos(ang); ny = math.sin(ang)
+                local_pos = Vector((r_ring * nx, r_ring * ny, ring_z))
+                world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+                sph_prev = create_uv_sphere_preview(
+                    d_mm=d_sph_mm, segments=12, rings=6,
+                    name=f"{name_base}_Ring_{k}"
+                )
+                sph_prev.matrix_world = Matrix.Translation(Vector((world_pos.x, world_pos.y, world_pos.z)))
+                prev_coll.objects.link(sph_prev)
+                created_count += 1
+
+        for a, b in pairs:
+            if cap_hit:
+                break
+            seam_pos = _pair_seam_plane_pos(a, b, axis, props)
+
+            if distribution == "GRID":
+                rows = max(1, int(getattr(props, "connectors_rows", 2)))
+                points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
+            else:
+                points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
+
+            for p in points:
+                if created_count >= AUTOPREVIEW_CAP:
+                    cap_hit = True
+                    break
+
+                point_counter += 1
+                name_base = f"{AUTOPREVIEW_PREFIX}{point_counter}"
+
+                z = naxis.normalized()
+                x = Vector((1, 0, 0))
+                if abs(z.dot(x)) > 0.99:
+                    x = Vector((0, 1, 0))
+                y = z.cross(x); y.normalize()
+                x = y.cross(z); x.normalize()
+
+                # --- DOVETAIL / SNAP_DOVETAIL: dedicated u/v/n frame + in-plane offset/rotation ---
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+                    width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
+                    length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
+                    depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))
+                    signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
+
+                    L_scene_dv = depth_n_mm * mm
+                    p_embed_dv = p - z * (embed_pct * L_scene_dv)
+                    M_base = Matrix((
+                        (x.x, y.x, z.x, p_embed_dv.x),
+                        (x.y, y.y, z.y, p_embed_dv.y),
+                        (x.z, y.z, z.z, p_embed_dv.z),
+                        (0,   0,   0,   1.0),
+                    ))
+                    M = _apply_inplane_offset_and_rotation(
+                        M_base,
+                        offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                        offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                        rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                    )
+
+                    dt_prev = create_dovetail_box_uvn(
+                        width_u_mm=width_u_mm, length_v_mm=length_v_mm, depth_n_mm=depth_n_mm,
+                        signed_taper_pct=signed_taper,
+                        chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                        name=name_base
+                    )
+                    dt_prev.matrix_world = M
+                    dt_prev.display_type = 'WIRE'
+                    dt_prev.hide_select = True
+                    prev_coll.objects.link(dt_prev)
+                    created_count += 1
+
+                    if ctype_cur == "SNAP_DOVETAIL" and created_count < AUTOPREVIEW_CAP:
+                        d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                        protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                        depth_n_scene = max(0.1 * mm, depth_n_mm * mm)
+                        width_u_scene = max(0.1 * mm, width_u_mm * mm)
+
+                        zA = 0.5 * embed_pct * depth_n_scene
+                        zB = _ring_height_for_visible_half(depth_n_scene, embed_pct)
+                        ring_z = _choose_visible_half_robust(M, zA, zB)
+
+                        # Same taper interpolation as add_snap_spheres_for_dovetail_ring(),
+                        # so the ring sits on the real tapered side wall at ring_z.
+                        t_prev = max(-90.0, min(90.0, signed_taper)) * 0.01
+                        s_tip_prev = max(0.05, 1.0 - t_prev)
+                        half_wb_u = 0.5 * width_u_scene
+                        half_wt_u = max(0.05 * mm, half_wb_u * s_tip_prev)
+                        frac = max(0.0, min(1.0, ring_z / depth_n_scene))
+                        half_u_at_ring = half_wb_u + (half_wt_u - half_wb_u) * frac
+
+                        sph_r_scene = 0.5 * d_sph_mm * mm
+                        r_ring = half_u_at_ring + protr_scene - sph_r_scene
+                        _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+                    continue  # dovetail point fully handled
+
+                # --- Non-dovetail types: shared x/y/z frame as in place_connectors_between ---
+                if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
+                    L_scene = float(getattr(props, "pin_length_mm", 8.0)) * mm
+                elif ctype_cur == "CUSTOM":
+                    L_scene = float(getattr(props, "custom_connector_depth_mm", 8.0)) * mm
+                else:
+                    L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * mm
+
+                p_embed = p - z * (embed_pct * L_scene)
+                M = Matrix((
+                    (x.x, y.x, z.x, p_embed.x),
+                    (x.y, y.y, z.y, p_embed.y),
+                    (x.z, y.z, z.z, p_embed.z),
+                    (0,   0,   0,   1.0),
+                ))
+
+                wire_obj = None
+                if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+                    seg = int(getattr(props, "pin_segments", 32))
+                    wire_obj = create_cyl_pin(
+                        getattr(props, "pin_diameter_mm", 5.0),
+                        getattr(props, "pin_length_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        segments=seg, name=name_base
+                    )
+                elif ctype_cur in {"RECT_TENON", "SNAP_TENON"}:
+                    wire_obj = create_rect_tenon_quader(
+                        getattr(props, "tenon_width_mm", 6.0),
+                        getattr(props, "tenon_depth_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        name=name_base
+                    )
+                elif ctype_cur == "SNAP_FLUSH_PIN":
+                    seg = int(getattr(props, "pin_segments", 32))
+                    wire_obj = create_flush_barb_cylinder(
+                        getattr(props, "pin_diameter_mm", 5.0),
+                        getattr(props, "pin_length_mm", 8.0),
+                        getattr(props, "flush_barb_height_mm", 0.6),
+                        getattr(props, "flush_barb_lip_mm", 0.25),
+                        segments=seg, name=name_base
+                    )
+                elif ctype_cur == "SNAP_FLUSH_TENON":
+                    wire_obj = create_flush_barb_rect(
+                        w_mm=getattr(props, "tenon_width_mm", 6.0),
+                        length_mm=getattr(props, "tenon_depth_mm", 8.0),
+                        barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                        barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                        name=name_base
+                    )
+                elif ctype_cur == "CUSTOM":
+                    source_obj = getattr(props, "custom_connector_object", None)
+                    width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
+                    length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
+                    depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+                    wire_obj = create_custom_connector_instance(
+                        source_obj, width_mm, length_mm, depth_mm, name=name_base
+                    )
+                else:
+                    # Fallback -> behave like tenon (mirrors place_connectors_between's fallback)
+                    wire_obj = create_rect_tenon_quader(
+                        getattr(props, "tenon_width_mm", 6.0),
+                        getattr(props, "tenon_depth_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        name=name_base
+                    )
+
+                if wire_obj is None:
+                    # e.g. CUSTOM with a source object that has no usable mesh data
+                    continue
+
+                wire_obj.matrix_world = M
+                wire_obj.display_type = 'WIRE'
+                wire_obj.hide_select = True
+                prev_coll.objects.link(wire_obj)
+                created_count += 1
+
+                if ctype_cur == "SNAP_PIN" and created_count < AUTOPREVIEW_CAP:
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    pin_radius_scene = 0.5 * float(getattr(props, "pin_diameter_mm", 5.0)) * mm
+
+                    zA = 0.5 * embed_pct * L_scene
+                    zB = _ring_height_for_visible_half(L_scene, embed_pct)
+                    ring_z = _choose_visible_half_robust(M, zA, zB)
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_ring = pin_radius_scene + protr_scene - sph_r_scene
+                    _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+                elif ctype_cur == "SNAP_TENON" and created_count < AUTOPREVIEW_CAP:
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    half_w_scene = 0.5 * float(getattr(props, "tenon_width_mm", 6.0)) * mm
+
+                    zA = 0.5 * embed_pct * L_scene
+                    zB = _ring_height_for_visible_half(L_scene, embed_pct)
+                    ring_z = _choose_visible_half_robust(M, zA, zB)
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_ring = half_w_scene + protr_scene - sph_r_scene
+                    _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+        # Report the cap only once while it stays hit; reset once we drop below it again
+        if cap_hit:
+            if not _connector_preview_cap_warned:
+                report_user(None, 'WARNING',
+                            tr("op.connect.preview.warn.cap",
+                               f"Connector live preview stopped at {AUTOPREVIEW_CAP} objects; remaining points are not shown."))
+                _connector_preview_cap_warned = True
+        else:
+            _connector_preview_cap_warned = False
+
+    except Exception:
+        # Never break UI interactions if the preview builder raises under an unusual context state
+        pass
+
+
 
 # ---------------------------
 # Modal operator: place by click (pins or tenons or dovetail)
@@ -2395,6 +2744,7 @@ class SNAP_OT_place_connectors_click(Operator):
                                                        length_v_mm=length_v_mm,
                                                        depth_n_mm=depth_n_mm,
                                                        signed_taper_pct=signed_taper,
+                                                       chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                                        name="SnapSplit_Preview_Dovetail")
 
                 elif ctype_cur == "CUSTOM":
@@ -2893,7 +3243,10 @@ def register():
 
 def unregister():
     """Unregister operators for connector placement."""
+    # Ensure no leftover live-preview objects survive an addon disable/reload
+    _clear_connector_placement_preview()
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+
 
 
