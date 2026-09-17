@@ -2359,6 +2359,135 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         cutters_coll=cutters_coll
                     )
 
+            elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+                # Build a dedicated local u/v/n frame for the dovetail, matching
+                # the click-placement pipeline (place_one_dovetail_at).
+                z_d = naxis.normalized()
+                x_d = Vector((1, 0, 0))
+                if abs(z_d.dot(x_d)) > 0.99:
+                    x_d = Vector((0, 1, 0))
+                y_d = z_d.cross(x_d); y_d.normalize()
+                x_d = y_d.cross(z_d); x_d.normalize()
+
+                # Frame at p with embed along depth_n
+                depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))
+                L_scene_dv = depth_n_mm * unit_mm()
+                p_embed_dv = p - z_d * (embed_pct * L_scene_dv)
+
+                M_base = Matrix((
+                    (x_d.x, y_d.x, z_d.x, p_embed_dv.x),
+                    (x_d.y, y_d.y, z_d.y, p_embed_dv.y),
+                    (x_d.z, y_d.z, z_d.z, p_embed_dv.z),
+                    (0,     0,     0,     1.0),
+                ))
+
+                # Apply in-plane controls (offsets along u/width and v/length, rotation)
+                M2 = _apply_inplane_offset_and_rotation(
+                    M_base,
+                    offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                    offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                    rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                )
+
+                # Manual "Auto span along seam" checkbox (dovetail_auto_span), independent
+                # from the dovetail_span_axis Forced Span Axis mechanism below.
+                auto_span = bool(getattr(props, "dovetail_auto_span", False))
+                margin_pct_dv = float(getattr(props, "dovetail_span_margin_pct", 10.0))
+
+                width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
+                length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
+                if auto_span:
+                    span_u = _compute_edge_to_edge_span_along_dir(a, b, x_d, axis, seam_pos, margin_pct=margin_pct_dv)
+                    span_v = _compute_edge_to_edge_span_along_dir(a, b, y_d, axis, seam_pos, margin_pct=margin_pct_dv)
+                    width_u_mm = max(span_u / unit_mm(), 0.1)
+                    length_v_mm = max(span_v / unit_mm(), 0.1)
+
+                # Forced Span Axis override — reuses the pre-loop resolution computed
+                # once per seam pair (dovetail_span_role_pair / dovetail_span_axis_letter_pair),
+                # the same mechanism the CUSTOM branch above already uses. This is what
+                # makes the "AUTO" default (Span Axis -> Dovetail Length/V axis) actually
+                # execute for LINE/GRID batch placement.
+                if dovetail_span_role_pair == "U":
+                    width_u_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+                elif dovetail_span_role_pair == "V":
+                    length_v_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+
+                signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
+
+                ten = create_dovetail_box_uvn(width_u_mm=width_u_mm,
+                                              length_v_mm=length_v_mm,
+                                              depth_n_mm=depth_n_mm,
+                                              signed_taper_pct=signed_taper,
+                                              chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                                              name=f"Dovetail_{i}")
+                ten.matrix_world = M2
+                cutters_coll.objects.link(ten)
+
+                # Apply the chamfer bevel modifier now, before the hard-side clip
+                # and the union below (same rationale as the click path).
+                for mod in list(ten.modifiers):
+                    if mod.type == 'BEVEL':
+                        bpy.context.view_layer.objects.active = ten
+                        ten.select_set(True)
+                        try:
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                        except Exception as e:
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+                        ten.select_set(False)
+
+                # Hard-side cut clips against the pre-built combined surface
+                # (dovetail_clip_solid is already built once per seam pair above).
+                if dovetail_clip_solid is not None:
+                    ok = _clip_helper_to_combined_surface(ten, dovetail_clip_solid)
+                    if not ok:
+                        report_user(None, 'WARNING',
+                                    tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                                       f"Hard-side cut failed on Dovetail_{i}; keeping untrimmed connector geometry."))
+
+                union_and_dispose(b, ten, name=f"DovetailUnion_{i}")
+
+                # Socket with in-plane tolerance
+                mm = unit_mm()
+                half_min_plane = max(0.5 * min(width_u_mm, length_v_mm) * mm, 1e-9)
+                s_inplane = 1.0 + (float(props.effective_tolerance()) * mm) / half_min_plane
+                sx = s_inplane; sy = s_inplane; sz = 1.0
+
+                # Always enlarge the socket cutter's own u/v size by the fixed
+                # safety overshoot (same helper as the click-placement path), so
+                # both interaction modes produce identical, reliable cuts.
+                socket_width_u_mm, socket_length_v_mm = _uvn_socket_size_with_overshoot(width_u_mm, length_v_mm)
+
+                socket = create_dovetail_box_uvn(width_u_mm=socket_width_u_mm,
+                                                 length_v_mm=socket_length_v_mm,
+                                                 depth_n_mm=depth_n_mm,
+                                                 signed_taper_pct=signed_taper,
+                                                 chamfer_mm=0.0,
+                                                 name=f"DovetailSocketCutter_{i}")
+                socket.matrix_world = M2 @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+                cutters_coll.objects.link(socket)
+
+                # NOTE: No clip against dovetail_clip_solid for the socket cutter
+                # (same rationale as place_one_dovetail_at): DIFFERENCE only
+                # removes overlapping material, so leaving the overshoot-enlarged
+                # cutter untrimmed avoids coplanar side faces with A's outer wall.
+
+                cut_socket_with_cutter_and_dispose(a, socket)
+                created.append(None)
+
+                if ctype_cur == "SNAP_DOVETAIL":
+                    add_snap_spheres_for_dovetail_ring(
+                        base_matrix=M2,
+                        width_u_mm=width_u_mm,
+                        length_v_mm=length_v_mm,
+                        depth_n_mm=depth_n_mm,
+                        signed_taper_pct=signed_taper,
+                        props=props,
+                        name_prefix=f"Dovetail_{i}",
+                        part_a=a,   # A = DIFFERENCE
+                        part_b=b,   # B = UNION
+                        cutters_coll=cutters_coll
+                    )
+
             elif ctype_cur == "SNAP_FLUSH_PIN":
                 add_flush_barb_for_cyl(
                     base_matrix=M,
