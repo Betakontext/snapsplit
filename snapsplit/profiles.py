@@ -78,6 +78,43 @@ def _snapsplit_update_connector_preview(self, context):
         pass
 
 
+def _snapsplit_update_connector_type(self, context):
+    """Property update callback for connector_type.
+
+    Besides refreshing the live preview (same as the generic connector
+    property callback), this resets the shared 'dovetail_span_axis' enum
+    to the sensible default for the newly selected connector type, since
+    that single property is reused across DOVETAIL, SNAP_DOVETAIL and
+    CUSTOM but each type has a different practical default:
+      - DOVETAIL / SNAP_DOVETAIL -> "AUTO" (auto-stretch + trim, as before
+        this property existed for Custom Connector)
+      - CUSTOM -> "NONE" (a picked mesh usually has an intentional fixed
+        size; auto-stretching an arbitrary shape is rarely wanted)
+      - all other types (CYL_PIN, RECT_TENON, SNAP_PIN, SNAP_TENON) do not
+        expose Span Axis in the UI at all, so the property is left as-is.
+
+    This intentionally overwrites any value the user set for the previous
+    type on every switch (confirmed behavior), rather than remembering a
+    per-type value, since the three types are geometrically unrelated and
+    a carried-over value would usually be meaningless for the new type.
+    """
+    try:
+        ctype = str(getattr(self, "connector_type", ""))
+        if ctype in {"DOVETAIL", "SNAP_DOVETAIL"}:
+            if getattr(self, "dovetail_span_axis", None) != "AUTO":
+                self.dovetail_span_axis = "AUTO"
+        elif ctype == "CUSTOM":
+            if getattr(self, "dovetail_span_axis", None) != "NONE":
+                self.dovetail_span_axis = "NONE"
+    except Exception:
+        # Never break the connector_type dropdown itself if the span-axis
+        # property is unavailable for any reason (e.g. older scene data).
+        pass
+
+    # Preserve the original behavior: still refresh/clear the live preview.
+    _snapsplit_update_connector_preview(self, context)
+
+
 def _suggest_pin_segments_from_diameter(d_mm: float) -> int:
     """
     Return a heuristic segment count for cylindrical pins from diameter in mm.
@@ -192,8 +229,9 @@ class SnapSplitProps(PropertyGroup):
             # ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
         ],
         default="CYL_PIN",
-        update=_snapsplit_update_connector_preview,
+        update=_snapsplit_update_connector_type,
     )
+
 
     # Placement distribution
     connector_distribution: EnumProperty(
@@ -370,6 +408,16 @@ class SnapSplitProps(PropertyGroup):
         default=8.0,
         min=0.1,
         soft_max=200.0,
+        update=_snapsplit_update_connector_preview,
+    )
+
+    custom_snap_spheres_enabled: BoolProperty(
+        name=tr("ui.custom_snap_spheres_enabled", "Enable Snap Spheres"),
+        description=tr(
+            "ui.custom_snap_spheres_enabled_desc",
+            "Add a ring of snap spheres around the Custom Connector, using Custom Width as the reference axis"
+        ),
+        default=False,
         update=_snapsplit_update_connector_preview,
     )
 
