@@ -182,22 +182,19 @@ Thanks to your hints and comments, I cleaned up the collections, added more conn
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 - More languages beyond the current 20.
 
+Thanks for your feedbacks. I'm always happy to hear your further needs for next versions and hints for better building experiences.
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
 ---------------------------
 ---------------------------
--> fork + star the repo to take it further.
 
-If you like SnapSplit and continue using it
+And last but not least, as I am doing this in my free time you can support me.
+
+If you like the Addon and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
 -> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
-
-
-
-Thanks for your feedbacks so far. I'm happy to hear your further needs for next versions and hints for better building experiences.
-
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de |
 
