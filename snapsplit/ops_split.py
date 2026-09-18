@@ -948,29 +948,30 @@ def _cap_single_object_simple_fill(obj) -> bool:
 
 def cap_single_object_hollow_style(obj) -> bool:
     """Precise capping like the Cap operator's automatic detection (outer/inner
-    loops AND plain single-loop planes), implemented as a pure function (no
-    operator instance). This is now used unconditionally for auto-cap during
-    Planar Split, regardless of how (or whether) a hollow cavity was created --
-    Solidify, a named Hollow/Print3D node-group modifier, a manually paired
-    inner/outer object, or an arbitrary user-authored Boolean modifier that was
-    applied before splitting (e.g. a large Sphere used to carve a cavity into a
-    Cube). Reliably detecting the exact hollow "origin" up front is not
-    feasible for arbitrary user setups, so instead every cut plane is
-    inspected on its own merits: a plane with exactly one boundary loop is a
-    solid cross-section and gets a normal single-loop fill; a plane with two
-    (or more, paired by size) boundary loops is treated as a ring between an
-    outer and an inner (cavity) contour, and only the ring between them is
-    filled -- never a solid cap that would seal off the cavity.
+    loops AND plain single-loop planes), implemented as a pure function.
+    Used unconditionally for auto-cap during Planar Split.
+
+    Loop grouping now uses geometric containment (2D point-in-polygon on the
+    cut plane) instead of perimeter-rank pairing. Perimeter-based pairing
+    (largest loop with 2nd-largest, etc.) is only correct when a cut plane has
+    exactly two boundary loops, which holds for convex cavity cutters like a
+    Sphere or Cone. A non-convex cutter such as Suzanne can produce MORE than
+    two disjoint boundary loops on a single cut plane (the outer part
+    silhouette, the actual cavity contour, plus separate closed contours from
+    ears/eye-socket geometry that are not connected to the main volume at that
+    height). Perimeter-rank pairing then wrongly bridges unrelated loops (e.g.
+    outer silhouette with an ear contour instead of with the true cavity
+    contour), producing a large distorted fill that visually seals the whole
+    cut plane instead of leaving the cavity open. Containment-based grouping
+    fixes this for any number of loops per plane, regardless of convexity.
     """
     _enter_edit_mode_edges(obj)
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
 
-    # Axis from scene props
     props = getattr(bpy.context.scene, "snapsplit", None)
     plane_axis = props.split_axis if props else "Z"
 
-    # Collect boundary edges orthogonal to split axis
     ax = axis_index_for(plane_axis)
     axis_vecs = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))
     split_no = axis_vecs[ax].normalized()
@@ -991,7 +992,6 @@ def cap_single_object_hollow_style(obj) -> bool:
         return False
 
     def _loops_from_edges_connected_local(edges):
-        """Return connected edge components (loop candidates) from a set of edges."""
         rem = set(edges); comps = []
         while rem:
             start = rem.pop(); comp = {start}; stack = [start]
@@ -1006,7 +1006,6 @@ def cap_single_object_hollow_style(obj) -> bool:
         return comps
 
     def _perimeter_of_edges_local(loop):
-        """Return approximate perimeter length of an edge loop."""
         p = 0.0
         for e in loop:
             v0, v1 = e.verts
@@ -1014,7 +1013,6 @@ def cap_single_object_hollow_style(obj) -> bool:
         return p
 
     def _is_cyclic_deg2_local(loop_edges):
-        """Check if edges form a simple cycle where every vertex has degree 2."""
         count = {}
         for e in loop_edges:
             for v in e.verts:
@@ -1022,7 +1020,6 @@ def cap_single_object_hollow_style(obj) -> bool:
         return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
 
     def _fill_like_altf_local():
-        """Try to fill selected loops similar to Alt+F; fall back to grid fill."""
         try:
             bpy.ops.mesh.fill(use_beauty=True)
             return True
@@ -1032,6 +1029,130 @@ def cap_single_object_hollow_style(obj) -> bool:
                 return True
             except Exception:
                 return False
+
+    # --- NEW: geometric helpers for containment-based loop grouping ---
+
+    def _ordered_loop_verts_local(loop_edges):
+        """Walk a simple degree-2 edge cycle into an ordered vertex sequence,
+        required to project the loop as a 2D polygon for point-in-polygon
+        tests (an unordered vertex/edge set cannot be tested for containment)."""
+        adj = {}
+        for e in loop_edges:
+            v0, v1 = e.verts
+            adj.setdefault(v0, []).append(v1)
+            adj.setdefault(v1, []).append(v0)
+        start = loop_edges[0].verts[0]
+        prev = None
+        cur = start
+        ordered = [cur]
+        safety = len(loop_edges) + 2
+        while True:
+            nbrs = adj[cur]
+            nxt = nbrs[0] if nbrs[0] != prev else nbrs[1]
+            if nxt == start or len(ordered) > safety:
+                break
+            ordered.append(nxt)
+            prev, cur = cur, nxt
+        return ordered
+
+    def _plane_basis_local(n):
+        n = n.normalized()
+        a = Vector((1, 0, 0)) if abs(n.x) < 0.9 else Vector((0, 1, 0))
+        u = (a - n * a.dot(n)).normalized()
+        v = n.cross(u).normalized()
+        return u, v
+
+    def _project_2d_local(verts, origin, u, v):
+        return [((p.co - origin).dot(u), (p.co - origin).dot(v)) for p in verts]
+
+    def _polygon_area_2d_local(pts):
+        s = 0.0
+        n = len(pts)
+        for i in range(n):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % n]
+            s += x1 * y2 - x2 * y1
+        return abs(s) * 0.5
+
+    def _polygon_centroid_2d_local(pts):
+        n = len(pts)
+        return (sum(p[0] for p in pts) / n, sum(p[1] for p in pts) / n)
+
+    def _point_in_polygon_2d_local(pt, poly):
+        x, y = pt
+        inside = False
+        n = len(poly)
+        j = n - 1
+        for i in range(n):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi):
+                inside = not inside
+            j = i
+        return inside
+
+    def _group_loops_by_nesting_local(comps, n_plane, p_plane):
+        """Group boundary loops on one cut plane into (outer, holes...) shells
+        via 2D containment. Uses an ACTUAL vertex of each loop as the
+        containment test point, not the loop's vertex-average centroid.
+
+        For a convex loop the centroid is guaranteed to lie inside the loop
+        itself, so it works fine as a location proxy (this is why Sphere/Cone
+        worked in the previous version). For a non-convex loop -- exactly what
+        Suzanne produces at many cut heights (the notch between the ears and
+        head, the mouth indentation, the eye-socket area) -- the vertex-average
+        centroid is NOT guaranteed to lie inside the loop it was computed from;
+        it can fall outside a strongly concave/horseshoe-shaped contour
+        entirely. Testing that invalid point against another loop's polygon
+        then gives a wrong inside/outside answer, so the cavity loop can be
+        misclassified as not nested under the outer loop, and fill() is called
+        on a mismatched loop pair that seals the whole cut plane again.
+
+        Since disjoint boundary loops from the same mesh cut never cross each
+        other, ANY real vertex of a loop is guaranteed to be entirely inside or
+        entirely outside another loop's polygon -- so using loop[0] as the test
+        point is correct regardless of convexity, for both loops involved.
+        """
+        u, v = _plane_basis_local(n_plane)
+        entries = []
+        for loop in comps:
+            ordered = _ordered_loop_verts_local(loop)
+            pts2d = _project_2d_local(ordered, p_plane, u, v)
+            entries.append({
+                'loop': loop,
+                'pts2d': pts2d,
+                'area': _polygon_area_2d_local(pts2d),
+                'test_point': pts2d[0],  # NEW: real boundary vertex, not centroid
+            })
+        entries.sort(key=lambda d: d['area'], reverse=True)
+
+        assigned = [False] * len(entries)
+        groups = []
+        for i, outer in enumerate(entries):
+            if assigned[i]:
+                continue
+            is_top_level = True
+            for j, other in enumerate(entries):
+                if j == i or assigned[j] or entries[j]['area'] <= outer['area']:
+                    continue
+                if _point_in_polygon_2d_local(outer['test_point'], other['pts2d']):
+                    is_top_level = False
+                    break
+            if not is_top_level:
+                continue
+            assigned[i] = True
+            group = [outer['loop']]
+            for j, cand_e in enumerate(entries):
+                if assigned[j] or j == i:
+                    continue
+                if _point_in_polygon_2d_local(cand_e['test_point'], outer['pts2d']):
+                    group.append(cand_e['loop'])
+                    assigned[j] = True
+            groups.append(group)
+        return groups
+
+
+    # --- end new helpers ---
 
     eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
     mvals = [(e, (0.5 * (e.verts[0].co + e.verts[1].co)).dot(split_no)) for e in cand]
@@ -1060,55 +1181,44 @@ def cap_single_object_hollow_style(obj) -> bool:
     for edges_on_plane in ring_groups:
         comps = _loops_from_edges_connected_local(edges_on_plane)
         comps = [c for c in comps if _is_cyclic_deg2_local(c)]
+        if not comps:
+            continue
 
-        # NEW: a plane with exactly one boundary loop is a plain solid
-        # cross-section (no cavity crossing this plane) -- fill it directly.
-        # Skipping this case entirely, as the previous version of this
-        # function did, silently left ordinary (non-hollow) cut planes
-        # uncapped whenever this function was used.
-        if len(comps) == 1:
-            loop_a = comps[0]
+        mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
+        p_plane = sum(mids, Vector((0, 0, 0))) * (1.0 / max(1, len(mids)))
+
+        if len(comps) > 1:
+            comps = [c for c in comps
+                     if max(abs((v.co - p_plane).dot(n_plane)) for e in c for v in e.verts) <= eps_plane_loop]
+        if not comps:
+            continue
+
+        # NEW: containment-based grouping instead of perimeter-rank pairing.
+        # Each resulting group is [outer_loop] for a plain solid contour, or
+        # [outer_loop, hole_loop, hole_loop, ...] for a contour with one or
+        # more nested cavity holes -- correctly handling any number of loops
+        # per plane, not just exactly two.
+        shell_groups = _group_loops_by_nesting_local(comps, n_plane, p_plane)
+
+        for group in shell_groups:
             for e in bm.edges:
                 e.select = False
-            for e in loop_a:
-                e.select = True
+            for loop in group:
+                for e in loop:
+                    e.select = True
             bmesh.update_edit_mesh(obj.data)
-            did = False
-            try:
-                bpy.ops.mesh.edge_face_add()
-                did = True
-            except Exception:
-                did = _fill_like_altf_local()
-            any_ok = any_ok or did
-            continue
 
-        if len(comps) < 2:
-            continue
-
-        # Plane centroid and planarity filter (keeps only loops that truly lie
-        # on this cut plane, discarding unrelated boundary edges from other
-        # nearby cavities/openings)
-        mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
-        p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
-        def max_dist_to_plane(loop):
-            return max(abs((v.co - p_plane).dot(n_plane)) for e in loop for v in e.verts)
-        comps = [c for c in comps if max_dist_to_plane(c) <= eps_plane_loop]
-        if len(comps) < 2:
-            continue
-
-        comps.sort(key=_perimeter_of_edges_local, reverse=True)
-
-        # Outer/inner ring fill: pair loops two at a time (largest with next
-        # largest), matching the manual Cap operator's automatic detection.
-        i = 0
-        while i + 1 < len(comps):
-            loop_a, loop_b = comps[i], comps[i + 1]
-            for e in bm.edges: e.select = False
-            for e in loop_a + loop_b: e.select = True
-            bmesh.update_edit_mesh(obj.data)
-            ok = _fill_like_altf_local()
-            any_ok = any_ok or ok
-            i += 2
+            if len(group) == 1:
+                did = False
+                try:
+                    bpy.ops.mesh.edge_face_add()
+                    did = True
+                except Exception:
+                    did = _fill_like_altf_local()
+                any_ok = any_ok or did
+            else:
+                ok = _fill_like_altf_local()
+                any_ok = any_ok or ok
 
     _leave_edit_mode()
     if any_ok:
@@ -1118,12 +1228,13 @@ def cap_single_object_hollow_style(obj) -> bool:
             bpy.ops.mesh.normals_make_consistent(inside=False)
         except Exception:
             pass
-    _leave_edit_mode()
+        _leave_edit_mode()
     try:
         obj.data.validate(); obj.data.update()
     except Exception:
         pass
     return any_ok
+
 
 
 
