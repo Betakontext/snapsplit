@@ -4,11 +4,6 @@ Addon for Blender to automate cut and connection building workflows for complex 
 
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
----------------------------
-This is V_0.1.5 -> more languages
----------------------------
-
-
 For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ### Installation:
@@ -163,7 +158,7 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 **V_0.1.6**
 - Added toggle for live preview while creating connectors in Line/Grid mode for all connector types.
 
-**V_0.1.5** (current)
+**V_0.1.5**
 - Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
 
 **V_0.1.4**
