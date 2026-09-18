@@ -1,7 +1,6 @@
 # SnapSplit
 
-Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It generates precise, glue-free snap-fit connectors.
-
+Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It has easy workflow options to create hollow forms and  generates precise, glue-free snap-fit connectors.
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
 For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
@@ -154,9 +153,11 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 ---------------------------
 ---------------------------
 
+Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs. Don't hesitate to contact me or participate via fork and pull request.
+
 ### Changelog:
 **V_0.1.6**
-- Added toggle for live preview while creating connectors in Line/Grid mode for all connector types.
+- Added live preview option while creating connectors in Line/Grid mode for all connector types.
 
 **V_0.1.5**
 - Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
@@ -164,7 +165,6 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 **V_0.1.4**
 - Added Dovetail and Snap-Dovetail connector types.
 - Added Custom Connector: use any mesh object from your scene as a connector shape, scaled to Width/Length/Depth, with click placement support.
-- Added Add-on Preferences panel: Default Profile selection and automatic export collection creation.
 
 **V_0.1.3**
 - Initial public connector set: Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon.
@@ -178,24 +178,26 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 
 ### Roadmap of ideas:
 
-- More languages beyond the current 20.
+- Add-on Preferences panel: Default Profile selection and automatic export collection creation.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
+- More languages beyond the current 20.
 
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
 
 ---------------------------
 ---------------------------
+-> fork + star the repo to take it further.
 
-Please try it out. If you like SnapSplit and continue using it
+If you like SnapSplit and continue using it
 
 -> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
 -> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
 -> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
 
--> fork + star the repo to take it further.
 
-Actually I'm happy for any feedback, f.e. your further needs and and options for next versions, or/and better connection building experiences. 
-Have fun splitting and printing, and feel free to join in for further developments.
+
+Thanks for your feedbacks so far. I'm happy to hear your further needs for next versions and hints for better building experiences.
+
 
 CONTACT: dev@betakontext.de | https://dev.betakontext.de |
 
