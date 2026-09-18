@@ -157,6 +157,7 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
     └── utils.py
 
 
+
 ---------------------------
 ---------------------------
 
