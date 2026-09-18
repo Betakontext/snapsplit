@@ -947,21 +947,7 @@ def _cap_single_object_simple_fill(obj) -> bool:
         return False
 
 def cap_single_object_hollow_style(obj) -> bool:
-    """Precise capping like the Cap operator's automatic detection (outer/inner
-    loops AND plain single-loop planes), implemented as a pure function (no
-    operator instance). This is now used unconditionally for auto-cap during
-    Planar Split, regardless of how (or whether) a hollow cavity was created --
-    Solidify, a named Hollow/Print3D node-group modifier, a manually paired
-    inner/outer object, or an arbitrary user-authored Boolean modifier that was
-    applied before splitting (e.g. a large Sphere used to carve a cavity into a
-    Cube). Reliably detecting the exact hollow "origin" up front is not
-    feasible for arbitrary user setups, so instead every cut plane is
-    inspected on its own merits: a plane with exactly one boundary loop is a
-    solid cross-section and gets a normal single-loop fill; a plane with two
-    (or more, paired by size) boundary loops is treated as a ring between an
-    outer and an inner (cavity) contour, and only the ring between them is
-    filled -- never a solid cap that would seal off the cavity.
-    """
+    """Precise capping like the Cap operator (outer/inner loops), implemented as a pure function (no operator instance)."""
     _enter_edit_mode_edges(obj)
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
@@ -990,8 +976,9 @@ def cap_single_object_hollow_style(obj) -> bool:
         _leave_edit_mode()
         return False
 
-    def _loops_from_edges_connected_local(edges):
-        """Return connected edge components (loop candidates) from a set of edges."""
+    # Cluster edges by planes along split axis
+    def _loops_from_edges_connected(edges):
+        """Return connected edge components (loops candidates) from a set of edges."""
         rem = set(edges); comps = []
         while rem:
             start = rem.pop(); comp = {start}; stack = [start]
@@ -1005,33 +992,13 @@ def cap_single_object_hollow_style(obj) -> bool:
                 comps.append(list(comp))
         return comps
 
-    def _perimeter_of_edges_local(loop):
+    def _perimeter_of_edges(loop):
         """Return approximate perimeter length of an edge loop."""
         p = 0.0
         for e in loop:
             v0, v1 = e.verts
             p += (v0.co - v1.co).length
         return p
-
-    def _is_cyclic_deg2_local(loop_edges):
-        """Check if edges form a simple cycle where every vertex has degree 2."""
-        count = {}
-        for e in loop_edges:
-            for v in e.verts:
-                count[v] = count.get(v, 0) + 1
-        return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
-
-    def _fill_like_altf_local():
-        """Try to fill selected loops similar to Alt+F; fall back to grid fill."""
-        try:
-            bpy.ops.mesh.fill(use_beauty=True)
-            return True
-        except Exception:
-            try:
-                bpy.ops.mesh.fill_grid()
-                return True
-            except Exception:
-                return False
 
     eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
     mvals = [(e, (0.5 * (e.verts[0].co + e.verts[1].co)).dot(split_no)) for e in cand]
@@ -1053,41 +1020,25 @@ def cap_single_object_hollow_style(obj) -> bool:
         _leave_edit_mode()
         return False
 
+    # Validate planarity/loops and fill
     n_plane = split_no
     eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
 
     any_ok = False
     for edges_on_plane in ring_groups:
-        comps = _loops_from_edges_connected_local(edges_on_plane)
-        comps = [c for c in comps if _is_cyclic_deg2_local(c)]
-
-        # NEW: a plane with exactly one boundary loop is a plain solid
-        # cross-section (no cavity crossing this plane) -- fill it directly.
-        # Skipping this case entirely, as the previous version of this
-        # function did, silently left ordinary (non-hollow) cut planes
-        # uncapped whenever this function was used.
-        if len(comps) == 1:
-            loop_a = comps[0]
-            for e in bm.edges:
-                e.select = False
-            for e in loop_a:
-                e.select = True
-            bmesh.update_edit_mesh(obj.data)
-            did = False
-            try:
-                bpy.ops.mesh.edge_face_add()
-                did = True
-            except Exception:
-                did = _fill_like_altf_local()
-            any_ok = any_ok or did
-            continue
-
+        comps = _loops_from_edges_connected(edges_on_plane)
+        # Degree-2 cyclicity check
+        def is_cyclic_deg2(loop_edges):
+            count = {}
+            for e in loop_edges:
+                for v in e.verts:
+                    count[v] = count.get(v, 0) + 1
+            return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
+        comps = [c for c in comps if is_cyclic_deg2(c)]
         if len(comps) < 2:
             continue
 
-        # Plane centroid and planarity filter (keeps only loops that truly lie
-        # on this cut plane, discarding unrelated boundary edges from other
-        # nearby cavities/openings)
+        # Plane centroid and planarity filter
         mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
         p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
         def max_dist_to_plane(loop):
@@ -1096,19 +1047,23 @@ def cap_single_object_hollow_style(obj) -> bool:
         if len(comps) < 2:
             continue
 
-        comps.sort(key=_perimeter_of_edges_local, reverse=True)
+        comps.sort(key=_perimeter_of_edges, reverse=True)
 
-        # Outer/inner ring fill: pair loops two at a time (largest with next
-        # largest), matching the manual Cap operator's automatic detection.
         i = 0
         while i + 1 < len(comps):
-            loop_a, loop_b = comps[i], comps[i + 1]
+            loop_a, loop_b = comps[i], comps[i+1]
             for e in bm.edges: e.select = False
             for e in loop_a + loop_b: e.select = True
             bmesh.update_edit_mesh(obj.data)
-            ok = _fill_like_altf_local()
-            any_ok = any_ok or ok
+            try:
+                bpy.ops.mesh.fill(use_beauty=True)
+            except Exception:
+                try:
+                    bpy.ops.mesh.fill_grid()
+                except Exception:
+                    pass
             i += 2
+            any_ok = True
 
     _leave_edit_mode()
     if any_ok:
@@ -1124,7 +1079,6 @@ def cap_single_object_hollow_style(obj) -> bool:
     except Exception:
         pass
     return any_ok
-
 
 
 class SNAP_OT_planar_split(Operator):
@@ -1167,29 +1121,21 @@ class SNAP_OT_planar_split(Operator):
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
 
         # Auto-cap after splitting if enabled
-                # Auto-cap after splitting if enabled
         if auto_cap and parts:
             capped_cnt = 0
-            # NOTE: always use the ring-aware capping algorithm now, regardless
-            # of used_hollow. Reliably detecting "this object has a hollow
-            # cavity" up front is not feasible for arbitrary user setups (e.g.
-            # a manually applied Boolean modifier using an unrelated source
-            # object, such as a Sphere carving a cavity into a Cube) -- neither
-            # _try_apply_hollow_modifier's Solidify/named-NODES check nor
-            # _find_paired_inner_object_for's name-matching heuristic can
-            # detect that case. cap_single_object_hollow_style() now correctly
-            # handles both plain solid cross-sections (single loop per plane)
-            # and cavity rings (two loops per plane), so it is safe and
-            # correct to use unconditionally, replacing the previous
-            # used_hollow-gated fallback to _cap_single_object_simple_fill()
-            # (which could not distinguish outer from inner loops and sealed
-            # cavities shut).
-            for p in parts:
-                try:
-                    if cap_single_object_hollow_style(p):
+            if used_hollow:
+                # Precise cap without operator instance
+                for p in parts:
+                    try:
+                        if cap_single_object_hollow_style(p):
+                            capped_cnt += 1
+                    except Exception:
+                        pass
+            else:
+                # Fallback: fast legacy method
+                for p in parts:
+                    if _cap_single_object_simple_fill(p):
                         capped_cnt += 1
-                except Exception:
-                    pass
 
             if capped_cnt == 0:
                 report_user(self, 'WARNING',
@@ -1199,7 +1145,6 @@ class SNAP_OT_planar_split(Operator):
                 report_user(self, 'INFO',
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."),
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."))
-
 
         if len(parts) < count:
             report_user(self, 'WARNING',
