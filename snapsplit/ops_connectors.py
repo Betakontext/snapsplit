@@ -395,6 +395,17 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
     base (z=0), regardless of where the source object's own origin sits, so the
     picked object does not need a specially prepared origin.
 
+    Face normals are recalculated to point consistently outward before the mesh
+    is finalized. Unlike the built-in Pin/Tenon/Dovetail primitives (which are
+    authored with guaranteed outward winding), an arbitrary user mesh may carry
+    flipped or mixed normals. Feeding that into the EXACT boolean solver can
+    invert a DIFFERENCE cut and remove far more geometry than the intended
+    connector-shaped socket -- up to the entire target part on large scales.
+
+    A non-blocking warning is reported if the source mesh contains non-manifold
+    edges (open boundaries or edges shared by more than two faces), since boolean
+    results on such meshes can remain unreliable even after the normal fix.
+
     Optional chamfer_mm adds a Bevel modifier (same pattern as create_rect_tenon_quader
     and create_dovetail_box_uvn); caller is responsible for applying it before any
     boolean operation if needed. NOTE: bevel quality on arbitrary user meshes depends
@@ -431,12 +442,33 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
     S = Matrix.Diagonal((target_x / ex, target_y / ey, target_z / ez, 1.0))
     bmesh.ops.transform(bm, matrix=S, verts=bm.verts)
 
+    # NEW: detect non-manifold topology (open boundary edges, or edges shared by
+    # more than two faces) before touching normals. This is a pure diagnostic
+    # check on the already-rescaled bmesh, it does not modify geometry, and does
+    # not block placement -- it only informs the user that boolean results on
+    # this particular source mesh may stay unreliable regardless of the normal
+    # fix applied right below.
+    non_manifold_found = any(not e.is_manifold for e in bm.edges)
+    if non_manifold_found:
+        report_user(None, 'WARNING',
+                    tr("op.connect.custom.warn.nonmanifold",
+                       f"Custom connector source mesh '{source_obj.name}' has "
+                       f"non-manifold geometry (open or multi-shared edges); "
+                       f"boolean results may be unreliable."))
+
+    # NEW: recalculate face normals to point consistently outward. This is the
+    # actual fix for the "target part disappears" bug: an EXACT-solver DIFFERENCE
+    # cut interprets inside/outside via face normals, so flipped normals on the
+    # cutter can cause it to remove everything outside the connector shape
+    # instead of just the connector-shaped socket volume.
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
     obj = bpy.data.objects.new(name, me)
 
-    # NEW: optional chamfer, same pattern as create_rect_tenon_quader/create_dovetail_box_uvn
+    # Optional chamfer, same pattern as create_rect_tenon_quader/create_dovetail_box_uvn
     if chamfer_mm and chamfer_mm > 0.0:
         bev = obj.modifiers.new("Bevel", 'BEVEL')
         bev.width = float(chamfer_mm) * mm
@@ -444,6 +476,7 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
         bev.limit_method = 'NONE'
 
     return obj
+
 
 def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     """Create a UV sphere mesh object with given diameter and segment counts."""
@@ -816,6 +849,161 @@ def union_and_dispose(target_obj, union_obj, name="SnapSplit_Union"):
     boolean_apply(target_obj, mod)
     _dispose_object(union_obj, remove_data=True)
 
+def _snapshot_mesh_data(obj):
+    """Create a detached copy of obj's mesh data block, to be restored later if
+    a risky Boolean operation on obj produces a degenerate result. Returns the
+    copied Mesh data block (not yet assigned to any object), or None on failure.
+    """
+    try:
+        return obj.data.copy()
+    except Exception:
+        return None
+
+
+def _restore_mesh_data(obj, backup_mesh):
+    """Reassign obj.data to a previously captured backup Mesh data block, then
+    remove the data block being replaced if it is now orphaned (0 users)."""
+    if backup_mesh is None:
+        return
+    try:
+        old_mesh = obj.data
+        obj.data = backup_mesh
+        if old_mesh and hasattr(old_mesh, "users") and old_mesh.users == 0:
+            try:
+                bpy.data.meshes.remove(old_mesh)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _mesh_is_degenerate(obj):
+    """Return True if obj's mesh currently has no polygons (fully collapsed/empty).
+    Used to detect the known EXACT-solver failure mode where a Boolean on a
+    connector shape with unpredictable topology (Custom Connector) removes far
+    more geometry than intended -- up to the entire target part -- instead of
+    only the connector-shaped region."""
+    try:
+        return len(obj.data.polygons) == 0
+    except Exception:
+        return True
+
+
+def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_label=None):
+    """Safe variant of union_and_dispose() for Custom Connector shapes with
+    unpredictable topology. Backs up target_obj's mesh before the UNION,
+    validates the result, and retries once with the FAST solver if the EXACT
+    solver collapsed the result to an empty mesh (this can happen when the
+    connector's widest/most concave cross-section straddles the seam plane,
+    e.g. at certain Insert Depth percentages). Restores the original mesh and
+    reports a warning if both solvers fail, instead of silently leaving the
+    part empty. Built-in Pin/Tenon/Dovetail connectors keep using the plain
+    union_and_dispose(), since their guaranteed-convex, self-authored geometry
+    cannot trigger this failure mode.
+    """
+    backup = _snapshot_mesh_data(target_obj)
+    restored = False
+
+    _apply_object_scale_if_needed(union_obj)
+    mod = target_obj.modifiers.new(name, 'BOOLEAN')
+    mod.operation = 'UNION'
+    _set_boolean_solver_with_fallback(mod)
+    mod.object = union_obj
+    boolean_apply(target_obj, mod)
+
+    if _mesh_is_degenerate(target_obj) and backup is not None:
+        _restore_mesh_data(target_obj, backup)
+        restored = True
+        retry_backup = _snapshot_mesh_data(target_obj)
+
+        mod2 = target_obj.modifiers.new(name + "_FastRetry", 'BOOLEAN')
+        mod2.operation = 'UNION'
+        try:
+            mod2.solver = 'FAST'
+        except Exception:
+            pass
+        mod2.object = union_obj
+        boolean_apply(target_obj, mod2)
+
+        if _mesh_is_degenerate(target_obj) and retry_backup is not None:
+            _restore_mesh_data(target_obj, retry_backup)
+            report_user(None, 'WARNING',
+                        tr("op.connect.custom.warn.boolean_degenerate",
+                           "Custom connector UNION produced empty geometry"
+                           + (f" ({warn_label})" if warn_label else "")
+                           + "; part left unmodified. Try a different Insert "
+                             "Depth or a simpler connector source mesh."))
+        else:
+            restored = False
+            try:
+                if retry_backup is not None and retry_backup.users == 0:
+                    bpy.data.meshes.remove(retry_backup)
+            except Exception:
+                pass
+
+    if not restored and backup is not None:
+        try:
+            if backup.users == 0:
+                bpy.data.meshes.remove(backup)
+        except Exception:
+            pass
+
+    _dispose_object(union_obj, remove_data=True)
+
+
+def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=None):
+    """Safe variant of cut_socket_with_cutter_and_dispose() for Custom Connector
+    socket cuts; applies the same backup / validate / retry-with-FAST / restore
+    strategy as union_and_dispose_safe(), but for the DIFFERENCE operation.
+    """
+    backup = _snapshot_mesh_data(target_obj)
+    restored = False
+
+    _apply_object_scale_if_needed(cutter_obj)
+    mod = target_obj.modifiers.new("SnapSplit_Socket", 'BOOLEAN')
+    mod.operation = 'DIFFERENCE'
+    _set_boolean_solver_with_fallback(mod)
+    mod.object = cutter_obj
+    boolean_apply(target_obj, mod)
+
+    if _mesh_is_degenerate(target_obj) and backup is not None:
+        _restore_mesh_data(target_obj, backup)
+        restored = True
+        retry_backup = _snapshot_mesh_data(target_obj)
+
+        mod2 = target_obj.modifiers.new("SnapSplit_Socket_FastRetry", 'BOOLEAN')
+        mod2.operation = 'DIFFERENCE'
+        try:
+            mod2.solver = 'FAST'
+        except Exception:
+            pass
+        mod2.object = cutter_obj
+        boolean_apply(target_obj, mod2)
+
+        if _mesh_is_degenerate(target_obj) and retry_backup is not None:
+            _restore_mesh_data(target_obj, retry_backup)
+            report_user(None, 'WARNING',
+                        tr("op.connect.custom.warn.boolean_degenerate",
+                           "Custom connector socket cut produced empty geometry"
+                           + (f" ({warn_label})" if warn_label else "")
+                           + "; part left unmodified. Try a different Insert "
+                             "Depth or a simpler connector source mesh."))
+        else:
+            restored = False
+            try:
+                if retry_backup is not None and retry_backup.users == 0:
+                    bpy.data.meshes.remove(retry_backup)
+            except Exception:
+                pass
+
+    if not restored and backup is not None:
+        try:
+            if backup.users == 0:
+                bpy.data.meshes.remove(backup)
+        except Exception:
+            pass
+
+    _dispose_object(cutter_obj, remove_data=True)
 
 # ---------------------------
 # Snap spheres helpers (for cylindrical Pins)
@@ -1626,7 +1814,7 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
                         tr("op.connect.dovetail.warn.hardcut_tenon_fail",
                            "Hard-side cut failed on the connector; keeping untrimmed connector geometry."))
 
-    union_and_dispose(b, conn, name=f"{name_prefix}_Union")
+    union_and_dispose_safe(b, conn, name=f"{name_prefix}_Union", warn_label=name_prefix)
 
     mm = unit_mm()
     tol = float(props.effective_tolerance())
@@ -1649,7 +1837,7 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
     cutters_coll.objects.link(socket)
     # NOTE: socket cutter intentionally NOT clipped against clip_solid — same
     # rationale as the Dovetail socket (DIFFERENCE only removes real overlap).
-    cut_socket_with_cutter_and_dispose(a, socket)
+    cut_socket_with_cutter_and_dispose_safe(a, socket, warn_label=name_prefix)
 
     if clip_solid is not None:
         _dispose_object(clip_solid, remove_data=True)
@@ -2330,7 +2518,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                                     tr("op.connect.dovetail.warn.hardcut_tenon_fail",
                                        f"Hard-side cut failed on Custom_{i}; keeping untrimmed connector geometry."))
 
-                union_and_dispose(b, conn, name=f"CustomUnion_{i}")
+                union_and_dispose_safe(b, conn, name=f"CustomUnion_{i}", warn_label=f"Custom_{i}")
 
                 mm = unit_mm()
                 socket_width_mm, socket_length_mm = _uvn_socket_size_with_overshoot(width_mm, length_mm)
@@ -2343,7 +2531,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                                                           chamfer_mm=0.0, name=f"CustomSocketCutter_{i}")
                 socket.matrix_world = Mc @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
-                cut_socket_with_cutter_and_dispose(a, socket)
+                cut_socket_with_cutter_and_dispose_safe(a, socket, warn_label=f"Custom_{i}")
                 created.append(None)
 
                 if bool(getattr(props, "custom_snap_spheres_enabled", False)):
