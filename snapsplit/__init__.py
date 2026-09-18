@@ -25,7 +25,7 @@ bl_info = {
     "author": "Christoph Medicus",
     "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
-    "version": (0, 1, 5),
+    "version": (0, 1, 4),
     "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
