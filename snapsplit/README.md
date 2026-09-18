@@ -183,7 +183,7 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 
 ### Roadmap of ideas:
 
-- More languages beyond the current 16.
+- More languages beyond the current 20.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
