@@ -876,32 +876,88 @@ def _restore_mesh_data(obj, backup_mesh):
     except Exception:
         pass
 
-
-def _mesh_is_degenerate(obj):
-    """Return True if obj's mesh currently has no polygons (fully collapsed/empty).
-    Used to detect the known EXACT-solver failure mode where a Boolean on a
-    connector shape with unpredictable topology (Custom Connector) removes far
-    more geometry than intended -- up to the entire target part -- instead of
-    only the connector-shaped region."""
+def _mesh_bbox_volume(mesh_data):
+    """Compute the local-space bounding-box volume of a Mesh data block from
+    its raw vertex coordinates. This is only ever used to compare a single
+    object's own mesh before and after a Boolean operation (same object, same
+    matrix_world in between), so the local-space volume is a sufficient
+    relative "how much geometry is still here" signal -- no world-matrix
+    transform is required for that comparison. Returns 0.0 for empty meshes
+    or on any error.
+    """
     try:
-        return len(obj.data.polygons) == 0
+        verts = mesh_data.vertices
+        if len(verts) == 0:
+            return 0.0
+        xs = [v.co.x for v in verts]
+        ys = [v.co.y for v in verts]
+        zs = [v.co.z for v in verts]
+        dx = max(xs) - min(xs)
+        dy = max(ys) - min(ys)
+        dz = max(zs) - min(zs)
+        return max(dx, 0.0) * max(dy, 0.0) * max(dz, 0.0)
+    except Exception:
+        return 0.0
+
+
+# Default threshold for the bounding-box volume drop check in
+# _mesh_is_degenerate(): if the target's bounding-box volume after a Custom
+# Connector Boolean operation falls below this fraction of its volume before
+# the operation, the result is treated as a collapsed/degenerate Boolean and
+# rolled back. Kept as a single named constant so the safety margin can be
+# tuned in one place if needed.
+CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD = 0.5
+
+
+def _mesh_is_degenerate(obj, reference_volume=None, volume_drop_threshold=0.5):
+    """Return True if obj's mesh currently looks like a collapsed Boolean result.
+
+    Two independent checks are combined:
+
+    1. Zero-polygon check (original behavior): catches a fully empty mesh.
+    2. Bounding-box volume drop check (NEW): catches the more common failure
+       mode observed with Custom Connector source meshes (e.g. Suzanne at
+       certain Insert Depth percentages), where the EXACT solver does not
+       fully empty the mesh but instead collapses most of the target's
+       volume into a small degenerate remnant while still leaving a handful
+       of polygons behind. A plain polygon-count check misses this case,
+       which is exactly why the previous version of this function did not
+       catch it.
+
+    reference_volume should be the target object's bounding-box volume
+    *before* the Boolean operation (see _mesh_bbox_volume()). If the mesh's
+    volume after the operation drops below volume_drop_threshold (default:
+    50%) of that reference, the result is treated as degenerate too.
+    Pass reference_volume=None to disable the volume check and fall back to
+    the zero-polygon check only (e.g. when no meaningful "before" state
+    exists).
+    """
+    try:
+        if len(obj.data.polygons) == 0:
+            return True
     except Exception:
         return True
+
+    if reference_volume is not None and reference_volume > 1e-12:
+        current_volume = _mesh_bbox_volume(obj.data)
+        if current_volume < (volume_drop_threshold * reference_volume):
+            return True
+
+    return False
+
 
 
 def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_label=None):
     """Safe variant of union_and_dispose() for Custom Connector shapes with
     unpredictable topology. Backs up target_obj's mesh before the UNION,
-    validates the result, and retries once with the FAST solver if the EXACT
-    solver collapsed the result to an empty mesh (this can happen when the
-    connector's widest/most concave cross-section straddles the seam plane,
-    e.g. at certain Insert Depth percentages). Restores the original mesh and
-    reports a warning if both solvers fail, instead of silently leaving the
-    part empty. Built-in Pin/Tenon/Dovetail connectors keep using the plain
-    union_and_dispose(), since their guaranteed-convex, self-authored geometry
-    cannot trigger this failure mode.
+    validates the result against both the zero-polygon check and the
+    bounding-box volume drop check, and retries once with the FAST solver if
+    the EXACT solver collapsed the result. Restores the original mesh and
+    reports a console warning if both solvers fail, instead of silently
+    leaving the part empty or shrunk to a degenerate remnant.
     """
     backup = _snapshot_mesh_data(target_obj)
+    reference_volume = _mesh_bbox_volume(backup) if backup is not None else None
     restored = False
 
     _apply_object_scale_if_needed(union_obj)
@@ -911,7 +967,7 @@ def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_l
     mod.object = union_obj
     boolean_apply(target_obj, mod)
 
-    if _mesh_is_degenerate(target_obj) and backup is not None:
+    if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and backup is not None:
         _restore_mesh_data(target_obj, backup)
         restored = True
         retry_backup = _snapshot_mesh_data(target_obj)
@@ -925,11 +981,11 @@ def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_l
         mod2.object = union_obj
         boolean_apply(target_obj, mod2)
 
-        if _mesh_is_degenerate(target_obj) and retry_backup is not None:
+        if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
             _restore_mesh_data(target_obj, retry_backup)
             report_user(None, 'WARNING',
                         tr("op.connect.custom.warn.boolean_degenerate",
-                           "Custom connector UNION produced empty geometry"
+                           "Custom connector UNION produced degenerate/collapsed geometry"
                            + (f" ({warn_label})" if warn_label else "")
                            + "; part left unmodified. Try a different Insert "
                              "Depth or a simpler connector source mesh."))
@@ -951,12 +1007,15 @@ def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_l
     _dispose_object(union_obj, remove_data=True)
 
 
+
 def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=None):
-    """Safe variant of cut_socket_with_cutter_and_dispose() for Custom Connector
-    socket cuts; applies the same backup / validate / retry-with-FAST / restore
-    strategy as union_and_dispose_safe(), but for the DIFFERENCE operation.
+    """Safe variant of cut_socket_with_cutter_and_dispose() for Custom
+    Connector socket cuts; applies the same backup / validate (zero-polygon +
+    bounding-box volume drop) / retry-with-FAST / restore strategy as
+    union_and_dispose_safe(), but for the DIFFERENCE operation.
     """
     backup = _snapshot_mesh_data(target_obj)
+    reference_volume = _mesh_bbox_volume(backup) if backup is not None else None
     restored = False
 
     _apply_object_scale_if_needed(cutter_obj)
@@ -966,7 +1025,7 @@ def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=N
     mod.object = cutter_obj
     boolean_apply(target_obj, mod)
 
-    if _mesh_is_degenerate(target_obj) and backup is not None:
+    if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and backup is not None:
         _restore_mesh_data(target_obj, backup)
         restored = True
         retry_backup = _snapshot_mesh_data(target_obj)
@@ -980,11 +1039,11 @@ def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=N
         mod2.object = cutter_obj
         boolean_apply(target_obj, mod2)
 
-        if _mesh_is_degenerate(target_obj) and retry_backup is not None:
+        if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
             _restore_mesh_data(target_obj, retry_backup)
             report_user(None, 'WARNING',
                         tr("op.connect.custom.warn.boolean_degenerate",
-                           "Custom connector socket cut produced empty geometry"
+                           "Custom connector socket cut produced degenerate/collapsed geometry"
                            + (f" ({warn_label})" if warn_label else "")
                            + "; part left unmodified. Try a different Insert "
                              "Depth or a simpler connector source mesh."))
@@ -1004,6 +1063,7 @@ def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=N
             pass
 
     _dispose_object(cutter_obj, remove_data=True)
+
 
 # ---------------------------
 # Snap spheres helpers (for cylindrical Pins)
