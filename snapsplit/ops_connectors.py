@@ -3010,17 +3010,7 @@ def update_connector_placement_preview(context):
 
                     continue  # CUSTOM point fully handled
 
-                # --- Non-dovetail, non-custom types: shared x/y/z frame ---
-                if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
-                    L_scene = float(getattr(props, "pin_length_mm", 8.0)) * mm
-                else:
-                    L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * mm
-                # NOTE: the old "elif ctype_cur == \"CUSTOM\":" branch inside the
-                # generic wire_obj if/elif chain further below is now unreachable
-                # and should be deleted, since CUSTOM is fully handled above.
 
-
-                    continue  # dovetail point fully handled
 
                 # --- Non-dovetail types: shared x/y/z frame as in place_connectors_between ---
                 if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:

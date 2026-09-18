@@ -677,6 +677,27 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
     """Split a mesh into two halves by a plane in object space; optionally cap boundaries on each half."""
     _activate_single_object(source_obj)
 
+    # NEW: nudge the cutting plane by a tiny epsilon along its normal, BEFORE
+    # bisecting, applied identically to both halves below. This resolves a
+    # known bisect_plane degeneracy: if the requested plane coordinate
+    # happens to pass EXACTLY through existing mesh vertices (e.g. a round
+    # user-entered offset like 0 mm coinciding with Suzanne's own X=0
+    # mirror-symmetry seam, or 400 mm coinciding by chance with an existing
+    # cavity boundary edge loop), the resulting boundary can contain "pinch"
+    # vertices where two otherwise-separate loops (outer silhouette and an
+    # inner cavity/island contour) touch at exactly one point (degree 4
+    # instead of 2). That breaks the strict-cycle assumption used by the
+    # auto-cap loop detection, which either drops the affected loop entirely
+    # or merges outer+inner into one loop that gets filled as a single solid
+    # face -- sealing the whole cut plane shut. Nearby "non-round" offsets
+    # (e.g. -10 mm, 350 mm) never hit this exact coincidence and therefore
+    # worked correctly already. The nudge is far smaller than any meaningful
+    # print tolerance, so it has no visible/dimensional effect.
+    diag = max(source_obj.dimensions.length, 1e-6)
+    eps_nudge = diag * 1e-5
+    n_unit = plane_no_obj.normalized()
+    plane_co_obj = plane_co_obj + n_unit * eps_nudge
+
     def make_half(keep_positive: bool):
         """Create one half (positive/negative side) of the split and return its Mesh datablock."""
         bm = bmesh.new()
@@ -947,16 +968,31 @@ def _cap_single_object_simple_fill(obj) -> bool:
         return False
 
 def cap_single_object_hollow_style(obj) -> bool:
-    """Precise capping like the Cap operator (outer/inner loops), implemented as a pure function (no operator instance)."""
+    """Precise capping like the Cap operator's automatic detection (outer/inner
+    loops AND plain single-loop planes), implemented as a pure function.
+    Used unconditionally for auto-cap during Planar Split.
+
+    Loop grouping now uses geometric containment (2D point-in-polygon on the
+    cut plane) instead of perimeter-rank pairing. Perimeter-based pairing
+    (largest loop with 2nd-largest, etc.) is only correct when a cut plane has
+    exactly two boundary loops, which holds for convex cavity cutters like a
+    Sphere or Cone. A non-convex cutter such as Suzanne can produce MORE than
+    two disjoint boundary loops on a single cut plane (the outer part
+    silhouette, the actual cavity contour, plus separate closed contours from
+    ears/eye-socket geometry that are not connected to the main volume at that
+    height). Perimeter-rank pairing then wrongly bridges unrelated loops (e.g.
+    outer silhouette with an ear contour instead of with the true cavity
+    contour), producing a large distorted fill that visually seals the whole
+    cut plane instead of leaving the cavity open. Containment-based grouping
+    fixes this for any number of loops per plane, regardless of convexity.
+    """
     _enter_edit_mode_edges(obj)
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
 
-    # Axis from scene props
     props = getattr(bpy.context.scene, "snapsplit", None)
     plane_axis = props.split_axis if props else "Z"
 
-    # Collect boundary edges orthogonal to split axis
     ax = axis_index_for(plane_axis)
     axis_vecs = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))
     split_no = axis_vecs[ax].normalized()
@@ -976,9 +1012,7 @@ def cap_single_object_hollow_style(obj) -> bool:
         _leave_edit_mode()
         return False
 
-    # Cluster edges by planes along split axis
-    def _loops_from_edges_connected(edges):
-        """Return connected edge components (loops candidates) from a set of edges."""
+    def _loops_from_edges_connected_local(edges):
         rem = set(edges); comps = []
         while rem:
             start = rem.pop(); comp = {start}; stack = [start]
@@ -992,13 +1026,199 @@ def cap_single_object_hollow_style(obj) -> bool:
                 comps.append(list(comp))
         return comps
 
-    def _perimeter_of_edges(loop):
-        """Return approximate perimeter length of an edge loop."""
+    def _perimeter_of_edges_local(loop):
         p = 0.0
         for e in loop:
             v0, v1 = e.verts
             p += (v0.co - v1.co).length
         return p
+
+    def _is_cyclic_deg2_local(loop_edges):
+        count = {}
+        for e in loop_edges:
+            for v in e.verts:
+                count[v] = count.get(v, 0) + 1
+        return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
+
+    def _fill_like_altf_local():
+        try:
+            bpy.ops.mesh.fill(use_beauty=True)
+            return True
+        except Exception:
+            try:
+                bpy.ops.mesh.fill_grid()
+                return True
+            except Exception:
+                return False
+
+    # --- NEW: geometric helpers for containment-based loop grouping ---
+
+    def _ordered_loop_verts_local(loop_edges):
+        """Walk a simple degree-2 edge cycle into an ordered vertex sequence,
+        required to project the loop as a 2D polygon for point-in-polygon
+        tests (an unordered vertex/edge set cannot be tested for containment)."""
+        adj = {}
+        for e in loop_edges:
+            v0, v1 = e.verts
+            adj.setdefault(v0, []).append(v1)
+            adj.setdefault(v1, []).append(v0)
+        start = loop_edges[0].verts[0]
+        prev = None
+        cur = start
+        ordered = [cur]
+        safety = len(loop_edges) + 2
+        while True:
+            nbrs = adj[cur]
+            nxt = nbrs[0] if nbrs[0] != prev else nbrs[1]
+            if nxt == start or len(ordered) > safety:
+                break
+            ordered.append(nxt)
+            prev, cur = cur, nxt
+        return ordered
+
+    def _plane_basis_local(n):
+        n = n.normalized()
+        a = Vector((1, 0, 0)) if abs(n.x) < 0.9 else Vector((0, 1, 0))
+        u = (a - n * a.dot(n)).normalized()
+        v = n.cross(u).normalized()
+        return u, v
+
+    def _project_2d_local(verts, origin, u, v):
+        return [((p.co - origin).dot(u), (p.co - origin).dot(v)) for p in verts]
+
+    def _polygon_area_2d_local(pts):
+        s = 0.0
+        n = len(pts)
+        for i in range(n):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % n]
+            s += x1 * y2 - x2 * y1
+        return abs(s) * 0.5
+
+    def _polygon_centroid_2d_local(pts):
+        n = len(pts)
+        return (sum(p[0] for p in pts) / n, sum(p[1] for p in pts) / n)
+
+    def _point_in_polygon_2d_local(pt, poly):
+        x, y = pt
+        inside = False
+        n = len(poly)
+        j = n - 1
+        for i in range(n):
+            xi, yi = poly[i]
+            xj, yj = poly[j]
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi):
+                inside = not inside
+            j = i
+        return inside
+
+    def _loop_containment_ratio_local(pts2d, other_pts2d):
+        """Return the fraction of pts2d's vertices that test as inside
+        other_pts2d. Two disjoint boundary loops from the same mesh cut never
+        cross each other, so in theory EVERY vertex of a nested loop should
+        agree on being inside the parent polygon. In practice, in thin-walled
+        regions (e.g. Suzanne's nose bridge / eyebrow ridge, where the cavity
+        wall runs close and near-parallel to the outer silhouette), a single
+        vertex can land close enough to an edge of the other polygon that the
+        even-odd raycast test flips due to floating-point rounding. Relying on
+        just one test vertex (as the previous version did) then misassigns
+        the whole loop's nesting parent. Using the majority across ALL
+        vertices makes the decision robust against a handful of borderline
+        vertices being misclassified.
+        """
+        if not pts2d:
+            return 0.0
+        inside = sum(1 for p in pts2d if _point_in_polygon_2d_local(p, other_pts2d))
+        return inside / len(pts2d)
+
+
+    def _group_loops_by_nesting_local(comps, n_plane, p_plane):
+        """Group boundary loops on one cut plane into fill groups using a full
+        nesting-depth tree, not just a single outer/immediate-children level.
+
+        A non-convex cavity cutter (Suzanne) can leave an isolated solid
+        "island" of the original material floating inside the cavity hole --
+        e.g. where the nose tip pokes far enough into the cube's interior that
+        a chunk of solid cube material remains at that cut height, surrounded
+        on all sides by the cavity hole. That is a THIRD, more deeply nested
+        loop. The previous two-level grouping put outer + hole + island into
+        one fill group, which bpy.ops.mesh.fill() cannot turn into a correct
+        ring (it produced a distorted fill that visually sealed the plane) --
+        this matched exactly the face-area failure (nose region) while the
+        ear area (only outer + hole, no island) kept working.
+
+        Even nesting depth (0, 2, 4, ...) = solid contour that must be filled.
+        Odd depth (1, 3, ...) = hole to be cut out of its immediate (even
+        depth) parent. Each even-depth loop becomes its own fill group leader,
+        together with only its DIRECT (odd-depth) children as holes; deeper
+        descendants (grandchildren, even depth again) become independent
+        leader groups of their own -- correctly modelling islands nested
+        inside holes nested inside the outer contour, to any depth.
+        """
+        u, v = _plane_basis_local(n_plane)
+        entries = []
+        for loop in comps:
+            ordered = _ordered_loop_verts_local(loop)
+            pts2d = _project_2d_local(ordered, p_plane, u, v)
+            entries.append({
+                'loop': loop,
+                'pts2d': pts2d,
+                'area': _polygon_area_2d_local(pts2d),
+                # test_point removed: containment is now decided by majority
+                # vote across all of the loop's vertices, see
+                # _loop_containment_ratio_local() above.
+            })
+
+        n = len(entries)
+        # Immediate parent = among all larger loops that CLEARLY contain this
+        # loop (majority of its vertices test inside), the one with the
+        # smallest area (the tightest enclosing loop).
+        for i in range(n):
+            best_j, best_area = None, None
+            for j in range(n):
+                if j == i or entries[j]['area'] <= entries[i]['area']:
+                    continue
+                ratio = _loop_containment_ratio_local(entries[i]['pts2d'], entries[j]['pts2d'])
+                if ratio >= 0.5:
+                    if best_area is None or entries[j]['area'] < best_area:
+                        best_area, best_j = entries[j]['area'], j
+            entries[i]['parent'] = best_j
+
+        def _depth_of(i, guard=0):
+            if entries[i]['parent'] is None or guard > n:
+                return 0
+            return 1 + _depth_of(entries[i]['parent'], guard + 1)
+
+        depths = [_depth_of(i) for i in range(n)]
+
+        groups = []
+        for i in range(n):
+            if depths[i] % 2 != 0:
+                continue  # holes are never their own group leader
+            holes = [entries[j]['loop'] for j in range(n) if entries[j]['parent'] == i]
+            groups.append([entries[i]['loop']] + holes)
+        return groups
+
+    def _fill_multi_hole_group_local(bm_local, group_loops):
+        """Fill a leader loop together with 2+ direct hole loops via bmesh's
+        constrained triangulation. bpy.ops.mesh.fill() reliably produces a
+        correct annulus for exactly 2 loops (outer + one hole), but its
+        behavior with 3+ simultaneously selected loops is not reliable for
+        this purpose. triangle_fill is a general constrained triangulator that
+        handles an outer boundary with multiple holes directly.
+        """
+        all_edges = []
+        for loop in group_loops:
+            all_edges.extend(loop)
+        try:
+            bmesh.ops.triangle_fill(bm_local, use_beauty=True, use_dissolve=False, edges=all_edges)
+            return True
+        except Exception:
+            return False
+
+
+
+    # --- end new helpers ---
 
     eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
     mvals = [(e, (0.5 * (e.verts[0].co + e.verts[1].co)).dot(split_no)) for e in cand]
@@ -1020,50 +1240,61 @@ def cap_single_object_hollow_style(obj) -> bool:
         _leave_edit_mode()
         return False
 
-    # Validate planarity/loops and fill
     n_plane = split_no
     eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
 
     any_ok = False
     for edges_on_plane in ring_groups:
-        comps = _loops_from_edges_connected(edges_on_plane)
-        # Degree-2 cyclicity check
-        def is_cyclic_deg2(loop_edges):
-            count = {}
-            for e in loop_edges:
-                for v in e.verts:
-                    count[v] = count.get(v, 0) + 1
-            return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
-        comps = [c for c in comps if is_cyclic_deg2(c)]
-        if len(comps) < 2:
+        comps = _loops_from_edges_connected_local(edges_on_plane)
+        comps = [c for c in comps if _is_cyclic_deg2_local(c)]
+        if not comps:
             continue
 
-        # Plane centroid and planarity filter
         mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
-        p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
-        def max_dist_to_plane(loop):
-            return max(abs((v.co - p_plane).dot(n_plane)) for e in loop for v in e.verts)
-        comps = [c for c in comps if max_dist_to_plane(c) <= eps_plane_loop]
-        if len(comps) < 2:
+        p_plane = sum(mids, Vector((0, 0, 0))) * (1.0 / max(1, len(mids)))
+
+        if len(comps) > 1:
+            comps = [c for c in comps
+                     if max(abs((v.co - p_plane).dot(n_plane)) for e in c for v in e.verts) <= eps_plane_loop]
+        if not comps:
             continue
 
-        comps.sort(key=_perimeter_of_edges, reverse=True)
+        # NEW: containment-based grouping instead of perimeter-rank pairing.
+        # Each resulting group is [outer_loop] for a plain solid contour, or
+        # [outer_loop, hole_loop, hole_loop, ...] for a contour with one or
+        # more nested cavity holes -- correctly handling any number of loops
+        # per plane, not just exactly two.
+        shell_groups = _group_loops_by_nesting_local(comps, n_plane, p_plane)
 
-        i = 0
-        while i + 1 < len(comps):
-            loop_a, loop_b = comps[i], comps[i+1]
-            for e in bm.edges: e.select = False
-            for e in loop_a + loop_b: e.select = True
+        for group in shell_groups:
+            for e in bm.edges:
+                e.select = False
+            for loop in group:
+                for e in loop:
+                    e.select = True
             bmesh.update_edit_mesh(obj.data)
-            try:
-                bpy.ops.mesh.fill(use_beauty=True)
-            except Exception:
+
+            if len(group) == 1:
+                did = False
                 try:
-                    bpy.ops.mesh.fill_grid()
+                    bpy.ops.mesh.edge_face_add()
+                    did = True
                 except Exception:
-                    pass
-            i += 2
-            any_ok = True
+                    did = _fill_like_altf_local()
+                any_ok = any_ok or did
+            elif len(group) == 2:
+                ok = _fill_like_altf_local()
+                any_ok = any_ok or ok
+            else:
+                # NEW: leader with 2+ direct holes at the same nesting level
+                # (e.g. two separate cavity cross-sections under one outer
+                # silhouette) -- use the constrained-triangulation fallback
+                # instead of the 2-loop-oriented fill().
+                ok = _fill_multi_hole_group_local(bm, group)
+                if not ok:
+                    ok = _fill_like_altf_local()
+                any_ok = any_ok or ok
+
 
     _leave_edit_mode()
     if any_ok:
@@ -1073,12 +1304,14 @@ def cap_single_object_hollow_style(obj) -> bool:
             bpy.ops.mesh.normals_make_consistent(inside=False)
         except Exception:
             pass
-    _leave_edit_mode()
+        _leave_edit_mode()
     try:
         obj.data.validate(); obj.data.update()
     except Exception:
         pass
     return any_ok
+
+
 
 
 class SNAP_OT_planar_split(Operator):
@@ -1121,21 +1354,29 @@ class SNAP_OT_planar_split(Operator):
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
 
         # Auto-cap after splitting if enabled
+                # Auto-cap after splitting if enabled
         if auto_cap and parts:
             capped_cnt = 0
-            if used_hollow:
-                # Precise cap without operator instance
-                for p in parts:
-                    try:
-                        if cap_single_object_hollow_style(p):
-                            capped_cnt += 1
-                    except Exception:
-                        pass
-            else:
-                # Fallback: fast legacy method
-                for p in parts:
-                    if _cap_single_object_simple_fill(p):
+            # NOTE: always use the ring-aware capping algorithm now, regardless
+            # of used_hollow. Reliably detecting "this object has a hollow
+            # cavity" up front is not feasible for arbitrary user setups (e.g.
+            # a manually applied Boolean modifier using an unrelated source
+            # object, such as a Sphere carving a cavity into a Cube) -- neither
+            # _try_apply_hollow_modifier's Solidify/named-NODES check nor
+            # _find_paired_inner_object_for's name-matching heuristic can
+            # detect that case. cap_single_object_hollow_style() now correctly
+            # handles both plain solid cross-sections (single loop per plane)
+            # and cavity rings (two loops per plane), so it is safe and
+            # correct to use unconditionally, replacing the previous
+            # used_hollow-gated fallback to _cap_single_object_simple_fill()
+            # (which could not distinguish outer from inner loops and sealed
+            # cavities shut).
+            for p in parts:
+                try:
+                    if cap_single_object_hollow_style(p):
                         capped_cnt += 1
+                except Exception:
+                    pass
 
             if capped_cnt == 0:
                 report_user(self, 'WARNING',
@@ -1145,6 +1386,7 @@ class SNAP_OT_planar_split(Operator):
                 report_user(self, 'INFO',
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."),
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."))
+
 
         if len(parts) < count:
             report_user(self, 'WARNING',
@@ -1267,6 +1509,8 @@ def _perimeter_of_edges(loop):
         v0, v1 = e.verts
         p += (v0.co - v1.co).length
     return p
+
+
 
 class SNAP_OT_cap_open_seams_now(Operator):
     """Fill between exactly two split edge loops (outer+inner) per plane; prefers seed edges if present."""
