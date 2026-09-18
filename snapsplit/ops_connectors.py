@@ -111,6 +111,74 @@ def remove_cutters_collection():
 
 
 # ---------------------------
+# Live preview (LINE/GRID connector placement) — cleanup
+# ---------------------------
+
+# Dedicated name prefix so this preview system never collides with the
+# click-placement preview ("SnapSplit_Preview_*") or the split-plane preview
+# ("_SnapSplit_PreviewPlane_*"). Sphere rings reuse the same prefix with an
+# extra "_Ring_" segment so a single startswith() check in cleanup covers both.
+AUTOPREVIEW_PREFIX = "SnapSplit_AutoPreview_"
+AUTOPREVIEW_CAP = 200
+
+# Module-level flag so the cap warning is reported only once per "session"
+# of being at/above the cap, instead of spamming on every property tweak
+# while the preview keeps rebuilding.
+_connector_preview_cap_warned = False
+
+
+def _clear_connector_placement_preview():
+    """Remove all connector live-preview objects (wireframe shapes + sphere
+    rings) created by update_connector_placement_preview(). Only touches
+    objects named with AUTOPREVIEW_PREFIX, so other preview systems sharing
+    the same '_SnapSplit_Preview' collection (click-placement preview,
+    split-plane preview) are never affected.
+    """
+    try:
+        for o in [o for o in bpy.data.objects if o.name.startswith(AUTOPREVIEW_PREFIX)]:
+            mesh_data = getattr(o, "data", None)
+            for coll in list(o.users_collection):
+                try:
+                    coll.objects.unlink(o)
+                except Exception:
+                    pass
+            try:
+                bpy.data.objects.remove(o)
+            except Exception:
+                pass
+            try:
+                if mesh_data and hasattr(mesh_data, "users") and mesh_data.users == 0:
+                    if mesh_data.__class__.__name__ == "Mesh":
+                        bpy.data.meshes.remove(mesh_data)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Drop the shared preview collection only if it is now truly empty, so
+    # objects from other preview systems (e.g. an active click-placement
+    # modal) are never removed by this cleanup pass.
+    try:
+        pc = bpy.data.collections.get("_SnapSplit_Preview")
+        if pc and len(pc.objects) == 0:
+            for sc in bpy.data.scenes:
+                try:
+                    if pc in sc.collection.children:
+                        sc.collection.children.unlink(pc)
+                except Exception:
+                    pass
+            # Fully remove the now-empty collection data-block so it does not
+            # linger as an empty folder in the Outliner after live preview
+            # is switched off (matches ops_split.py behavior).
+            try:
+                bpy.data.collections.remove(pc)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+# ---------------------------
 # BBox and projection
 # ---------------------------
 
@@ -317,7 +385,8 @@ def create_rect_tenon_quader(w_mm=6.0, length_mm=10.0, chamfer_mm=0.0, name="Sna
         bev.limit_method = 'NONE'
     return obj
 
-def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name="SnapSplit_Custom"):
+def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
+                                      chamfer_mm=0.0, name="SnapSplit_Custom"):
     """Duplicate source_obj's local mesh shape and rescale it to the target Width (X) /
     Length (Y) / Depth (Z) in mm, following the same authoring convention as the
     built-in Pin/Tenon connectors (local Z = insertion direction).
@@ -325,6 +394,23 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, 
     The shape is re-centered on X/Y and its lowest local Z point becomes the embed
     base (z=0), regardless of where the source object's own origin sits, so the
     picked object does not need a specially prepared origin.
+
+    Face normals are recalculated to point consistently outward before the mesh
+    is finalized. Unlike the built-in Pin/Tenon/Dovetail primitives (which are
+    authored with guaranteed outward winding), an arbitrary user mesh may carry
+    flipped or mixed normals. Feeding that into the EXACT boolean solver can
+    invert a DIFFERENCE cut and remove far more geometry than the intended
+    connector-shaped socket -- up to the entire target part on large scales.
+
+    A non-blocking warning is reported if the source mesh contains non-manifold
+    edges (open boundaries or edges shared by more than two faces), since boolean
+    results on such meshes can remain unreliable even after the normal fix.
+
+    Optional chamfer_mm adds a Bevel modifier (same pattern as create_rect_tenon_quader
+    and create_dovetail_box_uvn); caller is responsible for applying it before any
+    boolean operation if needed. NOTE: bevel quality on arbitrary user meshes depends
+    on the source topology; non-manifold or highly irregular shapes may bevel
+    unpredictably. Modifier-apply failures are caught and reported by the caller.
     """
     if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
         return None
@@ -336,7 +422,6 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, 
         bm.free()
         return None
 
-    # Measure the raw local-space bounding box of the authored shape
     xs = [v.co.x for v in bm.verts]
     ys = [v.co.y for v in bm.verts]
     zs = [v.co.z for v in bm.verts]
@@ -349,21 +434,49 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, 
     cx = 0.5 * (min_x + max_x)
     cy = 0.5 * (min_y + max_y)
 
-    # Re-center X/Y on the shape's own center and drop the base to Z=0
     bmesh.ops.translate(bm, vec=Vector((-cx, -cy, -min_z)), verts=bm.verts)
 
-    # Rescale non-uniformly so the final extents match the requested target size
     target_x = max(float(width_mm), 1e-6) * mm
     target_y = max(float(length_mm), 1e-6) * mm
     target_z = max(float(depth_mm), 1e-6) * mm
     S = Matrix.Diagonal((target_x / ex, target_y / ey, target_z / ez, 1.0))
     bmesh.ops.transform(bm, matrix=S, verts=bm.verts)
 
+    # NEW: detect non-manifold topology (open boundary edges, or edges shared by
+    # more than two faces) before touching normals. This is a pure diagnostic
+    # check on the already-rescaled bmesh, it does not modify geometry, and does
+    # not block placement -- it only informs the user that boolean results on
+    # this particular source mesh may stay unreliable regardless of the normal
+    # fix applied right below.
+    non_manifold_found = any(not e.is_manifold for e in bm.edges)
+    if non_manifold_found:
+        report_user(None, 'WARNING',
+                    tr("op.connect.custom.warn.nonmanifold",
+                       f"Custom connector source mesh '{source_obj.name}' has "
+                       f"non-manifold geometry (open or multi-shared edges); "
+                       f"boolean results may be unreliable."))
+
+    # NEW: recalculate face normals to point consistently outward. This is the
+    # actual fix for the "target part disappears" bug: an EXACT-solver DIFFERENCE
+    # cut interprets inside/outside via face normals, so flipped normals on the
+    # cutter can cause it to remove everything outside the connector shape
+    # instead of just the connector-shaped socket volume.
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
     obj = bpy.data.objects.new(name, me)
+
+    # Optional chamfer, same pattern as create_rect_tenon_quader/create_dovetail_box_uvn
+    if chamfer_mm and chamfer_mm > 0.0:
+        bev = obj.modifiers.new("Bevel", 'BEVEL')
+        bev.width = float(chamfer_mm) * mm
+        bev.segments = 1
+        bev.limit_method = 'NONE'
+
     return obj
+
 
 def create_uv_sphere(d_mm=2.0, segments=16, rings=8, name="SnapSphere"):
     """Create a UV sphere mesh object with given diameter and segment counts."""
@@ -735,6 +848,221 @@ def union_and_dispose(target_obj, union_obj, name="SnapSplit_Union"):
     mod.object = union_obj
     boolean_apply(target_obj, mod)
     _dispose_object(union_obj, remove_data=True)
+
+def _snapshot_mesh_data(obj):
+    """Create a detached copy of obj's mesh data block, to be restored later if
+    a risky Boolean operation on obj produces a degenerate result. Returns the
+    copied Mesh data block (not yet assigned to any object), or None on failure.
+    """
+    try:
+        return obj.data.copy()
+    except Exception:
+        return None
+
+
+def _restore_mesh_data(obj, backup_mesh):
+    """Reassign obj.data to a previously captured backup Mesh data block, then
+    remove the data block being replaced if it is now orphaned (0 users)."""
+    if backup_mesh is None:
+        return
+    try:
+        old_mesh = obj.data
+        obj.data = backup_mesh
+        if old_mesh and hasattr(old_mesh, "users") and old_mesh.users == 0:
+            try:
+                bpy.data.meshes.remove(old_mesh)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def _mesh_bbox_volume(mesh_data):
+    """Compute the local-space bounding-box volume of a Mesh data block from
+    its raw vertex coordinates. This is only ever used to compare a single
+    object's own mesh before and after a Boolean operation (same object, same
+    matrix_world in between), so the local-space volume is a sufficient
+    relative "how much geometry is still here" signal -- no world-matrix
+    transform is required for that comparison. Returns 0.0 for empty meshes
+    or on any error.
+    """
+    try:
+        verts = mesh_data.vertices
+        if len(verts) == 0:
+            return 0.0
+        xs = [v.co.x for v in verts]
+        ys = [v.co.y for v in verts]
+        zs = [v.co.z for v in verts]
+        dx = max(xs) - min(xs)
+        dy = max(ys) - min(ys)
+        dz = max(zs) - min(zs)
+        return max(dx, 0.0) * max(dy, 0.0) * max(dz, 0.0)
+    except Exception:
+        return 0.0
+
+
+# Default threshold for the bounding-box volume drop check in
+# _mesh_is_degenerate(): if the target's bounding-box volume after a Custom
+# Connector Boolean operation falls below this fraction of its volume before
+# the operation, the result is treated as a collapsed/degenerate Boolean and
+# rolled back. Kept as a single named constant so the safety margin can be
+# tuned in one place if needed.
+CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD = 0.5
+
+
+def _mesh_is_degenerate(obj, reference_volume=None, volume_drop_threshold=0.5):
+    """Return True if obj's mesh currently looks like a collapsed Boolean result.
+
+    Two independent checks are combined:
+
+    1. Zero-polygon check (original behavior): catches a fully empty mesh.
+    2. Bounding-box volume drop check (NEW): catches the more common failure
+       mode observed with Custom Connector source meshes (e.g. Suzanne at
+       certain Insert Depth percentages), where the EXACT solver does not
+       fully empty the mesh but instead collapses most of the target's
+       volume into a small degenerate remnant while still leaving a handful
+       of polygons behind. A plain polygon-count check misses this case,
+       which is exactly why the previous version of this function did not
+       catch it.
+
+    reference_volume should be the target object's bounding-box volume
+    *before* the Boolean operation (see _mesh_bbox_volume()). If the mesh's
+    volume after the operation drops below volume_drop_threshold (default:
+    50%) of that reference, the result is treated as degenerate too.
+    Pass reference_volume=None to disable the volume check and fall back to
+    the zero-polygon check only (e.g. when no meaningful "before" state
+    exists).
+    """
+    try:
+        if len(obj.data.polygons) == 0:
+            return True
+    except Exception:
+        return True
+
+    if reference_volume is not None and reference_volume > 1e-12:
+        current_volume = _mesh_bbox_volume(obj.data)
+        if current_volume < (volume_drop_threshold * reference_volume):
+            return True
+
+    return False
+
+
+
+def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_label=None):
+    """Safe variant of union_and_dispose() for Custom Connector shapes with
+    unpredictable topology. Backs up target_obj's mesh before the UNION,
+    validates the result against both the zero-polygon check and the
+    bounding-box volume drop check, and retries once with the FAST solver if
+    the EXACT solver collapsed the result. Restores the original mesh and
+    reports a console warning if both solvers fail, instead of silently
+    leaving the part empty or shrunk to a degenerate remnant.
+    """
+    backup = _snapshot_mesh_data(target_obj)
+    reference_volume = _mesh_bbox_volume(backup) if backup is not None else None
+    restored = False
+
+    _apply_object_scale_if_needed(union_obj)
+    mod = target_obj.modifiers.new(name, 'BOOLEAN')
+    mod.operation = 'UNION'
+    _set_boolean_solver_with_fallback(mod)
+    mod.object = union_obj
+    boolean_apply(target_obj, mod)
+
+    if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and backup is not None:
+        _restore_mesh_data(target_obj, backup)
+        restored = True
+        retry_backup = _snapshot_mesh_data(target_obj)
+
+        mod2 = target_obj.modifiers.new(name + "_FastRetry", 'BOOLEAN')
+        mod2.operation = 'UNION'
+        try:
+            mod2.solver = 'FAST'
+        except Exception:
+            pass
+        mod2.object = union_obj
+        boolean_apply(target_obj, mod2)
+
+        if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
+            _restore_mesh_data(target_obj, retry_backup)
+            report_user(None, 'WARNING',
+                        tr("op.connect.custom.warn.boolean_degenerate",
+                           "Custom connector UNION produced degenerate/collapsed geometry"
+                           + (f" ({warn_label})" if warn_label else "")
+                           + "; part left unmodified. Try a different Insert "
+                             "Depth or a simpler connector source mesh."))
+        else:
+            restored = False
+            try:
+                if retry_backup is not None and retry_backup.users == 0:
+                    bpy.data.meshes.remove(retry_backup)
+            except Exception:
+                pass
+
+    if not restored and backup is not None:
+        try:
+            if backup.users == 0:
+                bpy.data.meshes.remove(backup)
+        except Exception:
+            pass
+
+    _dispose_object(union_obj, remove_data=True)
+
+
+
+def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=None):
+    """Safe variant of cut_socket_with_cutter_and_dispose() for Custom
+    Connector socket cuts; applies the same backup / validate (zero-polygon +
+    bounding-box volume drop) / retry-with-FAST / restore strategy as
+    union_and_dispose_safe(), but for the DIFFERENCE operation.
+    """
+    backup = _snapshot_mesh_data(target_obj)
+    reference_volume = _mesh_bbox_volume(backup) if backup is not None else None
+    restored = False
+
+    _apply_object_scale_if_needed(cutter_obj)
+    mod = target_obj.modifiers.new("SnapSplit_Socket", 'BOOLEAN')
+    mod.operation = 'DIFFERENCE'
+    _set_boolean_solver_with_fallback(mod)
+    mod.object = cutter_obj
+    boolean_apply(target_obj, mod)
+
+    if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and backup is not None:
+        _restore_mesh_data(target_obj, backup)
+        restored = True
+        retry_backup = _snapshot_mesh_data(target_obj)
+
+        mod2 = target_obj.modifiers.new("SnapSplit_Socket_FastRetry", 'BOOLEAN')
+        mod2.operation = 'DIFFERENCE'
+        try:
+            mod2.solver = 'FAST'
+        except Exception:
+            pass
+        mod2.object = cutter_obj
+        boolean_apply(target_obj, mod2)
+
+        if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
+            _restore_mesh_data(target_obj, retry_backup)
+            report_user(None, 'WARNING',
+                        tr("op.connect.custom.warn.boolean_degenerate",
+                           "Custom connector socket cut produced degenerate/collapsed geometry"
+                           + (f" ({warn_label})" if warn_label else "")
+                           + "; part left unmodified. Try a different Insert "
+                             "Depth or a simpler connector source mesh."))
+        else:
+            restored = False
+            try:
+                if retry_backup is not None and retry_backup.users == 0:
+                    bpy.data.meshes.remove(retry_backup)
+            except Exception:
+                pass
+
+    if not restored and backup is not None:
+        try:
+            if backup.users == 0:
+                bpy.data.meshes.remove(backup)
+        except Exception:
+            pass
+
+    _dispose_object(cutter_obj, remove_data=True)
 
 
 # ---------------------------
@@ -1438,7 +1766,10 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
 
 def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=None, name_prefix="Custom_Click"):
     """Place one Custom Connector (arbitrary source mesh, rescaled) at a world point;
-    union into B and cut a tolerant socket into A. Mirrors place_one_rect_tenon_at()."""
+    union into B and cut a tolerant socket into A. Mirrors place_one_dovetail_at()'s
+    Span Axis / Hard-side Cut / Chamfer / Placement / Snap Spheres pipeline, reusing
+    the exact same shared properties so behavior stays consistent across connector types.
+    """
     if props is None:
         props = bpy.context.scene.snapsplit
 
@@ -1456,11 +1787,30 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
     }.get(axis, Vector((0, 0, 1))).normalized()
     if frame_z is not None:
         z = frame_z.normalized()
-    x, y, z = _orthonormal_frame_from_z(z)
+    x, y, z = _orthonormal_frame_from_z(z)  # x -> u (Width), y -> v (Length)
 
     width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
     length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
     depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+
+    # NEW: Span Axis resolution — reuses the shared dovetail_span_axis property so a
+    # world axis (X/Y/Z) that lies in the seam plane forces the Custom Connector to
+    # overshoot both outer sides along that axis, exactly like the Dovetail pipeline.
+    span_axis_choice = str(getattr(props, "dovetail_span_axis", "NONE"))
+    span_role = _dovetail_span_axis_role(span_axis_choice, x, y)
+    force_hard_cut = False
+    if span_role == "U":
+        axis_letter = span_axis_choice if span_axis_choice in {"X", "Y", "Z"} else _world_axis_letter_from_direction(x)
+        width_mm = _dovetail_forced_span_size_mm(a, b, axis_letter)
+        force_hard_cut = True
+    elif span_role == "V":
+        axis_letter = span_axis_choice if span_axis_choice in {"X", "Y", "Z"} else _world_axis_letter_from_direction(y)
+        length_mm = _dovetail_forced_span_size_mm(a, b, axis_letter)
+        force_hard_cut = True
+    elif span_axis_choice != "NONE" and span_role is None:
+        report_user(None, 'WARNING',
+                    tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                       "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
 
     L_scene = depth_mm * unit_mm()
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
@@ -1473,28 +1823,103 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
         (0,   0,   0,   1.0),
     ))
 
+    # NEW: In-plane placement — reuses the shared dovetail_inplane_* properties.
+    M = _apply_inplane_offset_and_rotation(
+        M,
+        offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+        offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+        rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+    )
+
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
-    conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"{name_prefix}")
+    # NEW: Hard-side cut — reuses the shared dovetail_hard_side_cut flag, or is forced
+    # whenever a Span Axis override was applied above (oversized geometry must be
+    # trimmed back to the real outer surface).
+    hard_cut_enabled = bool(getattr(props, "dovetail_hard_side_cut", False)) or force_hard_cut
+    clip_solid = None
+    if hard_cut_enabled:
+        clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
+        if clip_solid is None:
+            report_user(None, 'WARNING',
+                        tr("op.connect.dovetail.warn.hardcut_build_fail",
+                           "Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed."))
+
+    conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
+                                             chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                                             name=f"{name_prefix}")
     if conn is None:
         report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
         return None, None
     conn.matrix_world = M
     cutters_coll.objects.link(conn)
-    union_and_dispose(b, conn, name=f"{name_prefix}_Union")
+
+    # NEW: apply the chamfer bevel modifier before any boolean step, same pattern
+    # as place_one_dovetail_at() / the RECT_TENON path.
+    for mod in list(conn.modifiers):
+        if mod.type == 'BEVEL':
+            bpy.context.view_layer.objects.active = conn
+            conn.select_set(True)
+            try:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
+            except Exception as e:
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+            conn.select_set(False)
+
+    # NEW: clip against the real combined A/B surface instead of leaving overshoot geometry.
+    if clip_solid is not None:
+        ok = _clip_helper_to_combined_surface(conn, clip_solid)
+        if not ok:
+            report_user(None, 'WARNING',
+                        tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                           "Hard-side cut failed on the connector; keeping untrimmed connector geometry."))
+
+    union_and_dispose_safe(b, conn, name=f"{name_prefix}_Union", warn_label=name_prefix)
 
     mm = unit_mm()
     tol = float(props.effective_tolerance())
-    half_w = max(0.5 * width_mm * mm, 1e-9)
-    half_l = max(0.5 * length_mm * mm, 1e-9)
+
+    # NEW: fixed safety overshoot on the socket cutter's own u/v size, same helper
+    # already used by the Dovetail socket, so the cutter genuinely overlaps A's
+    # outer wall instead of landing exactly on it.
+    socket_width_mm, socket_length_mm = _uvn_socket_size_with_overshoot(width_mm, length_mm)
+
+    half_w = max(0.5 * socket_width_mm * mm, 1e-9)
+    half_l = max(0.5 * socket_length_mm * mm, 1e-9)
     sx = 1.0 + (tol * mm) / half_w
     sy = 1.0 + (tol * mm) / half_l
     sz = 1.0
 
-    socket = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"{name_prefix}_SocketCutter")
+    socket = create_custom_connector_instance(source_obj, socket_width_mm, socket_length_mm, depth_mm,
+                                               chamfer_mm=0.0,  # socket cutter stays sharp-edged
+                                               name=f"{name_prefix}_SocketCutter")
     socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
     cutters_coll.objects.link(socket)
-    cut_socket_with_cutter_and_dispose(a, socket)
+    # NOTE: socket cutter intentionally NOT clipped against clip_solid — same
+    # rationale as the Dovetail socket (DIFFERENCE only removes real overlap).
+    cut_socket_with_cutter_and_dispose_safe(a, socket, warn_label=name_prefix)
+
+    if clip_solid is not None:
+        _dispose_object(clip_solid, remove_data=True)
+
+    # NEW: optional Snap Spheres ring — reuses add_snap_spheres_for_rect_tenon_ring()
+    # verbatim, with Custom Width as the reference axis (analogous to how the
+    # Dovetail ring uses its Width/u axis, per add_snap_spheres_for_dovetail_ring's
+    # own docstring: "Reference axis is u (Width), analogous to half_w_scene in
+    # add_snap_spheres_for_rect_tenon_ring").
+    if bool(getattr(props, "custom_snap_spheres_enabled", False)):
+        half_w_scene = max(0.5 * width_mm * mm, 1e-9)
+        add_snap_spheres_for_rect_tenon_ring(
+            base_matrix=M,
+            half_w_scene=half_w_scene,
+            length_scene=depth_mm * mm,
+            props=props,
+            name_prefix=name_prefix,
+            part_a=a,
+            part_b=b,
+            cutters_coll=cutters_coll
+        )
+
     return None, None
 
 # ---------------------------
@@ -1951,7 +2376,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
         dovetail_span_role_pair = None
         dovetail_force_hard_cut_pair = False
         dovetail_span_axis_letter_pair = None  # resolved world axis letter (X/Y/Z) used for forced sizing
-        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"}:
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
             z_pair = naxis.normalized()
             x_pair = Vector((1, 0, 0))
             if abs(z_pair.dot(x_pair)) > 0.99:
@@ -1976,9 +2401,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             tr("op.connect.dovetail.warn.span_axis_not_in_plane",
                                "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
 
-
         dovetail_clip_solid = None
-        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL"} and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
+        if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"} and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
             dovetail_clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
             if dovetail_clip_solid is None:
                 report_user(None, 'WARNING',
@@ -2093,34 +2517,99 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     created.append(None)
                     continue
 
+                # Build a dedicated u/v/n frame, matching the DOVETAIL/SNAP_DOVETAIL
+                # batch-path pattern, so Span Axis / Placement resolve consistently.
+                z_c = naxis.normalized()
+                x_c = Vector((1, 0, 0))
+                if abs(z_c.dot(x_c)) > 0.99:
+                    x_c = Vector((0, 1, 0))
+                y_c = z_c.cross(x_c); y_c.normalize()
+                x_c = y_c.cross(z_c); x_c.normalize()
+
                 width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
                 length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
                 depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
 
-                conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"Custom_{i}")
+                # Forced Span Axis override (reuses the pre-loop resolution above)
+                if dovetail_span_role_pair == "U":
+                    width_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+                elif dovetail_span_role_pair == "V":
+                    length_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
+
+                L_scene_c = depth_mm * unit_mm()
+                p_embed_c = p - z_c * (embed_pct * L_scene_c)
+                M_base_c = Matrix((
+                    (x_c.x, y_c.x, z_c.x, p_embed_c.x),
+                    (x_c.y, y_c.y, z_c.y, p_embed_c.y),
+                    (x_c.z, y_c.z, z_c.z, p_embed_c.z),
+                    (0,     0,     0,     1.0),
+                ))
+                Mc = _apply_inplane_offset_and_rotation(
+                    M_base_c,
+                    offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                    offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                    rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                )
+
+                conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
+                                                        chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                                                        name=f"Custom_{i}")
                 if conn is None:
                     report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
                     created.append(None)
                     continue
-                conn.matrix_world = M
+                conn.matrix_world = Mc
                 cutters_coll.objects.link(conn)
-                union_and_dispose(b, conn, name=f"CustomUnion_{i}")
+
+                for mod in list(conn.modifiers):
+                    if mod.type == 'BEVEL':
+                        bpy.context.view_layer.objects.active = conn
+                        conn.select_set(True)
+                        try:
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                        except Exception as e:
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
+                        conn.select_set(False)
+
+                if dovetail_clip_solid is not None:
+                    ok = _clip_helper_to_combined_surface(conn, dovetail_clip_solid)
+                    if not ok:
+                        report_user(None, 'WARNING',
+                                    tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                                       f"Hard-side cut failed on Custom_{i}; keeping untrimmed connector geometry."))
+
+                union_and_dispose_safe(b, conn, name=f"CustomUnion_{i}", warn_label=f"Custom_{i}")
 
                 mm = unit_mm()
-                half_w = max(0.5 * width_mm * mm, 1e-9)
-                half_l = max(0.5 * length_mm * mm, 1e-9)
+                socket_width_mm, socket_length_mm = _uvn_socket_size_with_overshoot(width_mm, length_mm)
+                half_w = max(0.5 * socket_width_mm * mm, 1e-9)
+                half_l = max(0.5 * socket_length_mm * mm, 1e-9)
                 sx = 1.0 + (tol * mm) / half_w
                 sy = 1.0 + (tol * mm) / half_l
                 sz = 1.0
-                socket = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm, name=f"CustomSocketCutter_{i}")
-                socket.matrix_world = M @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+                socket = create_custom_connector_instance(source_obj, socket_width_mm, socket_length_mm, depth_mm,
+                                                          chamfer_mm=0.0, name=f"CustomSocketCutter_{i}")
+                socket.matrix_world = Mc @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
-                cut_socket_with_cutter_and_dispose(a, socket)
+                cut_socket_with_cutter_and_dispose_safe(a, socket, warn_label=f"Custom_{i}")
                 created.append(None)
 
+                if bool(getattr(props, "custom_snap_spheres_enabled", False)):
+                    half_w_scene = max(0.5 * width_mm * mm, 1e-9)
+                    add_snap_spheres_for_rect_tenon_ring(
+                        base_matrix=Mc,
+                        half_w_scene=half_w_scene,
+                        length_scene=depth_mm * mm,
+                        props=props,
+                        name_prefix=f"Custom_{i}",
+                        part_a=a,
+                        part_b=b,
+                        cutters_coll=cutters_coll
+                    )
 
             elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
-                # Build local u/v/n frame for dovetail specifically
+                # Build a dedicated local u/v/n frame for the dovetail, matching
+                # the click-placement pipeline (place_one_dovetail_at).
                 z_d = naxis.normalized()
                 x_d = Vector((1, 0, 0))
                 if abs(z_d.dot(x_d)) > 0.99:
@@ -2140,7 +2629,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     (0,     0,     0,     1.0),
                 ))
 
-                # Apply in-plane controls (offsets along u/width and v/length)
+                # Apply in-plane controls (offsets along u/width and v/length, rotation)
                 M2 = _apply_inplane_offset_and_rotation(
                     M_base,
                     offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
@@ -2148,28 +2637,28 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
                 )
 
-
-                # Compute per-axis in-plane spans if AUTO
+                # Manual "Auto span along seam" checkbox (dovetail_auto_span), independent
+                # from the dovetail_span_axis Forced Span Axis mechanism below.
                 auto_span = bool(getattr(props, "dovetail_auto_span", False))
                 margin_pct_dv = float(getattr(props, "dovetail_span_margin_pct", 10.0))
 
                 width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
-                length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))  # fallback to width
+                length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
                 if auto_span:
                     span_u = _compute_edge_to_edge_span_along_dir(a, b, x_d, axis, seam_pos, margin_pct=margin_pct_dv)
                     span_v = _compute_edge_to_edge_span_along_dir(a, b, y_d, axis, seam_pos, margin_pct=margin_pct_dv)
                     width_u_mm = max(span_u / unit_mm(), 0.1)
                     length_v_mm = max(span_v / unit_mm(), 0.1)
 
-                # Forced Span Axis: override the matching in-plane size so the
-                # dovetail overshoots both outer sides along that axis (batch path).
-                # dovetail_span_axis_letter_pair already resolves AUTO to a concrete
-                # world axis letter matching the local V (length) direction.
+                # Forced Span Axis override — reuses the pre-loop resolution computed
+                # once per seam pair (dovetail_span_role_pair / dovetail_span_axis_letter_pair),
+                # the same mechanism the CUSTOM branch above already uses. This is what
+                # makes the "AUTO" default (Span Axis -> Dovetail Length/V axis) actually
+                # execute for LINE/GRID batch placement.
                 if dovetail_span_role_pair == "U":
                     width_u_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
                 elif dovetail_span_role_pair == "V":
                     length_v_mm = _dovetail_forced_span_size_mm(a, b, dovetail_span_axis_letter_pair)
-
 
                 signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
 
@@ -2195,6 +2684,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         ten.select_set(False)
 
                 # Hard-side cut clips against the pre-built combined surface
+                # (dovetail_clip_solid is already built once per seam pair above).
                 if dovetail_clip_solid is not None:
                     ok = _clip_helper_to_combined_surface(ten, dovetail_clip_solid)
                     if not ok:
@@ -2204,14 +2694,13 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 union_and_dispose(b, ten, name=f"DovetailUnion_{i}")
 
-
                 # Socket with in-plane tolerance
                 mm = unit_mm()
                 half_min_plane = max(0.5 * min(width_u_mm, length_v_mm) * mm, 1e-9)
                 s_inplane = 1.0 + (float(props.effective_tolerance()) * mm) / half_min_plane
                 sx = s_inplane; sy = s_inplane; sz = 1.0
 
-                # NEW: always enlarge the socket cutter's own u/v size by the fixed
+                # Always enlarge the socket cutter's own u/v size by the fixed
                 # safety overshoot (same helper as the click-placement path), so
                 # both interaction modes produce identical, reliable cuts.
                 socket_width_u_mm, socket_length_v_mm = _uvn_socket_size_with_overshoot(width_u_mm, length_v_mm)
@@ -2220,16 +2709,15 @@ def place_connectors_between(parts, axis, count, ctype, props):
                                                  length_v_mm=socket_length_v_mm,
                                                  depth_n_mm=depth_n_mm,
                                                  signed_taper_pct=signed_taper,
+                                                 chamfer_mm=0.0,
                                                  name=f"DovetailSocketCutter_{i}")
                 socket.matrix_world = M2 @ Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
                 cutters_coll.objects.link(socket)
 
                 # NOTE: No clip against dovetail_clip_solid for the socket cutter
-                # (batch path). Same rationale as the click path in
-                # place_one_dovetail_at(): DIFFERENCE only removes overlapping
-                # material, so leaving the overshoot-enlarged cutter untrimmed
-                # avoids coplanar side faces with A's outer wall and the
-                # resulting EXACT-solver skin-rest artifact.
+                # (same rationale as place_one_dovetail_at): DIFFERENCE only
+                # removes overlapping material, so leaving the overshoot-enlarged
+                # cutter untrimmed avoids coplanar side faces with A's outer wall.
 
                 cut_socket_with_cutter_and_dispose(a, socket)
                 created.append(None)
@@ -2299,6 +2787,338 @@ def place_connectors_between(parts, axis, count, ctype, props):
             _dispose_object(dovetail_clip_solid, remove_data=True)
 
     return created
+
+# ---------------------------
+# Live preview (LINE/GRID connector placement) — builder
+# ---------------------------
+
+def update_connector_placement_preview(context):
+    """Create/refresh or remove the LINE/GRID connector placement live preview.
+
+    Mirrors place_connectors_between()'s point distribution and per-point
+    frame construction (same axis handling, seam-plane computation, and
+    embed-depth math), but only creates lightweight WIRE preview objects
+    (plus sphere-ring previews for SNAP_* types) instead of running any
+    boolean union/socket operation. No hard-side clipping and no forced
+    span-axis resizing are applied here, matching the existing behavior of
+    the click-placement preview (SNAP_OT_place_connectors_click), so this
+    stays a fast, side-effect-free visual approximation.
+    """
+    global _connector_preview_cap_warned
+    try:
+        scene = context.scene
+        props = getattr(scene, "snapsplit", None)
+        if not props:
+            _clear_connector_placement_preview()
+            return
+
+        live = bool(getattr(props, "connector_live_preview", False))
+        distribution = getattr(props, "connector_distribution", "LINE")
+        sel = [o for o in context.selected_objects if o.type == 'MESH']
+
+        # Guard: preview disabled, wrong distribution mode, or not enough parts
+        if not live or distribution not in {"LINE", "GRID"} or len(sel) < 2:
+            _clear_connector_placement_preview()
+            return
+
+        # Always rebuild from scratch so stale points/rings never linger
+        _clear_connector_placement_preview()
+
+        axis = getattr(props, "split_axis", "Z")
+        idx = _axis_index(axis)
+        ordered = sorted(sel, key=lambda o: o.location[idx])
+        pairs = [(ordered[i], ordered[i + 1]) for i in range(len(ordered) - 1)]
+        if not pairs:
+            return
+
+        ctype_cur = getattr(props, "connector_type", "CYL_PIN")
+
+        # For CUSTOM, silently skip if no valid source object is picked yet
+        # (mirrors the click-placement preview; avoids repeated error spam).
+        if ctype_cur == "CUSTOM":
+            source_obj = getattr(props, "custom_connector_object", None)
+            if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+                return
+
+        prev_coll = ensure_collection("_SnapSplit_Preview")
+
+        axis_map = {"X": Vector((1, 0, 0)), "Y": Vector((0, 1, 0)), "Z": Vector((0, 0, 1))}
+        naxis = axis_map.get(axis, Vector((0, 0, 1)))
+
+        embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+        margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
+        cols = max(1, int(getattr(props, "connectors_per_seam", 3)))
+        mm = unit_mm()
+
+        import math  # local import, consistent with the sphere-ring helpers above
+
+        created_count = 0
+        point_counter = 0
+        cap_hit = False
+
+        def _make_ring(base_matrix, ring_z, r_ring, d_sph_mm, name_base):
+            """Create up to n_per_side wireframe sphere previews around a ring."""
+            nonlocal created_count, cap_hit
+            n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+            for k in range(n_per_side):
+                if created_count >= AUTOPREVIEW_CAP:
+                    cap_hit = True
+                    return
+                ang = (2.0 * math.pi) * (k / n_per_side)
+                nx = math.cos(ang); ny = math.sin(ang)
+                local_pos = Vector((r_ring * nx, r_ring * ny, ring_z))
+                world_pos = base_matrix @ Vector((local_pos.x, local_pos.y, local_pos.z, 1.0))
+                sph_prev = create_uv_sphere_preview(
+                    d_mm=d_sph_mm, segments=12, rings=6,
+                    name=f"{name_base}_Ring_{k}"
+                )
+                sph_prev.matrix_world = Matrix.Translation(Vector((world_pos.x, world_pos.y, world_pos.z)))
+                prev_coll.objects.link(sph_prev)
+                created_count += 1
+
+        for a, b in pairs:
+            if cap_hit:
+                break
+            seam_pos = _pair_seam_plane_pos(a, b, axis, props)
+
+            if distribution == "GRID":
+                rows = max(1, int(getattr(props, "connectors_rows", 2)))
+                points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
+            else:
+                points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
+
+            for p in points:
+                if created_count >= AUTOPREVIEW_CAP:
+                    cap_hit = True
+                    break
+
+                point_counter += 1
+                name_base = f"{AUTOPREVIEW_PREFIX}{point_counter}"
+
+                z = naxis.normalized()
+                x = Vector((1, 0, 0))
+                if abs(z.dot(x)) > 0.99:
+                    x = Vector((0, 1, 0))
+                y = z.cross(x); y.normalize()
+                x = y.cross(z); x.normalize()
+
+                # --- DOVETAIL / SNAP_DOVETAIL: dedicated u/v/n frame + in-plane offset/rotation ---
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+                    width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
+                    length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
+                    depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))
+                    signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
+
+                    L_scene_dv = depth_n_mm * mm
+                    p_embed_dv = p - z * (embed_pct * L_scene_dv)
+                    M_base = Matrix((
+                        (x.x, y.x, z.x, p_embed_dv.x),
+                        (x.y, y.y, z.y, p_embed_dv.y),
+                        (x.z, y.z, z.z, p_embed_dv.z),
+                        (0,   0,   0,   1.0),
+                    ))
+                    M = _apply_inplane_offset_and_rotation(
+                        M_base,
+                        offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                        offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                        rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                    )
+
+                    dt_prev = create_dovetail_box_uvn(
+                        width_u_mm=width_u_mm, length_v_mm=length_v_mm, depth_n_mm=depth_n_mm,
+                        signed_taper_pct=signed_taper,
+                        chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                        name=name_base
+                    )
+                    dt_prev.matrix_world = M
+                    dt_prev.display_type = 'WIRE'
+                    dt_prev.hide_select = True
+                    prev_coll.objects.link(dt_prev)
+                    created_count += 1
+
+                    if ctype_cur == "SNAP_DOVETAIL" and created_count < AUTOPREVIEW_CAP:
+                        d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                        protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                        depth_n_scene = max(0.1 * mm, depth_n_mm * mm)
+                        width_u_scene = max(0.1 * mm, width_u_mm * mm)
+
+                        zA = 0.5 * embed_pct * depth_n_scene
+                        zB = _ring_height_for_visible_half(depth_n_scene, embed_pct)
+                        ring_z = _choose_visible_half_robust(M, zA, zB)
+
+                        # Same taper interpolation as add_snap_spheres_for_dovetail_ring(),
+                        # so the ring sits on the real tapered side wall at ring_z.
+                        t_prev = max(-90.0, min(90.0, signed_taper)) * 0.01
+                        s_tip_prev = max(0.05, 1.0 - t_prev)
+                        half_wb_u = 0.5 * width_u_scene
+                        half_wt_u = max(0.05 * mm, half_wb_u * s_tip_prev)
+                        frac = max(0.0, min(1.0, ring_z / depth_n_scene))
+                        half_u_at_ring = half_wb_u + (half_wt_u - half_wb_u) * frac
+
+                        sph_r_scene = 0.5 * d_sph_mm * mm
+                        r_ring = half_u_at_ring + protr_scene - sph_r_scene
+                        _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+
+                if ctype_cur == "CUSTOM":
+                    source_obj = getattr(props, "custom_connector_object", None)
+                    if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
+                        continue
+                    width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
+                    length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
+                    depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+
+                    L_scene_c = depth_mm * mm
+                    p_embed_c = p - z * (embed_pct * L_scene_c)
+                    M_base_c = Matrix((
+                        (x.x, y.x, z.x, p_embed_c.x),
+                        (x.y, y.y, z.y, p_embed_c.y),
+                        (x.z, y.z, z.z, p_embed_c.z),
+                        (0,   0,   0,   1.0),
+                    ))
+                    Mc = _apply_inplane_offset_and_rotation(
+                        M_base_c,
+                        offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                        offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                        rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                    )
+
+                    custom_prev = create_custom_connector_instance(
+                        source_obj, width_mm, length_mm, depth_mm,
+                        chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
+                        name=name_base
+                    )
+                    if custom_prev is None:
+                        continue
+                    custom_prev.matrix_world = Mc
+                    custom_prev.display_type = 'WIRE'
+                    custom_prev.hide_select = True
+                    prev_coll.objects.link(custom_prev)
+                    created_count += 1
+
+                    if bool(getattr(props, "custom_snap_spheres_enabled", False)) and created_count < AUTOPREVIEW_CAP:
+                        d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                        protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                        half_w_scene = max(0.5 * width_mm * mm, 1e-9)
+
+                        zA = 0.5 * embed_pct * L_scene_c
+                        zB = _ring_height_for_visible_half(L_scene_c, embed_pct)
+                        ring_z = _choose_visible_half_robust(Mc, zA, zB)
+                        sph_r_scene = 0.5 * d_sph_mm * mm
+                        r_ring = half_w_scene + protr_scene - sph_r_scene
+                        _make_ring(Mc, ring_z, r_ring, d_sph_mm, name_base)
+
+                    continue  # CUSTOM point fully handled
+
+
+
+                # --- Non-dovetail types: shared x/y/z frame as in place_connectors_between ---
+                if ctype_cur in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
+                    L_scene = float(getattr(props, "pin_length_mm", 8.0)) * mm
+                elif ctype_cur == "CUSTOM":
+                    L_scene = float(getattr(props, "custom_connector_depth_mm", 8.0)) * mm
+                else:
+                    L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * mm
+
+                p_embed = p - z * (embed_pct * L_scene)
+                M = Matrix((
+                    (x.x, y.x, z.x, p_embed.x),
+                    (x.y, y.y, z.y, p_embed.y),
+                    (x.z, y.z, z.z, p_embed.z),
+                    (0,   0,   0,   1.0),
+                ))
+
+                wire_obj = None
+                if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
+                    seg = int(getattr(props, "pin_segments", 32))
+                    wire_obj = create_cyl_pin(
+                        getattr(props, "pin_diameter_mm", 5.0),
+                        getattr(props, "pin_length_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        segments=seg, name=name_base
+                    )
+                elif ctype_cur in {"RECT_TENON", "SNAP_TENON"}:
+                    wire_obj = create_rect_tenon_quader(
+                        getattr(props, "tenon_width_mm", 6.0),
+                        getattr(props, "tenon_depth_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        name=name_base
+                    )
+                elif ctype_cur == "SNAP_FLUSH_PIN":
+                    seg = int(getattr(props, "pin_segments", 32))
+                    wire_obj = create_flush_barb_cylinder(
+                        getattr(props, "pin_diameter_mm", 5.0),
+                        getattr(props, "pin_length_mm", 8.0),
+                        getattr(props, "flush_barb_height_mm", 0.6),
+                        getattr(props, "flush_barb_lip_mm", 0.25),
+                        segments=seg, name=name_base
+                    )
+                elif ctype_cur == "SNAP_FLUSH_TENON":
+                    wire_obj = create_flush_barb_rect(
+                        w_mm=getattr(props, "tenon_width_mm", 6.0),
+                        length_mm=getattr(props, "tenon_depth_mm", 8.0),
+                        barb_height_mm=getattr(props, "flush_barb_height_mm", 0.6),
+                        barb_lip_mm=getattr(props, "flush_barb_lip_mm", 0.25),
+                        name=name_base
+                    )
+
+                else:
+                    # Fallback -> behave like tenon (mirrors place_connectors_between's fallback)
+                    wire_obj = create_rect_tenon_quader(
+                        getattr(props, "tenon_width_mm", 6.0),
+                        getattr(props, "tenon_depth_mm", 8.0),
+                        getattr(props, "add_chamfer_mm", 0.0),
+                        name=name_base
+                    )
+
+                if wire_obj is None:
+                    # e.g. CUSTOM with a source object that has no usable mesh data
+                    continue
+
+                wire_obj.matrix_world = M
+                wire_obj.display_type = 'WIRE'
+                wire_obj.hide_select = True
+                prev_coll.objects.link(wire_obj)
+                created_count += 1
+
+                if ctype_cur == "SNAP_PIN" and created_count < AUTOPREVIEW_CAP:
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    pin_radius_scene = 0.5 * float(getattr(props, "pin_diameter_mm", 5.0)) * mm
+
+                    zA = 0.5 * embed_pct * L_scene
+                    zB = _ring_height_for_visible_half(L_scene, embed_pct)
+                    ring_z = _choose_visible_half_robust(M, zA, zB)
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_ring = pin_radius_scene + protr_scene - sph_r_scene
+                    _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+                elif ctype_cur == "SNAP_TENON" and created_count < AUTOPREVIEW_CAP:
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    half_w_scene = 0.5 * float(getattr(props, "tenon_width_mm", 6.0)) * mm
+
+                    zA = 0.5 * embed_pct * L_scene
+                    zB = _ring_height_for_visible_half(L_scene, embed_pct)
+                    ring_z = _choose_visible_half_robust(M, zA, zB)
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_ring = half_w_scene + protr_scene - sph_r_scene
+                    _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
+
+        # Report the cap only once while it stays hit; reset once we drop below it again
+        if cap_hit:
+            if not _connector_preview_cap_warned:
+                report_user(None, 'WARNING',
+                            tr("op.connect.preview.warn.cap",
+                               f"Connector live preview stopped at {AUTOPREVIEW_CAP} objects; remaining points are not shown."))
+                _connector_preview_cap_warned = True
+        else:
+            _connector_preview_cap_warned = False
+
+    except Exception:
+        # Never break UI interactions if the preview builder raises under an unusual context state
+        pass
+
 
 
 # ---------------------------
@@ -2395,23 +3215,32 @@ class SNAP_OT_place_connectors_click(Operator):
                                                        length_v_mm=length_v_mm,
                                                        depth_n_mm=depth_n_mm,
                                                        signed_taper_pct=signed_taper,
+                                                       chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                                        name="SnapSplit_Preview_Dovetail")
 
                 elif ctype_cur == "CUSTOM":
-                    # NEW: Custom Connector preview — instantiate the picked source mesh,
-                    # rescale it to the configured Width/Length/Depth, and show it as a
-                    # wireframe preview object that follows the mouse cursor, mirroring
-                    # the built-in Pin/Tenon preview behavior above.
                     source_obj = getattr(props, "custom_connector_object", None)
                     if source_obj is not None and source_obj.type == 'MESH' and source_obj.data is not None:
                         width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
                         length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
                         depth_mm = float(getattr(props, "custom_connector_depth_mm", 8.0))
+
+                        # NEW: apply the same in-plane offset/rotation used by the real
+                        # placement, on top of the already-computed embed-depth frame M.
+                        M = _apply_inplane_offset_and_rotation(
+                            M,
+                            offset_u_mm=float(getattr(props, "dovetail_inplane_offset_u_mm", 0.0)),
+                            offset_v_mm=float(getattr(props, "dovetail_inplane_offset_v_mm", 0.0)),
+                            rotation_deg=float(getattr(props, "dovetail_inplane_rotation_deg", 0.0))
+                        )
+
                         custom_prev = create_custom_connector_instance(
                             source_obj, width_mm, length_mm, depth_mm,
+                            chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                             name="SnapSplit_Preview_Custom"
                         )
                         if custom_prev is not None:
+                            custom_prev.matrix_world = M
                             custom_prev.display_type = 'WIRE'
                             custom_prev.hide_select = True
                             prev_coll.objects.link(custom_prev)
@@ -2419,6 +3248,40 @@ class SNAP_OT_place_connectors_click(Operator):
                             self.preview_objs.append(custom_prev)
                     # If no source object is picked yet, silently skip the preview here;
                     # the actual LEFTMOUSE placement already reports a clear error in that case.
+
+                # NEW: insert this block directly after the existing
+                # "if ctype_cur == \"SNAP_TENON\": ..." block (same indentation level),
+                # so it follows the identical local-offset-tag pattern used there.
+                if ctype_cur == "CUSTOM" and bool(getattr(props, "custom_snap_spheres_enabled", False)):
+                    mm = unit_mm()
+                    n_per_side = max(1, int(getattr(props, "snap_spheres_per_side", 2)))
+                    d_sph_mm = float(getattr(props, "snap_sphere_diameter_mm", 2.0))
+                    protr_scene = float(getattr(props, "snap_sphere_protrusion_mm", 1.0)) * mm
+                    half_w_scene = 0.5 * float(getattr(props, "custom_connector_width_mm", 6.0)) * mm
+                    length_scene = float(getattr(props, "custom_connector_depth_mm", 8.0)) * mm
+
+                    embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
+                    L_free = max(0.0, (1.0 - embed_pct) * length_scene)
+                    zA = 0.5 * embed_pct * length_scene
+                    zB = embed_pct * length_scene + 0.5 * L_free
+
+                    sph_r_scene = 0.5 * d_sph_mm * mm
+                    r_center = half_w_scene + protr_scene - sph_r_scene
+
+                    import math
+                    for i in range(n_per_side):
+                        ang = (2.0 * math.pi) * (i / n_per_side)
+                        nx = math.cos(ang); ny = math.sin(ang)
+                        local_A = (r_center * nx, r_center * ny, zA)
+                        local_B = (r_center * nx, r_center * ny, zB)
+                        sph_prev = create_uv_sphere_preview(d_mm=d_sph_mm, segments=12, rings=6,
+                                                            name=f"SnapSplit_Preview_SnapCustom_{i}")
+                        sph_prev["_snapsplit_local_offset_A"] = local_A
+                        sph_prev["_snapsplit_local_offset_B"] = local_B
+                        prev_coll.objects.link(sph_prev)
+                        self.preview_objs.append(sph_prev)
+
+
 
 
                 elif ctype_cur == "SNAP_FLUSH_TENON":
@@ -2893,7 +3756,10 @@ def register():
 
 def unregister():
     """Unregister operators for connector placement."""
+    # Ensure no leftover live-preview objects survive an addon disable/reload
+    _clear_connector_placement_preview()
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
+
 
 

@@ -175,35 +175,71 @@ def warn_if_unapplied_transforms(obj, operator=None):
 
 _last_preview_active_obj = None
 
+# Separate, independent state for the connector live-preview branch below.
+# Kept as a simple tuple signature of selected mesh object names so we can
+# cheaply detect "selection changed" without depending on the split-preview
+# state above. None means "not initialized yet" (forces an initial check).
+_last_connector_preview_selection_key = None
+
+
 def _snapsplit_depsgraph_update(scene, depsgraph):
-    """Depsgraph post-update handler to refresh preview planes on relevant data changes."""
-    # Guard: if update_split_preview_plane is not present, exit silently
-    if 'update_split_preview_plane' not in globals():
-        return
-    global _last_preview_active_obj
+    """Depsgraph post-update handler to refresh preview planes/objects on relevant data changes.
+
+    This handler drives two fully independent preview systems:
+      1) The split-plane preview (unchanged, reacts to active-object changes
+         and depsgraph updates on that object/its mesh data).
+      2) The connector placement live preview (new), which reacts only to
+         changes in the current selection set and is entirely gated by its
+         own 'connector_live_preview' toggle. Neither branch's early-return
+         affects the other, so turning off "Show split preview" no longer
+         disables the connector live preview and vice versa.
+    """
+    global _last_preview_active_obj, _last_connector_preview_selection_key
+
     props = getattr(scene, "snapsplit", None)
-    if not props or not getattr(props, "show_split_preview", False):
-        _last_preview_active_obj = None
-        return
-
     ctx = bpy.context
-    obj = ctx.active_object
 
-    if obj is not _last_preview_active_obj:
-        try:
-            update_split_preview_plane(ctx)
-        except Exception:
-            pass
-        _last_preview_active_obj = obj
+    # --- Branch 1: split-plane preview (unchanged behavior) ---
+    if 'update_split_preview_plane' not in globals():
+        pass
+    elif not props or not getattr(props, "show_split_preview", False):
+        _last_preview_active_obj = None
+    else:
+        obj = ctx.active_object
+
+        if obj is not _last_preview_active_obj:
+            try:
+                update_split_preview_plane(ctx)
+            except Exception:
+                pass
+            _last_preview_active_obj = obj
+        elif obj:
+            try:
+                for up in depsgraph.updates:
+                    id_orig = getattr(up.id, "original", None)
+                    if id_orig is obj or id_orig is obj.data:
+                        update_split_preview_plane(ctx)
+                        break
+            except Exception:
+                pass
+
+    # --- Branch 2: connector placement live preview (new, independent) ---
+    if not props or not getattr(props, "connector_live_preview", False):
+        # Reset the tracked selection so a fresh selection is always detected
+        # once the toggle is switched back on.
+        _last_connector_preview_selection_key = None
         return
 
-    if obj:
+    try:
+        sel_key = tuple(sorted(o.name for o in ctx.selected_objects if o.type == 'MESH'))
+    except Exception:
+        sel_key = None
+
+    if sel_key != _last_connector_preview_selection_key:
+        _last_connector_preview_selection_key = sel_key
         try:
-            for up in depsgraph.updates:
-                id_orig = getattr(up.id, "original", None)
-                if id_orig is obj or id_orig is obj.data:
-                    update_split_preview_plane(ctx)
-                    break
+            from . import ops_connectors
+            ops_connectors.update_connector_placement_preview(ctx)
         except Exception:
             pass
 
@@ -641,6 +677,27 @@ def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffi
     """Split a mesh into two halves by a plane in object space; optionally cap boundaries on each half."""
     _activate_single_object(source_obj)
 
+    # NEW: nudge the cutting plane by a tiny epsilon along its normal, BEFORE
+    # bisecting, applied identically to both halves below. This resolves a
+    # known bisect_plane degeneracy: if the requested plane coordinate
+    # happens to pass EXACTLY through existing mesh vertices (e.g. a round
+    # user-entered offset like 0 mm coinciding with Suzanne's own X=0
+    # mirror-symmetry seam, or 400 mm coinciding by chance with an existing
+    # cavity boundary edge loop), the resulting boundary can contain "pinch"
+    # vertices where two otherwise-separate loops (outer silhouette and an
+    # inner cavity/island contour) touch at exactly one point (degree 4
+    # instead of 2). That breaks the strict-cycle assumption used by the
+    # auto-cap loop detection, which either drops the affected loop entirely
+    # or merges outer+inner into one loop that gets filled as a single solid
+    # face -- sealing the whole cut plane shut. Nearby "non-round" offsets
+    # (e.g. -10 mm, 350 mm) never hit this exact coincidence and therefore
+    # worked correctly already. The nudge is far smaller than any meaningful
+    # print tolerance, so it has no visible/dimensional effect.
+    diag = max(source_obj.dimensions.length, 1e-6)
+    eps_nudge = diag * 1e-5
+    n_unit = plane_no_obj.normalized()
+    plane_co_obj = plane_co_obj + n_unit * eps_nudge
+
     def make_half(keep_positive: bool):
         """Create one half (positive/negative side) of the split and return its Mesh datablock."""
         bm = bmesh.new()
@@ -911,138 +968,405 @@ def _cap_single_object_simple_fill(obj) -> bool:
         return False
 
 def cap_single_object_hollow_style(obj) -> bool:
-    """Precise capping like the Cap operator (outer/inner loops), implemented as a pure function (no operator instance)."""
+    """Cap boundary loops after Planar Split, correctly leaving cavities open.
+
+    ARCHITECTURE CHANGE vs. previous session: instead of grouping raw
+    boundary edges into position-based "cut-plane buckets" BEFORE trying to
+    form loops (which fragments any boundary chain that drifts in position,
+    e.g. an open mesh feature like Suzanne's un-capped nose hole, into many
+    tiny non-cyclic buckets that get silently dropped), we now:
+
+      1. Decompose ALL boundary edges into closed cycles and open chains
+         GLOBALLY first (position-agnostic).
+      2. Classify each closed cycle by its own planarity (max spread along
+         the split axis). Planar cycles are real cut-plane loops and are
+         kept. Non-planar cycles are closed rings that wander off the cut
+         plane and back (e.g. a closed rim of a slanted pre-existing
+         opening) and are explicitly excluded, with an INFO message instead
+         of a silent drop.
+      3. Open chains can never be filled (no closed loop exists), and are
+         now explicitly reported via INFO instead of vanishing unnoticed
+         inside the old per-bucket cycle decomposer. This is exactly the
+         case of Suzanne's un-capped nose hole: its rim gets cut by the
+         split into an open chain that is correctly left open, and the user
+         now gets told why.
+      4. Only the surviving planar closed loops are grouped into cut-plane
+         buckets (by average position) for the existing single-loop /
+         multi-loop (cavity ring) fill logic.
+
+    Gap-stitching (bridging tiny EXACT-solver float gaps) now also runs
+    ONCE globally instead of per tiny bucket, using bmesh.utils.edge_exists()
+    (the correct API -- BMEdgeSeq has no .get() method).
+
+    The whole body runs inside try/finally so _leave_edit_mode() is ALWAYS
+    called, even on exception, to avoid corrupting the operator context for
+    subsequent bpy.ops calls (previously observed crash in select_all).
+    """
+    print(f"[SnapSplit DEBUG] ---- cap_single_object_hollow_style: {obj.name} ----")
     _enter_edit_mode_edges(obj)
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
 
-    # Axis from scene props
-    props = getattr(bpy.context.scene, "snapsplit", None)
-    plane_axis = props.split_axis if props else "Z"
-
-    # Collect boundary edges orthogonal to split axis
-    ax = axis_index_for(plane_axis)
-    axis_vecs = (Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1)))
-    split_no = axis_vecs[ax].normalized()
-    eps_dir = 0.12
-    cand = []
-    for e in bm.edges:
-        if not e.is_boundary:
-            continue
-        d = (e.verts[1].co - e.verts[0].co)
-        if d.length_squared == 0.0:
-            continue
-        d.normalize()
-        if abs(d.dot(split_no)) > eps_dir:
-            continue
-        cand.append(e)
-    if not cand:
-        _leave_edit_mode()
-        return False
-
-    # Cluster edges by planes along split axis
-    def _loops_from_edges_connected(edges):
-        """Return connected edge components (loops candidates) from a set of edges."""
-        rem = set(edges); comps = []
-        while rem:
-            start = rem.pop(); comp = {start}; stack = [start]
-            while stack:
-                e = stack.pop()
-                for v in e.verts:
-                    for e2 in v.link_edges:
-                        if e2 in rem:
-                            rem.remove(e2); comp.add(e2); stack.append(e2)
-            if len(comp) >= 3:
-                comps.append(list(comp))
-        return comps
-
-    def _perimeter_of_edges(loop):
-        """Return approximate perimeter length of an edge loop."""
-        p = 0.0
-        for e in loop:
-            v0, v1 = e.verts
-            p += (v0.co - v1.co).length
-        return p
-
-    eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
-    mvals = [(e, (0.5 * (e.verts[0].co + e.verts[1].co)).dot(split_no)) for e in cand]
-    mvals.sort(key=lambda t: t[1])
-    planes = []
-    for e, val in mvals:
-        matched = False
-        for pl in planes:
-            if abs(val - pl['v']) <= eps_plane:
-                pl['edges'].append(e)
-                pl['v'] = (pl['v'] * 0.9) + (val * 0.1)
-                matched = True
-                break
-        if not matched:
-            planes.append({'v': val, 'edges': [e]})
-    planes.sort(key=lambda d: len(d['edges']), reverse=True)
-    ring_groups = [pl['edges'] for pl in planes]
-    if not ring_groups:
-        _leave_edit_mode()
-        return False
-
-    # Validate planarity/loops and fill
-    n_plane = split_no
-    eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
-
     any_ok = False
-    for edges_on_plane in ring_groups:
-        comps = _loops_from_edges_connected(edges_on_plane)
-        # Degree-2 cyclicity check
-        def is_cyclic_deg2(loop_edges):
-            count = {}
-            for e in loop_edges:
+    try:
+        # Boundary vertex dedupe (unchanged from current version)
+        boundary_verts = [v for v in bm.verts if any(e.is_boundary for e in v.link_edges)]
+        print(f"[SnapSplit DEBUG] boundary verts before dedupe: {len(boundary_verts)}")
+        if boundary_verts:
+            try:
+                dist = _diag_eps(obj, k=3e-6, min_eps=3e-7)
+                bmesh.ops.remove_doubles(bm, verts=boundary_verts, dist=dist)
+                bmesh.update_edit_mesh(obj.data)
+                bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_lookup_table()
+                boundary_verts_after = [v for v in bm.verts if any(e.is_boundary for e in v.link_edges)]
+                print(f"[SnapSplit DEBUG] boundary vertex dedupe: dist={dist:.6g}, "
+                      f"boundary verts after={len(boundary_verts_after)}")
+            except Exception as ex:
+                print(f"[SnapSplit DEBUG] remove_doubles on boundary verts raised: {ex}")
+
+        props = getattr(bpy.context.scene, "snapsplit", None)
+        plane_axis = props.split_axis if props else "Z"
+
+        ax = axis_index_for(plane_axis)
+        axis_vecs = (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1)))
+        split_no = axis_vecs[ax].normalized()
+
+        cand = [e for e in bm.edges if e.is_boundary]
+        print(f"[SnapSplit DEBUG] total boundary edges (no direction filter): {len(cand)}")
+        if not cand:
+            print("[SnapSplit DEBUG] no candidate edges found -> abort")
+            return False
+
+        # ------------------------------------------------------------------
+        # Global gap-stitching (runs ONCE over all boundary edges, not per
+        # tiny position bucket -- avoids skewed min-edge-length thresholds).
+        # ------------------------------------------------------------------
+        def _stitch_dangling_endpoints_global(edges, bmesh_ref):
+            """Bridge small gaps left by the EXACT boolean solver by
+            connecting mutually-nearest dangling loop endpoints (odd-degree
+            vertices) with new synthetic edges -- but only if the distance
+            is small relative to the smallest existing boundary edge, so we
+            never bridge a real, unrelated large gap (e.g. a pre-existing
+            drain/access opening or an un-capped mesh feature like Suzanne's
+            nose hole).
+            """
+            degree = {}
+            for e in edges:
                 for v in e.verts:
-                    count[v] = count.get(v, 0) + 1
-            return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
-        comps = [c for c in comps if is_cyclic_deg2(c)]
-        if len(comps) < 2:
-            continue
+                    degree[v] = degree.get(v, 0) + 1
+            dangling = [v for v, d in degree.items() if d % 2 == 1]
+            print(f"[SnapSplit DEBUG]   dangling endpoints (global): {len(dangling)}")
+            if len(dangling) < 2:
+                return edges
 
-        # Plane centroid and planarity filter
-        mids = [(0.5 * (e.verts[0].co + e.verts[1].co)) for e in edges_on_plane]
-        p_plane = sum(mids, Vector((0,0,0))) * (1.0 / max(1, len(mids)))
-        def max_dist_to_plane(loop):
-            return max(abs((v.co - p_plane).dot(n_plane)) for e in loop for v in e.verts)
-        comps = [c for c in comps if max_dist_to_plane(c) <= eps_plane_loop]
-        if len(comps) < 2:
-            continue
+            nearest = {}
+            for v in dangling:
+                best, bd = None, None
+                for w in dangling:
+                    if w is v:
+                        continue
+                    d = (v.co - w.co).length
+                    if bd is None or d < bd:
+                        bd, best = d, w
+                nearest[v] = (best, bd)
 
-        comps.sort(key=_perimeter_of_edges, reverse=True)
+            pairs, paired = [], set()
+            for v in dangling:
+                if v in paired:
+                    continue
+                w, d = nearest[v]
+                if w is None or w in paired:
+                    continue
+                w_best, _ = nearest[w]
+                if w_best is v:
+                    pairs.append((v, w, d))
+                    paired.add(v); paired.add(w)
 
-        i = 0
-        while i + 1 < len(comps):
-            loop_a, loop_b = comps[i], comps[i+1]
-            for e in bm.edges: e.select = False
-            for e in loop_a + loop_b: e.select = True
-            bmesh.update_edit_mesh(obj.data)
+            lens = [(e.verts[0].co - e.verts[1].co).length for e in edges]
+            min_len = min(lens) if lens else 0.0
+            max_stitch = max(min_len * 0.5, 1e-9)
+            print(f"[SnapSplit DEBUG]   stitch safety threshold: {max_stitch:.6g} "
+                  f"(global min boundary edge length: {min_len:.6g})")
+
+            new_edges = list(edges)
+            n_stitched = 0
+            for v, w, d in pairs:
+                ok = d <= max_stitch
+                if ok:
+                    existing = bmesh.utils.edge_exists(v, w)
+                    new_e = existing if existing is not None else bmesh_ref.edges.new((v, w))
+                    new_edges.append(new_e)
+                    n_stitched += 1
+            print(f"[SnapSplit DEBUG]   stitched {n_stitched} gap(s), "
+                  f"rejected {len(pairs) - n_stitched} pair(s) as too far")
+            bmesh_ref.edges.ensure_lookup_table()
+            return new_edges
+
+        cand = _stitch_dangling_endpoints_global(cand, bm)
+
+        # ------------------------------------------------------------------
+        # Global decomposition into closed cycles + open chains.
+        # ------------------------------------------------------------------
+        def _decompose_all_into_loops_and_chains_local(edges):
+            """Split the full boundary edge set into closed cycles and open
+            chains, globally (position-agnostic). Any connected chain that
+            never closes back on itself (e.g. the rim of an un-capped mesh
+            feature cut open by the split, such as Suzanne's nose hole) is
+            returned separately as an "open chain" instead of being silently
+            absorbed and lost, as the previous per-bucket decomposer did.
+            """
+            adj = {}
+            remaining = set(edges)
+            for e in edges:
+                v0, v1 = e.verts
+                adj.setdefault(v0, []).append((e, v1))
+                adj.setdefault(v1, []).append((e, v0))
+
+            def degree_in_remaining(v):
+                return sum(1 for e, _ in adj.get(v, []) if e in remaining)
+
+            # Step 1: peel off open chains starting at degree-1 vertices.
+            open_chains = []
+            while True:
+                start_v = None
+                for v in adj:
+                    if degree_in_remaining(v) == 1:
+                        start_v = v
+                        break
+                if start_v is None:
+                    break
+                chain_edges = []
+                cur = start_v
+                prev_edge = None
+                while True:
+                    nxt = None
+                    for e, other in adj.get(cur, []):
+                        if e in remaining and e is not prev_edge:
+                            nxt = (e, other)
+                            break
+                    if nxt is None:
+                        break
+                    e, other = nxt
+                    remaining.discard(e)
+                    chain_edges.append(e)
+                    prev_edge = e
+                    cur = other
+                    if degree_in_remaining(cur) != 2:
+                        # Reached the opposite dangling end (or a branch
+                        # point in degenerate non-manifold geometry) -> stop.
+                        break
+                if not chain_edges:
+                    break
+                open_chains.append(chain_edges)
+
+            # Step 2: everything left should now form only closed cycles
+            # (all remaining vertices have degree 2).
+            cycles = []
+            guard = 0
+            max_guard = len(edges) * 4 + 16
+            while remaining and guard < max_guard:
+                guard += 1
+                start_edge = next(iter(remaining))
+                v0 = start_edge.verts[0]
+                stack_v = [v0]
+                stack_e = []
+                cur = v0
+                progressed = False
+                while True:
+                    nxt_edge = nxt_vert = None
+                    for e, other in adj.get(cur, []):
+                        if e in remaining:
+                            nxt_edge, nxt_vert = e, other
+                            break
+                    if nxt_edge is None:
+                        break
+                    remaining.discard(nxt_edge)
+                    progressed = True
+                    if nxt_vert in stack_v:
+                        idx = stack_v.index(nxt_vert)
+                        cyc = stack_e[idx:] + [nxt_edge]
+                        if len(cyc) >= 3:
+                            cycles.append(cyc)
+                        stack_v = stack_v[:idx + 1]
+                        stack_e = stack_e[:idx]
+                        cur = nxt_vert
+                    else:
+                        stack_v.append(nxt_vert)
+                        stack_e.append(nxt_edge)
+                        cur = nxt_vert
+                if not progressed:
+                    remaining.discard(start_edge)
+
+            leftover = len(remaining)
+            return cycles, open_chains, leftover
+
+        def _loop_planar_extent_local(loop_edges, n_plane):
+            """Return (extent, avg_coord) of a loop's spread along n_plane."""
+            verts = set()
+            for e in loop_edges:
+                verts.add(e.verts[0]); verts.add(e.verts[1])
+            vals = [v.co.dot(n_plane) for v in verts]
+            return (max(vals) - min(vals)), (sum(vals) / len(vals))
+
+        def _perimeter_local(loop_edges):
+            p = 0.0
+            for e in loop_edges:
+                v0, v1 = e.verts
+                p += (v0.co - v1.co).length
+            return p
+
+        def _fill_like_altf_local():
             try:
                 bpy.ops.mesh.fill(use_beauty=True)
-            except Exception:
+                return True
+            except Exception as ex:
+                print(f"[SnapSplit DEBUG]   mesh.fill() raised: {ex}")
                 try:
                     bpy.ops.mesh.fill_grid()
-                except Exception:
-                    pass
-            i += 2
-            any_ok = True
+                    return True
+                except Exception as ex2:
+                    print(f"[SnapSplit DEBUG]   mesh.fill_grid() also raised: {ex2}")
+                    return False
 
-    _leave_edit_mode()
-    if any_ok:
+        n_plane = split_no
+        eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
+        eps_plane_loop = _diag_eps(obj, k=8e-6, min_eps=8e-7)
+
+        cycles, open_chains, leftover = _decompose_all_into_loops_and_chains_local(cand)
+        print(f"[SnapSplit DEBUG] global decomposition: {len(cycles)} closed cycle(s), "
+              f"{len(open_chains)} open chain(s), leftover edges={leftover}")
+        if leftover:
+            print(f"[SnapSplit DEBUG] WARNING: {leftover} boundary edge(s) could not be "
+                  f"resolved into cycles or chains (decomposition guard limit hit)")
+
+        # Open chains can never be capped (no closed loop exists) -- report
+        # explicitly instead of letting them vanish silently. This is the
+        # expected outcome for a mesh feature like Suzanne's nose hole that
+        # the split plane happens to cut through.
+        for ci, chain in enumerate(open_chains):
+            verts = set()
+            for e in chain:
+                verts.add(e.verts[0]); verts.add(e.verts[1])
+            ends = [v for v in verts if sum(1 for e in chain if v in e.verts) == 1]
+            per = _perimeter_local(chain)
+            print(f"[SnapSplit][INFO] open boundary chain #{ci}: {len(chain)} edge(s), "
+                  f"length~{per:.4f} -- cannot form a closed loop, leaving open "
+                  f"(likely rim of a pre-existing mesh opening, e.g. an un-capped "
+                  f"nose hole or drain)")
+            for v in ends:
+                print(f"[SnapSplit][INFO]   chain endpoint at {tuple(round(c, 6) for c in v.co)}")
+
+        # Classify closed cycles: planar (real cut-plane loop) vs. wandering
+        # non-planar (closed ring that drifts off the cut plane, e.g. a
+        # slanted rim of a wall opening) -- the latter is excluded from
+        # capping with an explicit INFO message instead of a silent drop.
+        planar_loops = []
+        for cy in cycles:
+            extent, avg_coord = _loop_planar_extent_local(cy, n_plane)
+            per = _perimeter_local(cy)
+            if extent <= eps_plane_loop:
+                planar_loops.append({'edges': cy, 'coord': avg_coord})
+                print(f"[SnapSplit DEBUG] closed cycle: {len(cy)} edge(s), perimeter={per:.4f}, "
+                      f"extent along axis={extent:.6g} -> PLANAR, kept for capping")
+            else:
+                print(f"[SnapSplit][INFO] closed cycle: {len(cy)} edge(s), perimeter={per:.4f}, "
+                      f"extent along axis={extent:.6g} (threshold={eps_plane_loop:.6g}) -> "
+                      f"NON-PLANAR wandering ring, excluding from capping "
+                      f"(likely rim of a pre-existing wall opening rather than the cut plane)")
+
+        if not planar_loops:
+            print("[SnapSplit DEBUG] no planar closed loops found -> nothing to cap")
+            return False
+
+        # Group surviving planar loops into cut-plane buckets by position,
+        # for the existing single-loop / multi-loop (cavity ring) fill logic.
+        planar_loops.sort(key=lambda d: d['coord'])
+        buckets = []
+        for pl in planar_loops:
+            matched = False
+            for b in buckets:
+                if abs(pl['coord'] - b['v']) <= eps_plane:
+                    b['loops'].append(pl['edges'])
+                    b['v'] = (b['v'] * 0.9) + (pl['coord'] * 0.1)
+                    matched = True
+                    break
+            if not matched:
+                buckets.append({'v': pl['coord'], 'loops': [pl['edges']]})
+        print(f"[SnapSplit DEBUG] {len(buckets)} cut-plane bucket(s) from planar loops "
+              f"(eps_plane={eps_plane:.6g}):")
+        for i, b in enumerate(buckets):
+            print(f"[SnapSplit DEBUG]   bucket[{i}] coord~{b['v']:.5f} loop_count={len(b['loops'])}")
+
+        for bi, bucket in enumerate(buckets):
+            loops = bucket['loops']
+            valid_edges = [e for loop in loops for e in loop]
+            print(f"[SnapSplit DEBUG] -- filling bucket[{bi}]: {len(loops)} loop(s), "
+                  f"{len(valid_edges)} edge(s) --")
+
+            for e in bm.edges:
+                e.select = False
+            for e in valid_edges:
+                e.select = True
+            bmesh.update_edit_mesh(obj.data)
+
+            if len(loops) == 1:
+                print(f"[SnapSplit DEBUG]   -> single loop: trying edge_face_add() / fallback fill")
+                did = False
+                try:
+                    bpy.ops.mesh.edge_face_add()
+                    did = True
+                except Exception as ex:
+                    print(f"[SnapSplit DEBUG]     edge_face_add() raised: {ex}")
+                    did = _fill_like_altf_local()
+                print(f"[SnapSplit DEBUG]   -> single loop fill result: {did}")
+                any_ok = any_ok or did
+            else:
+                print(f"[SnapSplit DEBUG]   -> {len(loops)} loops: trying triangle_fill()")
+                ok = False
+                try:
+                    res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=True,
+                                                   edges=valid_edges, normal=n_plane)
+                    geom = res.get('geom', [])
+                    ok = bool(geom)
+                    n_faces_out = sum(1 for g in geom if isinstance(g, bmesh.types.BMFace))
+                    print(f"[SnapSplit DEBUG]     triangle_fill() geom output count: {len(geom)} "
+                          f"(faces: {n_faces_out})")
+                except Exception as ex:
+                    print(f"[SnapSplit DEBUG]     triangle_fill() raised: {ex}")
+                    ok = False
+                if not ok:
+                    print(f"[SnapSplit DEBUG]     triangle_fill() failed/empty -> falling back to mesh.fill()")
+                    ok = _fill_like_altf_local()
+                print(f"[SnapSplit DEBUG]   -> multi-loop fill result: {ok}")
+                any_ok = any_ok or ok
+
+        if any_ok:
+            try:
+                bpy.ops.mesh.select_all(action='SELECT')
+                bpy.ops.mesh.normals_make_consistent(inside=False)
+            except Exception:
+                pass
+
+        return any_ok
+
+    except Exception as ex:
+        print(f"[SnapSplit DEBUG] EXCEPTION inside cap_single_object_hollow_style: {ex}")
+        raise
+    finally:
+        # Safety net: guarantee we always leave edit mode, even if an
+        # exception occurs above, to avoid corrupting the operator context
+        # for subsequent bpy.ops calls (observed crash in select_all).
+        _leave_edit_mode()
         try:
-            _enter_edit_mode_edges(obj)
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.normals_make_consistent(inside=False)
+            obj.data.validate(); obj.data.update()
         except Exception:
             pass
-    _leave_edit_mode()
-    try:
-        obj.data.validate(); obj.data.update()
-    except Exception:
-        pass
-    return any_ok
+        print(f"[SnapSplit DEBUG] ---- cap_single_object_hollow_style: {obj.name} DONE, any_ok={any_ok} ----")
+
+
+
+
+
 
 
 class SNAP_OT_planar_split(Operator):
@@ -1085,21 +1409,29 @@ class SNAP_OT_planar_split(Operator):
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
 
         # Auto-cap after splitting if enabled
+                # Auto-cap after splitting if enabled
         if auto_cap and parts:
             capped_cnt = 0
-            if used_hollow:
-                # Precise cap without operator instance
-                for p in parts:
-                    try:
-                        if cap_single_object_hollow_style(p):
-                            capped_cnt += 1
-                    except Exception:
-                        pass
-            else:
-                # Fallback: fast legacy method
-                for p in parts:
-                    if _cap_single_object_simple_fill(p):
+            # NOTE: always use the ring-aware capping algorithm now, regardless
+            # of used_hollow. Reliably detecting "this object has a hollow
+            # cavity" up front is not feasible for arbitrary user setups (e.g.
+            # a manually applied Boolean modifier using an unrelated source
+            # object, such as a Sphere carving a cavity into a Cube) -- neither
+            # _try_apply_hollow_modifier's Solidify/named-NODES check nor
+            # _find_paired_inner_object_for's name-matching heuristic can
+            # detect that case. cap_single_object_hollow_style() now correctly
+            # handles both plain solid cross-sections (single loop per plane)
+            # and cavity rings (two loops per plane), so it is safe and
+            # correct to use unconditionally, replacing the previous
+            # used_hollow-gated fallback to _cap_single_object_simple_fill()
+            # (which could not distinguish outer from inner loops and sealed
+            # cavities shut).
+            for p in parts:
+                try:
+                    if cap_single_object_hollow_style(p):
                         capped_cnt += 1
+                except Exception:
+                    pass
 
             if capped_cnt == 0:
                 report_user(self, 'WARNING',
@@ -1109,6 +1441,7 @@ class SNAP_OT_planar_split(Operator):
                 report_user(self, 'INFO',
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."),
                             tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."))
+
 
         if len(parts) < count:
             report_user(self, 'WARNING',
@@ -1231,6 +1564,8 @@ def _perimeter_of_edges(loop):
         v0, v1 = e.verts
         p += (v0.co - v1.co).length
     return p
+
+
 
 class SNAP_OT_cap_open_seams_now(Operator):
     """Fill between exactly two split edge loops (outer+inner) per plane; prefers seed edges if present."""

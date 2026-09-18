@@ -149,9 +149,17 @@ class SNAP_PT_panel(Panel):
             if _exists(props, "connector_margin_pct"):
                 adv.prop(props, "connector_margin_pct", text=tr("ui.margin_pct", "Margin (%)"))
 
+            # Live wireframe preview toggle for LINE/GRID connector placement.
+            # Independent of connector_type, since the preview builder itself
+            # decides per-type what shape/ring to draw. Capped at 200 objects
+            # internally (see ops_connectors.update_connector_placement_preview).
+            if _exists(props, "connector_live_preview"):
+                adv.prop(props, "connector_live_preview", text=tr("ui.connector_live_preview", "Live Preview"))
+
             # Connector-specific geometry/settings
             gbox = box.box()
             ctype = getattr(props, "connector_type", "CYL_PIN")
+
 
             # --- Pin-like connectors ---
             if ctype in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
@@ -312,6 +320,40 @@ class SNAP_PT_panel(Panel):
                     gbox.prop(props, "custom_connector_depth_mm", text=tr("ui.custom_connector_depth_mm", "Custom Depth (mm)"))
                 if _exists(props, "pin_embed_pct"):
                     gbox.prop(props, "pin_embed_pct", text=tr("ui.insert_depth_pct", "Insert Depth (%)"))
+
+                # NEW: Chamfer (reuses the shared add_chamfer_mm property)
+                if _exists(props, "add_chamfer_mm"):
+                    gbox.prop(props, "add_chamfer_mm", text=tr("ui.chamfer_mm", "Chamfer (mm)"))
+
+                # NEW: Span Axis / Hard-side Cut (reuses the shared dovetail_* properties)
+                if _exists(props, "dovetail_span_axis"):
+                    gbox.prop(props, "dovetail_span_axis", text=tr("ui.dovetail_span_axis", "Span Axis"))
+                    if str(getattr(props, "dovetail_span_axis", "NONE")) != "NONE":
+                        gbox.label(text=tr("ui.span_axis_hint", "Forces hard-side cut along this axis."), icon='INFO')
+                if _exists(props, "dovetail_hard_side_cut"):
+                    gbox.prop(props, "dovetail_hard_side_cut", text=tr("ui.dovetail_hard_side_cut", "Hard-side Cut"))
+
+                # NEW: Snap Spheres — own checkbox, then the shared snap_* properties
+                if _exists(props, "custom_snap_spheres_enabled"):
+                    s = gbox.box()
+                    s.prop(props, "custom_snap_spheres_enabled", text=tr("ui.custom_snap_spheres_enabled", "Enable Snap Spheres"))
+                    if getattr(props, "custom_snap_spheres_enabled", False):
+                        if _exists(props, "snap_spheres_per_side"):
+                            s.prop(props, "snap_spheres_per_side", text=tr("ui.spheres_per_side", "Spheres per side"))
+                        if _exists(props, "snap_sphere_diameter_mm"):
+                            s.prop(props, "snap_sphere_diameter_mm", text=tr("ui.sphere_diameter_mm", "Sphere Diameter (mm)"))
+                        if _exists(props, "snap_sphere_protrusion_mm"):
+                            s.prop(props, "snap_sphere_protrusion_mm", text=tr("ui.protrusion_mm", "Protrusion (mm)"))
+
+                # NEW: Placement (reuses the shared dovetail_inplane_* properties)
+                extra = gbox.box()
+                extra.label(text=tr("ui.dovetail_extra", "Placement"), icon='ORIENTATION_GLOBAL')
+                if _exists(props, "dovetail_inplane_offset_u_mm"):
+                    extra.prop(props, "dovetail_inplane_offset_u_mm", text=tr("ui.inplane_offset_u_mm", "Offset along Width (mm)"))
+                if _exists(props, "dovetail_inplane_offset_v_mm"):
+                    extra.prop(props, "dovetail_inplane_offset_v_mm", text=tr("ui.inplane_offset_v_mm", "Offset along Length (mm)"))
+                if _exists(props, "dovetail_inplane_rotation_deg"):
+                    extra.prop(props, "dovetail_inplane_rotation_deg", text=tr("ui.inplane_rotation_deg", "Rotation in plane (deg)"))
 
             else:
                 gbox.label(text=tr("ui.unsupported_connector_type", "Unsupported connector type"), icon='INFO')

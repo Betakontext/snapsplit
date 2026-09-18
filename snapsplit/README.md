@@ -32,8 +32,9 @@ For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.
 
 Unfold the segmentation part (More...) to get ready for the split.
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
+
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
 
 -> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
 
@@ -53,6 +54,7 @@ Unfold the segmentation part (More...) to get ready for the split.
 ### Build Connections:
 
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
 Unfold the conections part (More...) to choose and place your connectors.
 
@@ -76,6 +78,17 @@ Instead of the built-in pin/tenon/dovetail shapes, you can pick any watertight m
 - The object's local Z axis defines the insertion direction (depth into the socket).
 - Works with both seam-line and grid distribution as well as per-click placement.
 - Ideal for logos, keyed/anti-rotation shapes, or custom-designed glueless mechanisms.
+
+#### Tolerance profiles (defaults, adjustable per project):
+
+- PLA: 0.20 mm per side
+- PETG: 0.30 mm per side
+- ABS/ASA: 0.25 mm per side
+- TPU: 0.35 mm per side
+- SLA: 0.10 mm per side
+
+Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
+
 
 ### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
 
@@ -121,36 +134,26 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 - **Create export collection**: When enabled, SnapSplit automatically organizes split/connected parts into a dedicated collection to keep your outliner clean before export.
 - **Reload UI Language**: Manually re-applies translations, e.g. after switching Blender's interface language.
 
-Tolerance profiles (defaults, adjustable per project):
-
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
-
-- PLA: 0.20 mm per side
-- PETG: 0.30 mm per side
-- ABS/ASA: 0.25 mm per side
-- TPU: 0.35 mm per side
-- SLA: 0.10 mm per side
-
-Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
 
 ---------------------------
 ---------------------------
 
 ### Folder structure (file structure for snapsplit.zip):
 
-snapsplit
-├── blender_manifest.toml
-├── __init__.py
-├── languages.py
-├── LICENCE.txt
-├── ops_align.py
-├── ops_connectors.py
-├── ops_split.py
-├── prefs.py
-├── profiles.py
-├── README.md
-├── ui.py
-└── utils.py
+    snapsplit
+    ├── blender_manifest.toml
+    ├── __init__.py
+    ├── languages.py
+    ├── LICENCE.txt
+    ├── ops_align.py
+    ├── ops_connectors.py
+    ├── ops_split.py
+    ├── prefs.py
+    ├── profiles.py
+    ├── README.md
+    ├── ui.py
+    └── utils.py
+
 
 
 ---------------------------
@@ -180,7 +183,7 @@ snapsplit
 
 ### Roadmap of ideas:
 
-- More languages beyond the current 16.
+- More languages beyond the current 20.
 - Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
 
 I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
