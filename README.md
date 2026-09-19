@@ -5,6 +5,14 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 
 For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
+![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_1200x600.gif?cache=1)
+
+### Why SnapSplit?
+
+SnapSplit combines two work steps into one: cleanly segmenting large models and automatically creating matching snap/plug pins or tenons, dovetail or custom connections. Placement along an adjustable line or grid and/or freehand per click onto the spot on the split surface. That saves hours of manual modeling and reduces trial‑and‑error printing thanks to preset tolerances and the new Live‑Preview. Ideal for artists (casting molds, modular sculptures), prop designers, product prototypers, and makers who need large models to be printable and transportable.
+
+Thanks for your feedback. I tried to build in as much as possible. I'm always happy to hear your further needs for next versions and hints for better building experiences.
+
 ### Installation:
 - Download the repository and zip the snapsplit folder
 - In Blender: Edit → Preferences → Add-ons → Install… → select the *.ZIP → enable.
@@ -157,10 +165,11 @@ Thanks to your hints and comments, I cleaned up the collections, added more conn
 
 ### Changelog:
 **V_0.1.6**
-- Added live preview option while creating connectors in Line/Grid mode for all connector types.
+- Added live preview option while creating connectors in Line/Grid mode for all connector types and a more adjustment options for connector creations -> Margin, Taper, Chamfer, Edge sensitive Span, Rotations and Offset along Length/Width on the cutting plane
+- Stability fixes for cutting and cap hollow forms created via standard boolean modifier.
 
 **V_0.1.5**
-- Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language and a manual "Reload UI Language" option.
+- Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language.
 
 **V_0.1.4**
 - Added Dovetail and Snap-Dovetail connector types.
@@ -172,6 +181,8 @@ Thanks to your hints and comments, I cleaned up the collections, added more conn
 - Seam-line and grid connector distribution, per-click placement.
 - Material tolerance profiles (PLA, PETG, ABS, ASA, TPU, SLA).
 - Face-to-face alignment operator.
+
+- Collections cleanup automation
 
 ---------------------------
 ---------------------------
