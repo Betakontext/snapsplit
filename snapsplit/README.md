@@ -58,7 +58,14 @@ Unfold the segmentation part (More...) to get ready for the split.
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
-Unfold the conections part (More...) to choose and place your connectors.
+Unfold the conections part (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_01.jpg?cache=1)
+
+(-> in this case Blender's "Suzanne used as a Custom Connector)
+
+
+... and/or place your connectors per click:
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png?cache=1)
 
@@ -76,6 +83,8 @@ or   ->  Choose "Place connectors (click)" to set individualized connectors with
 #### Custom Connector:
 
 Instead of the built-in pin/tenon/dovetail shapes, you can pick any watertight mesh object from your scene as a connector shape (`Custom Connector Object` field). SnapSplit scales a copy of it to your specified Width / Length / Depth (mm) and inserts it exactly like the built-in connector types — either via "Add connectors" or via individual click placement.
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_02.jpg?cache=1)
 
 - The object's local Z axis defines the insertion direction (depth into the socket).
 - Works with both seam-line and grid distribution as well as per-click placement.
