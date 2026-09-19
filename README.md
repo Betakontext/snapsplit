@@ -5,7 +5,7 @@ Its goal is to integrate into a 3D printing workflow using robust booleans, mate
 
 For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
-![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_1200x600.gif?cache=1)
+![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SLAIDSHOW.gif?cache=1)
 
 ### Why SnapSplit?
 
