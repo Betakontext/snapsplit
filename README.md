@@ -58,7 +58,7 @@ Unfold the segmentation part (More...) to get ready for the split.
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
 
-Unfold the conections part (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
+Unfold the connections section foldout (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_01.jpg?cache=1)
 
