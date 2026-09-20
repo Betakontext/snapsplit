@@ -40,7 +40,7 @@ Unfold the segmentation part (More...) to get ready for the split.
 
 -> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
 
-![F.e. Segmentation](https://dev.betakontext.de/snapsplit/jpg/img/betakontext_snapsplit_SEG_01.jpg?cache=1)
+![F.e. Segmentation](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_01.jpg?cache=1)
 
 -> Choose desired number of parts and adjust the split axis offset.
 -> Push: "Adjust split axis"
