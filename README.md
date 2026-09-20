@@ -50,13 +50,13 @@ Unfold the segmentation part (More...) to get ready for the split.
 
 -> Run "Planar Split"
 
-![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_02.jpg?cache=1)
+![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_03.jpg?cache=1)
 
 -------------------------
 ### Build Connections:
 
 ![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.jpg?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_04.jpg?cache=1)
 
 Unfold the connections section foldout (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
 
