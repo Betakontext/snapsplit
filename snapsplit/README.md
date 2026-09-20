@@ -35,12 +35,12 @@ Thanks for your feedback. I tried to build in as much as possible. I'm always ha
 Unfold the segmentation part (More...) to get ready for the split.
 
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_01.png?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_02.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_01.jpg?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_02.jpg?cache=1)
 
 -> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
 
-![F.e. Segmentation](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_01.png?cache=1)
+![F.e. Segmentation](https://dev.betakontext.de/snapsplit/jpg/img/betakontext_snapsplit_SEG_01.jpg?cache=1)
 
 -> Choose desired number of parts and adjust the split axis offset.
 -> Push: "Adjust split axis"
@@ -50,13 +50,13 @@ Unfold the segmentation part (More...) to get ready for the split.
 
 -> Run "Planar Split"
 
-![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SEG_02.png?cache=1)
+![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_02.jpg?cache=1)
 
 -------------------------
 ### Build Connections:
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_03.png?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.png?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1)
+![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_UI_04.jpg?cache=1)
 
 Unfold the connections section foldout (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
 
@@ -67,7 +67,7 @@ Unfold the connections section foldout (More...) to choose, adjust and place in 
 
 ... and/or place your connectors per click:
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png?cache=1)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_01.jpg?cache=1)
 
 -> Select two or more adjacent parts (order does not matter).
 
@@ -75,18 +75,18 @@ Unfold the connections section foldout (More...) to choose, adjust and place in 
 
 -> Define your tolerance profile (under Connections UI) for your material.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_02.png?cache=1)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_02.jpg?cache=1)
 
 
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
 or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems:
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_03.png?cache=1)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_03.jpg?cache=1)
 
 
 Dovetails with Snap spheres, Auto span and edge sensitive hard-side cut:
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_06.png?cache=1)
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_06.jpg?cache=1)
 
 #### Custom Connector:
 
