@@ -62,7 +62,7 @@ Unfold the connections section foldout (More...) to choose, adjust and place in 
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_01.jpg?cache=1)
 
-(-> in this case Blender's "Suzanne used as a Custom Connector)
+(-> in this case Blender's "Suzanne" used as a Custom Connector :) -> use any mesh as reference.
 
 
 ... and/or place your connectors per click:
@@ -70,15 +70,23 @@ Unfold the connections section foldout (More...) to choose, adjust and place in 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_01.png?cache=1)
 
 -> Select two or more adjacent parts (order does not matter).
--> Choose pins, tenons or dovetails distributed along a seam line or spread across a grid, with or without Snap-Pins/Snap-Tenons/Snap-Dovetails for glueless connection, or use your own custom mesh as a connector shape.
+
+-> Choose pins, tenons, dovetails or custom connectors distributed along a seam line or spread across a grid, with or without Snap-Pins/Snap-Tenons/Snap-Dovetails for glueless connection, or use your own custom mesh as a connector shape.
+
 -> Define your tolerance profile (under Connections UI) for your material.
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_02.png?cache=1)
 
+
 ->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
-or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems.
+or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems:
 
 ![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_03.png?cache=1)
+
+
+Dovetails with Snap spheres, Auto span and edge sensitive hard-side cut:
+
+![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_CON_06.png?cache=1)
 
 #### Custom Connector:
 
