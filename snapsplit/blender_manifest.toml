@@ -10,5 +10,4 @@ website = "https://github.com/betakontext/snapsplit"
 issues = "https://github.com/betakontext/snapsplit"
 type = "add-on"
 blender_version_min = "4.2.0"
-blender_version_max = "5.2.2"
 license = ["SPDX:GPL-3.0-or-later"]

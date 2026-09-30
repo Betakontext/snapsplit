@@ -19,7 +19,6 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
 
-# utils.py
 
 # utils.py
 
@@ -86,6 +85,55 @@ def scene_to_mm(scene_value: float) -> float:
         return float(scene_value)
     return float(scene_value) / 0.001
 
+
+def apply_modifier_data(obj, mod):
+    """Apply ONE modifier to obj's mesh without bpy.ops.object.modifier_apply.
+
+    The stack is evaluated with only this modifier enabled, the evaluated mesh replaces
+    obj.data and the modifier is removed. Other modifiers keep their state.
+    Raises RuntimeError on failure so the caller's existing try/except can report it;
+    on failure the object is left as it was (the modifier stays on the stack).
+    """
+    if obj is None or obj.type != 'MESH' or obj.data is None:
+        raise RuntimeError("apply_modifier_data: object is not a mesh")
+    mod_name = mod.name
+    if obj.modifiers.get(mod_name) is None:
+        raise RuntimeError(f"modifier '{mod_name}' not found on '{obj.name}'")
+
+    # Shared mesh data would change other users too: give this object its own copy
+    if obj.data.users > 1:
+        obj.data = obj.data.copy()
+
+    # Evaluate with ONLY this modifier enabled; restore the other flags in any case
+    saved = [(m.name, m.show_viewport) for m in obj.modifiers]
+    new_mesh = None
+    try:
+        for m in obj.modifiers:
+            m.show_viewport = (m.name == mod_name)
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        obj_eval = obj.evaluated_get(depsgraph)
+        new_mesh = bpy.data.meshes.new_from_object(
+            obj_eval, preserve_all_data_layers=True, depsgraph=depsgraph)
+    finally:
+        for name, visible in saved:
+            m = obj.modifiers.get(name)
+            if m is not None:
+                m.show_viewport = visible
+
+    if new_mesh is None:
+        raise RuntimeError(f"modifier '{mod_name}' produced no mesh")
+
+    # Swap the mesh, drop the modifier, keep the old data-block name
+    old_mesh = obj.data
+    old_name = old_mesh.name
+    obj.data = new_mesh
+    obj.modifiers.remove(obj.modifiers.get(mod_name))
+    if old_mesh.users == 0:
+        bpy.data.meshes.remove(old_mesh)
+        new_mesh.name = old_name
+
+
+
 # Localization helpers now delegate to languages.py
 def current_language():
     """Return Blender UI language like 'en_US', 'de_DE'; fallback to 'en_US' on failure."""
@@ -100,6 +148,8 @@ def is_lang_de():
         return current_language().lower().startswith("de")
     except Exception:
         return False
+
+
 
 def report_user(self, level, msg_en, msg_de=None):
     """Report a localized message to the user, falling back to English; also print to console.

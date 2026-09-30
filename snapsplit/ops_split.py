@@ -24,6 +24,7 @@ along with this program; if not, see <https://www.gnu.org/licenses>.
 import bpy
 import bmesh
 from bpy.types import Operator
+from bpy.app.handlers import persistent
 from mathutils import Vector, Matrix
 from datetime import datetime
 
@@ -44,6 +45,25 @@ except Exception:
     def tr(key: str, fallback: str = "") -> str:
         return fallback or key
 
+def _trf(key: str, default: str, **fmt) -> str:
+    """Translate 'key' and fill its {placeholders} with 'fmt'.
+
+    'default' must be an English TEMPLATE (e.g. "{n} parts created."), not an f-string.
+    Entries in languages.py contain the placeholders literally, so the formatting
+    has to happen AFTER the lookup.
+    """
+    text = tr(key, default)
+    try:
+        return text.format(**fmt)
+    except (KeyError, IndexError, ValueError):
+        # A translation uses a placeholder we did not provide (or has broken braces):
+        # fall back to the English template instead of showing raw placeholders.
+        try:
+            return default.format(**fmt)
+        except (KeyError, IndexError, ValueError):
+            return text
+
+
 # ---------------------------
 # Preview naming
 # ---------------------------
@@ -51,6 +71,18 @@ except Exception:
 PREVIEW_COLL_NAME = "_SnapSplit_Preview"
 PREVIEW_PLANE_PREFIX = "_SnapSplit_PreviewPlane_"
 PREVIEW_MAT_NAME = "_SnapSplit_Preview_MAT"
+
+# ---------------------------
+# bpy.ops fallback policy (documented for Extensions review)
+# ---------------------------
+# Blender's own "Select Edge Loop" walker (bpy.ops.mesh.loop_multi_select) is
+# implemented in C and has no 1:1 public Python/BMesh equivalent.
+# SnapSplit therefore first tries a conservative pure-BMesh loop walker
+# (_walk_edge_loop_closed) that only accepts results which form a CLOSED cycle.
+# Only if the walker cannot prove a closed cycle (e.g. n-gon stars, triangle
+# fans, non-manifold pinch points) we fall back to the operator for exactly
+# this single special case. Set to False to disable the fallback entirely.
+_ALLOW_OPS_LOOP_FALLBACK = True
 
 # ---------------------------
 # Helpers: AABB / axes / eps / context / normals
@@ -94,6 +126,7 @@ def _diag_eps(obj, k=1e-6, min_eps=1e-6):
 
 def _ensure_object_mode():
     """Ensure Blender is in OBJECT mode (safe switch if needed)."""
+    # NOTE: bpy.ops.object.mode_set has no public non-operator equivalent; kept on purpose.
     try:
         ob = bpy.context.object
         if ob and ob.mode != 'OBJECT':
@@ -101,21 +134,38 @@ def _ensure_object_mode():
     except Exception:
         pass
 
+def _deselect_all_objects():
+    """Deselect all objects of the current view layer via RNA (replaces bpy.ops.object.select_all)."""
+    try:
+        view_layer = bpy.context.view_layer
+        for o in list(view_layer.objects):
+            try:
+                # select_set() is a cheap RNA call; hidden objects may refuse it, which is fine
+                o.select_set(False)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 def _activate_single_object(obj):
     """Activate and exclusively select a single object."""
     _ensure_object_mode()
-    bpy.ops.object.select_all(action='DESELECT')
+    _deselect_all_objects()
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
 def _enter_edit_mode_edges(obj):
     """Enter EDIT mode on obj and switch selection mode to EDGE."""
     _activate_single_object(obj)
-    bpy.ops.object.mode_set(mode='EDIT')
+    # Set the EDGE select mode through tool settings BEFORE entering Edit Mode.
+    # The edit-mesh is created with this mode, so the operator
+    # bpy.ops.mesh.select_mode(type='EDGE') is no longer needed.
     try:
-        bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, type='EDGE')
+        bpy.context.tool_settings.mesh_select_mode = (False, True, False)
     except Exception:
         pass
+    # NOTE: bpy.ops.object.mode_set has no public non-operator equivalent; kept on purpose.
+    bpy.ops.object.mode_set(mode='EDIT')
 
 def _leave_edit_mode():
     """Leave EDIT mode if currently active."""
@@ -181,7 +231,7 @@ _last_preview_active_obj = None
 # state above. None means "not initialized yet" (forces an initial check).
 _last_connector_preview_selection_key = None
 
-
+@persistent  # survive file loads; lifetime is managed by sync_depsgraph_handler()
 def _snapsplit_depsgraph_update(scene, depsgraph):
     """Depsgraph post-update handler to refresh preview planes/objects on relevant data changes.
 
@@ -242,6 +292,80 @@ def _snapsplit_depsgraph_update(scene, depsgraph):
             ops_connectors.update_connector_placement_preview(ctx)
         except Exception:
             pass
+
+_DEPSGRAPH_HANDLER_NAME = "_snapsplit_depsgraph_update"
+_LOAD_HANDLER_NAME = "_snapsplit_load_post"
+
+
+def _find_handlers_named(handler_list, name):
+    """Return all handlers in 'handler_list' with the given function name defined in THIS module.
+
+    Matching by name + module (not by object identity) also catches stale function
+    objects left over from importlib.reload() during development.
+    """
+    return [h for h in handler_list
+            if getattr(h, "__name__", "") == name
+            and getattr(h, "__module__", "") == __name__]
+
+
+def _remove_handlers_named(handler_list, name):
+    """Remove every SnapSplit handler called 'name' from 'handler_list'. Returns the count removed."""
+    found = _find_handlers_named(handler_list, name)
+    for h in found:
+        try:
+            handler_list.remove(h)
+        except ValueError:
+            pass
+    return len(found)
+
+
+def _any_live_preview_enabled():
+    """Return True if any scene has the split preview or the connector live preview enabled."""
+    try:
+        for sc in bpy.data.scenes:
+            p = getattr(sc, "snapsplit", None)
+            if p and (getattr(p, "show_split_preview", False)
+                      or getattr(p, "connector_live_preview", False)):
+                return True
+    except Exception:
+        # bpy.data can be restricted while an add-on registers; treat as "nothing enabled".
+        # The load_post handler (or the next toggle) re-syncs later.
+        pass
+    return False
+
+
+def sync_depsgraph_handler():
+    """Attach the depsgraph handler while a live preview is enabled, detach it otherwise.
+
+    Called from the update callbacks of the two preview toggles, from the load_post
+    handler and from register(). Cheap: it only scans the scenes for two booleans.
+    """
+    global _last_preview_active_obj, _last_connector_preview_selection_key
+
+    handlers = bpy.app.handlers.depsgraph_update_post
+    wanted = _any_live_preview_enabled()
+    present = bool(_find_handlers_named(handlers, _DEPSGRAPH_HANDLER_NAME))
+
+    if wanted and not present:
+        handlers.append(_snapsplit_depsgraph_update)
+    elif not wanted and present:
+        _remove_handlers_named(handlers, _DEPSGRAPH_HANDLER_NAME)
+        # Reset the change-tracking state so the next enable starts with a fresh initial check
+        _last_preview_active_obj = None
+        _last_connector_preview_selection_key = None
+
+
+@persistent  # must outlive file loads, otherwise it would be removed right when it is needed
+def _snapsplit_load_post(_filepath=None):
+    """After a file load, re-sync the depsgraph handler with the preview toggles saved in the file.
+
+    Property update callbacks do not fire when a .blend is loaded, so a file saved with
+    a preview enabled would otherwise come back without a working handler.
+    """
+    try:
+        sync_depsgraph_handler()
+    except Exception as e:
+        print(f"[SnapSplit] Could not sync depsgraph handler after load: {e}")
 
 # ---------------------------
 # Preview material/planes
@@ -566,6 +690,9 @@ def _apply_modifier(obj, mod):
     """Apply a single modifier and report success."""
     _activate_single_object(obj)
     try:
+        # Kept on purpose as bpy.ops: Hollow/Solidify/Geometry-Nodes results are not yet
+        # verified with the data-based apply (see apply_modifier_data in utils.py).
+
         bpy.ops.object.modifier_apply(modifier=mod.name)
         return True
     except Exception as e:
@@ -592,26 +719,125 @@ def _find_paired_inner_object_for(obj):
     cand.sort(key=lambda t: t[0])
     return cand[0][1] if cand else None
 
-def _join_objects(main_obj, other_obj):
-    """Join other_obj into main_obj and return main_obj."""
+def _join_objects_via_operator(main_obj, other_obj):
+    """DOCUMENTED FALLBACK: join via bpy.ops.object.join (only used if the BMesh join fails)."""
     _activate_single_object(main_obj)
     other_obj.select_set(True)
     try:
         bpy.ops.object.join()
-        return main_obj
     except Exception as e:
         print(f"[SnapSplit] Join failed: {e}")
+    return main_obj
+
+
+def _join_objects(main_obj, other_obj):
+    """Join other_obj into main_obj with BMesh (replaces object.join) and return main_obj.
+
+    other_obj is transformed into the local space of main_obj, appended to its mesh and
+    then removed from the file (like the operator does). Materials are merged by slot.
+    On any error nothing is written and the operator fallback is used.
+    """
+    # Keep the side effect of the old code: main_obj ends up active and selected
+    _activate_single_object(main_obj)
+
+    if (other_obj is None or other_obj is main_obj
+            or main_obj.type != 'MESH' or other_obj.type != 'MESH'):
         return main_obj
 
-def _recalc_normals_outside(obj):
-    """Recalculate normals to the outside for the given mesh object."""
-    _enter_edit_mode_edges(obj)
+    tmp_mesh = None
     try:
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.normals_make_consistent(inside=False)
-    except Exception:
-        pass
-    _leave_edit_mode()
+        # BMesh I/O only works on Object Mode mesh data
+        if main_obj.mode != 'OBJECT' or other_obj.mode != 'OBJECT':
+            raise RuntimeError("objects must be in Object Mode")
+
+        # Shared mesh data would change other users too: give main_obj its own copy
+        if main_obj.data.users > 1:
+            main_obj.data = main_obj.data.copy()
+
+        # Map the material slots of other_obj onto main_obj (append missing ones)
+        remap = {}
+        main_mats = main_obj.data.materials
+        for i, mat in enumerate(other_obj.data.materials):
+            if mat is None:
+                continue
+            existing = [m for m in main_mats]
+            if mat in existing:
+                remap[i] = existing.index(mat)
+            else:
+                main_mats.append(mat)
+                remap[i] = len(main_mats) - 1
+
+        # Copy other_obj's mesh into main_obj's local space
+        rel = main_obj.matrix_world.inverted() @ other_obj.matrix_world
+        bm_other = bmesh.new()
+        try:
+            bm_other.from_mesh(other_obj.data)
+            bmesh.ops.transform(bm_other, matrix=rel, verts=bm_other.verts)
+            if rel.determinant() < 0.0:
+                # Mirrored transform flips the winding: restore outward-facing faces
+                bmesh.ops.reverse_faces(bm_other, faces=bm_other.faces[:])
+            for f in bm_other.faces:
+                f.material_index = remap.get(f.material_index, f.material_index)
+            tmp_mesh = bpy.data.meshes.new("_SnapSplit_join_tmp")
+            bm_other.to_mesh(tmp_mesh)
+        finally:
+            bm_other.free()
+
+        # Append to main_obj's mesh (BMesh.from_mesh adds to existing geometry)
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(main_obj.data)
+            bm.from_mesh(tmp_mesh)
+            bm.to_mesh(main_obj.data)
+        finally:
+            bm.free()
+        main_obj.data.update()
+
+        # Remove the joined object and its orphaned mesh, like the operator does
+        other_mesh = other_obj.data
+        bpy.data.objects.remove(other_obj, do_unlink=True)
+        if other_mesh is not None and other_mesh.users == 0:
+            bpy.data.meshes.remove(other_mesh)
+        return main_obj
+
+    except Exception as e:
+        print(f"[SnapSplit] BMesh join failed ({e}); falling back to bpy.ops.object.join")
+        return _join_objects_via_operator(main_obj, other_obj)
+    finally:
+        if tmp_mesh is not None:
+            try:
+                bpy.data.meshes.remove(tmp_mesh)
+            except Exception:
+                pass
+
+
+def _recalc_normals_outside(obj):
+    """Recalculate face normals to point outward using BMesh only.
+
+    Replaces the former sequence
+        bpy.ops.mesh.select_all(action='SELECT') + bpy.ops.mesh.normals_make_consistent(inside=False)
+    No Edit Mode round trip is needed. Works in OBJECT mode (mesh datablock is
+    read into a temporary BMesh and written back) and, if the object happens to be
+    in EDIT mode, directly on the edit BMesh.
+    """
+    if not obj or obj.type != 'MESH' or obj.data is None:
+        return
+    try:
+        if obj.mode == 'EDIT':
+            bm = bmesh.from_edit_mesh(obj.data)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            bmesh.update_edit_mesh(obj.data)
+        else:
+            bm = bmesh.new()
+            try:
+                bm.from_mesh(obj.data)
+                bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+                bm.to_mesh(obj.data)
+            finally:
+                bm.free()
+            obj.data.update()
+    except Exception as ex:
+        print(f"[SnapSplit DEBUG] _recalc_normals_outside failed on '{getattr(obj, 'name', '?')}': {ex}")
 
 def robust_prepare_hollow(obj, operator=None):
     """Normalize 'hollow' preparation: apply hollow-like modifiers or join detected inner/outer shell; return (obj, used_hollow)."""
@@ -673,11 +899,195 @@ def create_cut_data_with_offset(obj, axis, parts_count, global_offset_scene=0.0)
 # Split (BMesh)
 # ---------------------------
 
+def _order_cycle_verts(loop_edges):
+    """Return the vertices of a closed edge cycle in walking order, or None if it is not a simple cycle."""
+    adj = {}
+    for e in loop_edges:
+        a, b = e.verts
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    # A simple closed cycle has exactly two neighbours per vertex
+    if not adj or any(len(n) != 2 for n in adj.values()):
+        return None
+    start = next(iter(adj))
+    ordered = [start]
+    prev, cur = None, start
+    while True:
+        n0, n1 = adj[cur]
+        # NOTE: use == (not 'is'): BMesh Python wrappers are not guaranteed to be identical objects
+        nxt = n0 if (prev is None or n0 != prev) else n1
+        if nxt == start:
+            break
+        ordered.append(nxt)
+        prev, cur = cur, nxt
+        if len(ordered) > len(adj):
+            return None
+    return ordered if len(ordered) == len(adj) else None
+
+
+def _poly_area_2d(pts):
+    """Return the absolute area of a 2D polygon (shoelace formula)."""
+    s = 0.0
+    n = len(pts)
+    for i in range(n):
+        x0, y0 = pts[i]
+        x1, y1 = pts[(i + 1) % n]
+        s += x0 * y1 - x1 * y0
+    return abs(s) * 0.5
+
+
+def _point_in_poly_2d(pt, poly):
+    """Return True if a 2D point lies inside a 2D polygon (ray casting)."""
+    x, y = pt
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if (yi > y) != (yj > y):
+            x_cross = (xj - xi) * (y - yi) / (yj - yi) + xi
+            if x < x_cross:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _group_loops_by_nesting(loops, ax):
+    """Group closed loops of ONE cut plane into 'outer loop + its direct holes'.
+
+    Loops are projected to 2D by dropping the split axis 'ax'. A loop is a hole
+    when it is enclosed by an odd number of other loops, an outer boundary when
+    enclosed by an even number (islands inside cavities are handled correctly).
+    Returns a list of dicts {'edges', 'n_holes', 'expected_area'} or None when a
+    loop cannot be ordered (caller then falls back to the legacy behaviour).
+    """
+    t1, t2 = (ax + 1) % 3, (ax + 2) % 3
+    infos = []
+    for lp in loops:
+        ordered = _order_cycle_verts(lp)
+        if ordered is None or len(ordered) < 3:
+            return None
+        pts = [(v.co[t1], v.co[t2]) for v in ordered]
+        infos.append({'edges': lp, 'pts': pts, 'area': _poly_area_2d(pts)})
+
+    n = len(infos)
+    for j in range(n):
+        containers = [i for i in range(n)
+                      if i != j
+                      and infos[i]['area'] > infos[j]['area']
+                      and _point_in_poly_2d(infos[j]['pts'][0], infos[i]['pts'])]
+        infos[j]['depth'] = len(containers)
+        # Direct parent = smallest loop that still contains this one
+        infos[j]['parent'] = min(containers, key=lambda i: infos[i]['area']) if containers else None
+
+    groups = []
+    for j, info in enumerate(infos):
+        if info['depth'] % 2 != 0:
+            continue  # holes are attached to their outer loop below
+        holes = [k for k, o in enumerate(infos) if o['depth'] % 2 == 1 and o['parent'] == j]
+        edges = list(info['edges'])
+        for k in holes:
+            edges += infos[k]['edges']
+        expected = info['area'] - sum(infos[k]['area'] for k in holes)
+        groups.append({'edges': edges, 'n_holes': len(holes), 'expected_area': expected})
+        print(f"[SnapSplit DEBUG]   nesting: outer loop #{j} (area={info['area']:.5f}) "
+              f"with {len(holes)} hole(s), expected cap area={expected:.5f}")
+    return groups
+
+
+def _fill_nested_group_bmesh(bm, edges, n_plane, n_holes, expected_area):
+    """Fill 'outer loop + holes' and verify the result, leaving holes open.
+
+    Tries several triangle_fill variants (the first mimics Mesh > Fill, which works
+    in the manual 'Cap seams now' path). After each attempt the created face area is
+    compared with the expected ring area; a cap that also covers a hole is deleted
+    again. The last resort for exactly one hole is bridge_loops, which can never fill
+    the hole. Returns True on success, False if the group was left open.
+    """
+    variants = (
+        dict(use_beauty=True, use_dissolve=False),
+        dict(use_beauty=True, use_dissolve=False, normal=n_plane),
+        dict(use_beauty=True, use_dissolve=True, normal=n_plane),
+    )
+    for vi, kwargs in enumerate(variants):
+        try:
+            res = bmesh.ops.triangle_fill(bm, edges=edges, **kwargs)
+        except Exception as ex:
+            print(f"[SnapSplit DEBUG]     triangle_fill variant {vi} raised: {ex}")
+            continue
+        faces = [g for g in res.get('geom', []) if isinstance(g, bmesh.types.BMFace)]
+        if not faces:
+            print(f"[SnapSplit DEBUG]     triangle_fill variant {vi}: no faces created")
+            continue
+        area = sum(f.calc_area() for f in faces)
+        if expected_area is None or abs(area - expected_area) <= max(0.02 * abs(expected_area), 1e-12):
+            print(f"[SnapSplit DEBUG]     triangle_fill variant {vi} OK: {len(faces)} face(s), area={area:.5f}")
+            return True
+        print(f"[SnapSplit DEBUG]     triangle_fill variant {vi} REJECTED: area={area:.5f} "
+              f"but expected {expected_area:.5f} (a hole was probably filled) -> removing faces")
+        try:
+            # context='FACES' also removes the diagonal edges created by the fill;
+            # the loop edges survive because they still belong to the wall faces.
+            bmesh.ops.delete(bm, geom=faces, context='FACES')
+        except Exception as ex:
+            print(f"[SnapSplit DEBUG]     could not remove rejected faces: {ex}")
+            return False
+
+    if n_holes == 1:
+        try:
+            res = bmesh.ops.bridge_loops(bm, edges=edges, use_pairs=False, use_cyclic=False,
+                                         use_merge=False, merge_factor=0.5, twist_offset=0)
+            if res.get('faces'):
+                print(f"[SnapSplit DEBUG]     bridge_loops fallback OK: {len(res['faces'])} face(s)")
+                return True
+        except Exception as ex:
+            print(f"[SnapSplit DEBUG]     bridge_loops fallback raised: {ex}")
+
+    print("[SnapSplit][INFO]     group left OPEN (no fill variant produced a correct ring cap)")
+    return False
+
+def _fill_edges_bmesh(bm, edges, prefer_ngon=False, normal=None):
+    """Fill the given boundary edges with BMesh only (replaces mesh.fill / fill_grid / edge_face_add).
+
+    prefer_ngon=True : try contextual_create first (one N-gon, like edge_face_add),
+                       then triangle_fill.
+    prefer_ngon=False: triangle_fill only (what Mesh > Fill does; nested loops become
+                       a ring with a hole).
+    'normal' is an optional plane normal for a second triangle_fill attempt.
+    Works on the given BMesh and ignores the selection. Returns True if a face was created.
+    """
+    edges = [e for e in edges if e.is_valid]
+    if not edges:
+        return False
+
+    if prefer_ngon:
+        try:
+            res = bmesh.ops.contextual_create(bm, geom=edges)
+            if [f for f in res.get('faces', []) if f.is_valid]:
+                return True
+        except Exception as ex:
+            print(f"[SnapSplit DEBUG]   contextual_create raised: {ex}")
+
+    variants = [dict(use_beauty=True, use_dissolve=False)]
+    if normal is not None:
+        variants.append(dict(use_beauty=True, use_dissolve=False, normal=normal))
+    for kwargs in variants:
+        try:
+            res = bmesh.ops.triangle_fill(bm, edges=edges, **kwargs)
+        except Exception as ex:
+            print(f"[SnapSplit DEBUG]   triangle_fill raised: {ex}")
+            continue
+        if [g for g in res.get('geom', []) if isinstance(g, bmesh.types.BMFace)]:
+            return True
+    return False
+
+
 def split_mesh_bmesh_into_two(source_obj, plane_co_obj, plane_no_obj, name_suffix="", do_fill=False):
     """Split a mesh into two halves by a plane in object space; optionally cap boundaries on each half."""
     _activate_single_object(source_obj)
 
-    # NEW: nudge the cutting plane by a tiny epsilon along its normal, BEFORE
+    # Nudge the cutting plane by a tiny epsilon along its normal, BEFORE
     # bisecting, applied identically to both halves below. This resolves a
     # known bisect_plane degeneracy: if the requested plane coordinate
     # happens to pass EXACTLY through existing mesh vertices (e.g. a round
@@ -778,8 +1188,17 @@ def apply_bmesh_split_sequence(root_obj, axis, parts_count, cuts_override=None, 
             current_parts = [p for p in next_parts if p and p.type == 'MESH' and p.data]
 
             wm.progress_update(idx)
-            try: bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-            except Exception: pass
+            # Ask every 3D View to redraw (replaces bpy.ops.wm.redraw_timer).
+            # NOTE: tag_redraw() only schedules the redraw. While execute() is blocking,
+            # Blender may not repaint until the operator returns.
+            try:
+                for win in wm.windows:
+                    for area in win.screen.areas:
+                        if area.type == 'VIEW_3D':
+                            area.tag_redraw()
+            except Exception:
+                pass
+
 
         return [o for o in current_parts if o and o.type == 'MESH' and o.data and len(o.data.polygons) > 0]
     finally:
@@ -1001,6 +1420,9 @@ def cap_single_object_hollow_style(obj) -> bool:
     The whole body runs inside try/finally so _leave_edit_mode() is ALWAYS
     called, even on exception, to avoid corrupting the operator context for
     subsequent bpy.ops calls (previously observed crash in select_all).
+
+    Step 1a/1b: the final select_all + normals_make_consistent operators were
+    replaced by bmesh.ops.recalc_face_normals on the edit BMesh.
     """
     print(f"[SnapSplit DEBUG] ---- cap_single_object_hollow_style: {obj.name} ----")
     _enter_edit_mode_edges(obj)
@@ -1215,18 +1637,6 @@ def cap_single_object_hollow_style(obj) -> bool:
                 p += (v0.co - v1.co).length
             return p
 
-        def _fill_like_altf_local():
-            try:
-                bpy.ops.mesh.fill(use_beauty=True)
-                return True
-            except Exception as ex:
-                print(f"[SnapSplit DEBUG]   mesh.fill() raised: {ex}")
-                try:
-                    bpy.ops.mesh.fill_grid()
-                    return True
-                except Exception as ex2:
-                    print(f"[SnapSplit DEBUG]   mesh.fill_grid() also raised: {ex2}")
-                    return False
 
         n_plane = split_no
         eps_plane = _diag_eps(obj, k=5e-6, min_eps=5e-7)
@@ -1299,53 +1709,42 @@ def cap_single_object_hollow_style(obj) -> bool:
 
         for bi, bucket in enumerate(buckets):
             loops = bucket['loops']
-            valid_edges = [e for loop in loops for e in loop]
-            print(f"[SnapSplit DEBUG] -- filling bucket[{bi}]: {len(loops)} loop(s), "
-                  f"{len(valid_edges)} edge(s) --")
+            print(f"[SnapSplit DEBUG] -- filling bucket[{bi}]: {len(loops)} loop(s) --")
 
-            for e in bm.edges:
-                e.select = False
-            for e in valid_edges:
-                e.select = True
-            bmesh.update_edit_mesh(obj.data)
+            # Group loops into 'outer + holes' by 2D nesting (None -> legacy behaviour)
+            groups = _group_loops_by_nesting(loops, ax)
+            if groups is None:
+                print("[SnapSplit DEBUG]   nesting analysis failed -> legacy single group")
+                groups = [{'edges': [e for lp in loops for e in lp],
+                           'n_holes': len(loops) - 1,
+                           'expected_area': None}]
 
-            if len(loops) == 1:
-                print(f"[SnapSplit DEBUG]   -> single loop: trying edge_face_add() / fallback fill")
-                did = False
-                try:
-                    bpy.ops.mesh.edge_face_add()
-                    did = True
-                except Exception as ex:
-                    print(f"[SnapSplit DEBUG]     edge_face_add() raised: {ex}")
-                    did = _fill_like_altf_local()
-                print(f"[SnapSplit DEBUG]   -> single loop fill result: {did}")
+            for gi, grp in enumerate(groups):
+                g_edges = grp['edges']
+
+                if grp['n_holes'] == 0:
+                    print(f"[SnapSplit DEBUG]   group {gi}: plain loop -> BMesh fill (N-gon first)")
+                    # No selection needed anymore: the edges are passed to the BMesh op directly
+                    did = _fill_edges_bmesh(bm, g_edges, prefer_ngon=True, normal=n_plane)
+                    bmesh.update_edit_mesh(obj.data)
+
+                else:
+                    print(f"[SnapSplit DEBUG]   group {gi}: outer loop + {grp['n_holes']} hole(s) "
+                          f"-> verified triangle_fill")
+                    did = _fill_nested_group_bmesh(bm, g_edges, n_plane,
+                                                   grp['n_holes'], grp['expected_area'])
+                    bmesh.update_edit_mesh(obj.data)
+                print(f"[SnapSplit DEBUG]   group {gi} fill result: {did}")
                 any_ok = any_ok or did
-            else:
-                print(f"[SnapSplit DEBUG]   -> {len(loops)} loops: trying triangle_fill()")
-                ok = False
-                try:
-                    res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=True,
-                                                   edges=valid_edges, normal=n_plane)
-                    geom = res.get('geom', [])
-                    ok = bool(geom)
-                    n_faces_out = sum(1 for g in geom if isinstance(g, bmesh.types.BMFace))
-                    print(f"[SnapSplit DEBUG]     triangle_fill() geom output count: {len(geom)} "
-                          f"(faces: {n_faces_out})")
-                except Exception as ex:
-                    print(f"[SnapSplit DEBUG]     triangle_fill() raised: {ex}")
-                    ok = False
-                if not ok:
-                    print(f"[SnapSplit DEBUG]     triangle_fill() failed/empty -> falling back to mesh.fill()")
-                    ok = _fill_like_altf_local()
-                print(f"[SnapSplit DEBUG]   -> multi-loop fill result: {ok}")
-                any_ok = any_ok or ok
 
         if any_ok:
+            # Recalculate normals directly on the edit BMesh
+            # (replaces select_all + normals_make_consistent operators).
             try:
-                bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.mesh.normals_make_consistent(inside=False)
-            except Exception:
-                pass
+                bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+                bmesh.update_edit_mesh(obj.data)
+            except Exception as ex:
+                print(f"[SnapSplit DEBUG] recalc_face_normals raised: {ex}")
 
         return any_ok
 
@@ -1362,11 +1761,6 @@ def cap_single_object_hollow_style(obj) -> bool:
         except Exception:
             pass
         print(f"[SnapSplit DEBUG] ---- cap_single_object_hollow_style: {obj.name} DONE, any_ok={any_ok} ----")
-
-
-
-
-
 
 
 class SNAP_OT_planar_split(Operator):
@@ -1401,7 +1795,9 @@ class SNAP_OT_planar_split(Operator):
         axis = props.split_axis
         count = max(2, int(props.parts_count))
         if count >= 12:
-            self.report({'INFO'}, tr("op.split.many_parts_hint", f"Splitting into {count} parts can take a while on dense meshes..."))
+            self.report({'INFO'}, _trf("op.split.many_parts_hint",
+                                       "Splitting into {count} parts can take a while on dense meshes...",
+                                       count=count))
 
         offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
@@ -1409,7 +1805,6 @@ class SNAP_OT_planar_split(Operator):
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
 
         # Auto-cap after splitting if enabled
-                # Auto-cap after splitting if enabled
         if auto_cap and parts:
             capped_cnt = 0
             # NOTE: always use the ring-aware capping algorithm now, regardless
@@ -1438,19 +1833,18 @@ class SNAP_OT_planar_split(Operator):
                             tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."),
                             tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."))
             else:
-                report_user(self, 'INFO',
-                            tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."),
-                            tr("op.split.autocap.count", f"Auto-capped seams on {capped_cnt} part(s)."))
+                msg = _trf("op.split.autocap.count", "Auto-capped seams on {n} part(s).", n=capped_cnt)
+                report_user(self, 'INFO', msg, msg)
 
 
         if len(parts) < count:
-            report_user(self, 'WARNING',
-                        tr("op.split.fewer_parts", f"Fewer parts created than expected ({len(parts)} < {count})."),
-                        tr("op.split.fewer_parts", f"Fewer parts created than expected ({len(parts)} < {count})."))
+            msg = _trf("op.split.fewer_parts",
+                       "Fewer parts created than expected ({have} < {want}).",
+                       have=len(parts), want=count)
+            report_user(self, 'WARNING', msg, msg)
         else:
-            report_user(self, 'INFO',
-                        tr("op.split.parts_created", f"{len(parts)} parts created."),
-                        tr("op.split.parts_created", f"{len(parts)} parts created."))
+            msg = _trf("op.split.parts_created", "{n} parts created.", n=len(parts))
+            report_user(self, 'INFO', msg, msg)
 
         # ---------------------------
         # Route results into per-job collections (visible Parts, hidden Helpers)
@@ -1461,12 +1855,13 @@ class SNAP_OT_planar_split(Operator):
         # Build sets to separate final vs intermediate
         final_parts_set = set(parts)
 
-        # Heuristic: any mesh whose name starts with the source name and isn’t a final is considered intermediate
+        # Heuristic: any mesh whose name starts with the source name and isn't a final is considered intermediate
         candidates = [o for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith(obj.name)]
         intermediates = [o for o in candidates if o not in final_parts_set]
 
         # 1) Link only the final parts to the visible Parts job collection
-        bpy.ops.object.select_all(action='DESELECT')
+        # (RNA-based deselect instead of bpy.ops.object.select_all)
+        _deselect_all_objects()
         for p in parts:
             # Unlink from any other collections to keep Outliner clean
             try:
@@ -1565,6 +1960,69 @@ def _perimeter_of_edges(loop):
         p += (v0.co - v1.co).length
     return p
 
+# ---------------------------
+# Conservative pure-BMesh edge-loop walker (replaces bpy.ops.mesh.loop_multi_select)
+# ---------------------------
+
+def _next_edge_in_loop(edge, vert, boundary_mode):
+    """Return the next edge when walking an edge loop through 'vert', or None if ambiguous.
+
+    Rules (deliberately strict; any ambiguity returns None):
+      - boundary_mode (seed edge is a boundary edge): the next edge is the ONLY
+        other boundary edge at 'vert'. More than one or none -> ambiguous.
+      - interior mode: 'vert' must have exactly 4 edges and the current edge must
+        have exactly 2 faces. The next edge is the single edge at 'vert' that shares
+        no face with the current edge (the "opposite" edge in a quad grid).
+    """
+    if boundary_mode:
+        cands = [e for e in vert.link_edges if e != edge and e.is_boundary]
+        return cands[0] if len(cands) == 1 else None
+
+    if len(vert.link_edges) != 4:
+        return None
+    edge_faces = set(edge.link_faces)
+    if len(edge_faces) != 2:
+        return None
+    cands = [e for e in vert.link_edges
+             if e != edge and not (edge_faces & set(e.link_faces))]
+    return cands[0] if len(cands) == 1 else None
+
+def _walk_edge_loop_closed(seed_edge, max_steps):
+    """Walk an edge loop through 'seed_edge' and return its edges ONLY if it is a closed cycle.
+
+    Returns a list of BMEdge objects forming a closed loop, or None when the loop
+    cannot be proven closed (open chain, ambiguous vertex, revisited edge, step
+    limit reached). The walker never modifies the mesh or the selection.
+    """
+    try:
+        if seed_edge is None or not seed_edge.is_valid:
+            return None
+
+        boundary_mode = bool(seed_edge.is_boundary)
+        start_vert = seed_edge.verts[0]
+        cur_vert = seed_edge.verts[1]
+        cur_edge = seed_edge
+
+        loop = [seed_edge]
+        visited = {seed_edge}
+
+        for _ in range(max(4, int(max_steps))):
+            nxt = _next_edge_in_loop(cur_edge, cur_vert, boundary_mode)
+            if nxt is None:
+                return None
+            if nxt == seed_edge:
+                # Closed only if we came back through the start vertex of the seed edge
+                return loop if (cur_vert == start_vert and len(loop) >= 3) else None
+            if nxt in visited:
+                # Revisiting an edge that is not the seed -> pinch/figure-eight, reject
+                return None
+            loop.append(nxt)
+            visited.add(nxt)
+            cur_vert = nxt.other_vert(cur_vert)
+            cur_edge = nxt
+        return None
+    except Exception:
+        return None
 
 
 class SNAP_OT_cap_open_seams_now(Operator):
@@ -1607,8 +2065,14 @@ class SNAP_OT_cap_open_seams_now(Operator):
         sel_edges = [e for e in bm.edges if e.select]
         return sel_edges if len(sel_edges) == 2 else None
 
-    def _expand_edge_to_full_loop(self, obj, bm, edge):
-        """Expand a selected edge to a full edge loop selection and return the loop edges."""
+    def _expand_edge_to_full_loop_ops(self, obj, bm, edge):
+        """DOCUMENTED FALLBACK: expand an edge to a loop via bpy.ops.mesh.loop_multi_select.
+
+        Only used when the pure-BMesh walker cannot prove a closed cycle.
+        Blender's C edge-loop walker has no public Python equivalent, so this is
+        the single remaining operator-based loop selection in SnapSplit.
+        This fallback changes the BMesh selection (as the original code did).
+        """
         for e in bm.edges:
             e.select = False
         edge.select = True
@@ -1617,8 +2081,30 @@ class SNAP_OT_cap_open_seams_now(Operator):
             bpy.ops.mesh.loop_multi_select(ring=False)
         except Exception:
             pass
-        loop_edges = [e for e in bm.edges if e.select]
-        return loop_edges
+        return [e for e in bm.edges if e.select]
+
+    def _expand_edge_to_full_loop(self, obj, bm, edge):
+        """Expand a selected edge to a full edge loop and return the loop edges.
+
+        Step 1: pure-BMesh walker (no operator, no selection change).
+        Step 2: if no closed cycle could be proven, fall back to the operator
+                (only if _ALLOW_OPS_LOOP_FALLBACK is True).
+        """
+        try:
+            bm.edges.ensure_lookup_table()
+            walked = _walk_edge_loop_closed(edge, max_steps=len(bm.edges) + 1)
+        except Exception:
+            walked = None
+        if walked:
+            return walked
+
+        if _ALLOW_OPS_LOOP_FALLBACK:
+            print("[SnapSplit DEBUG] edge-loop walker found no closed cycle -> "
+                  "falling back to bpy.ops.mesh.loop_multi_select for this seed")
+            return self._expand_edge_to_full_loop_ops(obj, bm, edge)
+
+        # Fallback disabled: return only the seed edge (will fail the cyclic check)
+        return [edge]
 
     def _loop_is_cyclic_degree2(self, loop_edges):
         """Check if edges form a simple cycle where every vertex has degree 2."""
@@ -1628,17 +2114,13 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 count[v] = count.get(v, 0) + 1
         return all(c == 2 for c in count.values()) and len(loop_edges) >= 3
 
-    def _fill_like_altf(self):
-        """Try to fill selected loops similar to Alt+F; fall back to grid fill."""
-        try:
-            bpy.ops.mesh.fill(use_beauty=True)
-            return True
-        except Exception:
-            try:
-                bpy.ops.mesh.fill_grid()
-                return True
-            except Exception:
-                return False
+    def _fill_like_altf(self, obj, bm, edges):
+        """Fill the given loops like Mesh > Fill (Alt+F) using BMesh only (no operator, no selection)."""
+        ok = _fill_edges_bmesh(bm, edges, prefer_ngon=False)
+        if ok:
+            bmesh.update_edit_mesh(obj.data)
+        return ok
+
 
     def _cluster_split_ring_edges(self, obj, bm, plane_axis):
         """Cluster boundary edges into groups per split plane along the given axis."""
@@ -1699,16 +2181,12 @@ class SNAP_OT_cap_open_seams_now(Operator):
                     for e in loop_a + loop_b: e.select = True
                     bmesh.update_edit_mesh(obj.data)
                     if not select_only:
-                        ok = self._fill_like_altf()
+                        ok = self._fill_like_altf(obj, bm, loop_a + loop_b)
                         _leave_edit_mode()
+
                         if ok:
-                            try:
-                                _enter_edit_mode_edges(obj)
-                                bpy.ops.mesh.select_all(action='SELECT')
-                                bpy.ops.mesh.normals_make_consistent(inside=False)
-                            except Exception:
-                                pass
-                            _leave_edit_mode()
+                            # Recalculate normals via BMesh (no Edit Mode round trip)
+                            _recalc_normals_outside(obj)
                         return ok
                     else:
                         _leave_edit_mode()
@@ -1732,16 +2210,12 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 for e in loop_a + loop_b: e.select = True
                 bmesh.update_edit_mesh(obj.data)
                 if not select_only:
-                    ok = self._fill_like_altf()
+                    ok = self._fill_like_altf(obj, bm, loop_a + loop_b)
                     _leave_edit_mode()
+
                     if ok:
-                        try:
-                            _enter_edit_mode_edges(obj)
-                            bpy.ops.mesh.select_all(action='SELECT')
-                            bpy.ops.mesh.normals_make_consistent(inside=False)
-                        except Exception:
-                            pass
-                        _leave_edit_mode()
+                        # Recalculate normals via BMesh (no Edit Mode round trip)
+                        _recalc_normals_outside(obj)
                     return ok
                 else:
                     _leave_edit_mode()
@@ -1781,26 +2255,13 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
                 did = False
                 if not select_only:
-                    # Try simple face-from-edges first
-                    try:
-                        bpy.ops.mesh.edge_face_add()
-                        did = True
-                    except Exception:
-                        did = False
-                    if not did:
-                        # Fallback to beauty fill
-                        try:
-                            bpy.ops.mesh.fill(use_beauty=True)
-                            did = True
-                        except Exception:
-                            # Last resort: grid fill
-                            try:
-                                bpy.ops.mesh.fill_grid()
-                                did = True
-                            except Exception:
-                                did = False
+                    # N-gon first (like edge_face_add), then triangle fill; no operators
+                    did = _fill_edges_bmesh(bm, loop_a, prefer_ngon=True, normal=n_plane)
+                    if did:
+                        bmesh.update_edit_mesh(obj.data)
                 else:
                     did = True  # selection-only mode
+
 
                 any_selected = True
                 all_ok = all_ok and did
@@ -1831,8 +2292,9 @@ class SNAP_OT_cap_open_seams_now(Operator):
                 bmesh.update_edit_mesh(obj.data)
                 any_selected = True
                 if not select_only:
-                    ok = self._fill_like_altf()
+                    ok = self._fill_like_altf(obj, bm, loop_a + loop_b)
                     plane_ok = plane_ok and ok
+
                 i += 2
 
             all_ok = all_ok and plane_ok
@@ -1840,13 +2302,8 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
         _leave_edit_mode()
         if not select_only and all_ok and processed > 0:
-            try:
-                _enter_edit_mode_edges(obj)
-                bpy.ops.mesh.select_all(action='SELECT')
-                bpy.ops.mesh.normals_make_consistent(inside=False)
-            except Exception:
-                pass
-            _leave_edit_mode()
+            # Recalculate normals via BMesh (no Edit Mode round trip)
+            _recalc_normals_outside(obj)
 
         try:
             obj.data.validate(); obj.data.update()
@@ -1876,9 +2333,11 @@ class SNAP_OT_cap_open_seams_now(Operator):
                     success += 1
             except Exception as e:
                 _leave_edit_mode()
-                report_user(self, 'WARNING',
-                            tr("op.cap_now.failed_one", f"Processing failed on '{obj.name}': {e}"),
-                            tr("op.cap_now.failed_one", f"Processing failed on '{obj.name}': {e}"))
+                # Fill the {name}/{err} placeholders AFTER the translation lookup
+                msg = _trf("op.cap_now.failed_one",
+                           "Processing failed on '{name}': {err}",
+                           name=obj.name, err=str(e))
+                report_user(self, 'WARNING', msg, msg)
 
         if success == 0:
             if self.select_only:
@@ -1891,15 +2350,16 @@ class SNAP_OT_cap_open_seams_now(Operator):
                             tr("op.cap_now.none_capped", "Could not determine and fill split edge loops."))
             return {'CANCELLED'}
 
+        # Fill the {n} placeholder AFTER the translation lookup
         if self.select_only:
-            report_user(self, 'INFO',
-                        tr("op.cap_now.selected_count", f"Selected split edge loops on {success} object(s)."),
-                        tr("op.cap_now.selected_count", f"Selected split edge loops on {success} object(s)."))
+            msg = _trf("op.cap_now.selected_count",
+                       "Selected split edge loops on {n} object(s).", n=success)
         else:
-            report_user(self, 'INFO',
-                        tr("op.cap_now.capped_count", f"Capped seams on {success} object(s)."),
-                        tr("op.cap_now.capped_count", f"Capped seams on {success} object(s)."))
+            msg = _trf("op.cap_now.capped_count",
+                       "Capped seams on {n} object(s).", n=success)
+        report_user(self, 'INFO', msg, msg)
         return {'FINISHED'}
+
 
 # ---------------------------
 # Registration
@@ -1912,8 +2372,8 @@ classes = (
 )
 
 def register():
-    """Register operators and add the depsgraph handler if available."""
-    # Re-assign dynamic labels/descriptions through translations at register time (optional safety)
+    """Register operators. The depsgraph handler is NOT added unconditionally anymore."""
+    # Re-assign dynamic labels/descriptions through translations at register time.
     try:
         SNAP_OT_adjust_split_axis.bl_label = tr("op.adjust_axis.label", "Adjust split axis")
         SNAP_OT_planar_split.bl_label = tr("op.split.label", "Planar Split")
@@ -1927,21 +2387,23 @@ def register():
 
     for c in classes:
         bpy.utils.register_class(c)
-    # Optionally add depsgraph handler if defined
-    try:
-        if '_snapsplit_depsgraph_update' in globals():
-            if _snapsplit_depsgraph_update not in bpy.app.handlers.depsgraph_update_post:
-                bpy.app.handlers.depsgraph_update_post.append(_snapsplit_depsgraph_update)
-    except Exception as e:
-        print(f"[SnapSplit] Could not add depsgraph handler: {e}")
+
+    # Drop stale handlers first (e.g. left over from a hot reload), then install the
+    # one-shot file-load check and attach the depsgraph handler only if a preview is on.
+    _remove_handlers_named(bpy.app.handlers.depsgraph_update_post, _DEPSGRAPH_HANDLER_NAME)
+    _remove_handlers_named(bpy.app.handlers.load_post, _LOAD_HANDLER_NAME)
+    bpy.app.handlers.load_post.append(_snapsplit_load_post)
+    sync_depsgraph_handler()
+
 
 def unregister():
-    """Unregister operators and remove the depsgraph handler if present."""
-    try:
-        if '_snapsplit_depsgraph_update' in globals():
-            if _snapsplit_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
-                bpy.app.handlers.depsgraph_update_post.remove(_snapsplit_depsgraph_update)
-    except Exception as e:
-        print(f"[SnapSplit] Could not remove depsgraph handler: {e}")
+    """Unregister operators and make sure no SnapSplit handler stays behind."""
+    global _last_preview_active_obj, _last_connector_preview_selection_key
+
+    _remove_handlers_named(bpy.app.handlers.depsgraph_update_post, _DEPSGRAPH_HANDLER_NAME)
+    _remove_handlers_named(bpy.app.handlers.load_post, _LOAD_HANDLER_NAME)
+    _last_preview_active_obj = None
+    _last_connector_preview_selection_key = None
+
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

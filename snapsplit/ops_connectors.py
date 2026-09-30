@@ -29,7 +29,7 @@ from mathutils import Vector, Matrix
 from bpy.types import Operator
 from bpy_extras import view3d_utils
 
-from .utils import ensure_collection, unit_mm, report_user
+from .utils import ensure_collection, unit_mm, report_user, apply_modifier_data
 from .languages import tr  # centralized translation helper
 from .ops_split import warn_if_unapplied_transforms
 
@@ -734,16 +734,40 @@ def create_flush_barb_rect(w_mm=6.0, length_mm=8.0, barb_height_mm=0.6, barb_lip
 # ---------------------------
 
 def _apply_object_scale_if_needed(obj):
-    """Apply object scale if it's not uniform 1.0 to avoid Boolean instabilities."""
+    """Bake a non-unit object scale into the mesh to avoid Boolean instabilities.
+
+    Replaces object.transform_apply (scale only): the scale is written into the vertex
+    positions with Mesh.transform(), then obj.scale is reset to 1. The operator is kept
+    ONLY as a documented fallback for negative (mirroring) scale, where winding and
+    normals must match Blender's own behaviour.
+    """
     try:
+        if obj is None or obj.type != 'MESH' or obj.data is None:
+            return
         sx, sy, sz = obj.scale
-        if not (abs(sx - 1.0) < 1e-6 and abs(sy - 1.0) < 1e-6 and abs(sz - 1.0) < 1e-6):
+        if (abs(sx - 1.0) < 1e-6 and abs(sy - 1.0) < 1e-6 and abs(sz - 1.0) < 1e-6):
+            return
+
+        # Mirrored scale flips the winding: keep the proven operator for this rare case
+        if sx * sy * sz < 0.0:
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
+            # DOCUMENTED FALLBACK: negative scale, see docstring
             bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
             obj.select_set(False)
+            return
+
+        # Shared mesh data would change other objects too: give this object its own copy
+        if obj.data.users > 1:
+            obj.data = obj.data.copy()
+
+        # Bake the scale into the vertices, then reset the object scale
+        obj.data.transform(Matrix.Diagonal(Vector((sx, sy, sz, 1.0))))
+        obj.scale = (1.0, 1.0, 1.0)
+        obj.data.update()
     except Exception:
         pass
+
 
 
 def _set_boolean_solver_with_fallback(mod):
@@ -768,10 +792,12 @@ def boolean_apply(target_obj, mod):
     bpy.context.view_layer.objects.active = target_obj
     target_obj.select_set(True)
     try:
-        bpy.ops.object.modifier_apply(modifier=mod.name)
+        # Mesh-data based apply (replaces the modifier_apply operator)
+        apply_modifier_data(target_obj, mod)
     except Exception as e:
         report_user(None, 'WARNING',
                     tr("op.common.warn.mod_apply_fail", f"Modifier apply failed ({mod.name}): {e}"))
+
     target_obj.select_set(False)
     try:
         target_obj.data.validate(verbose=False)
@@ -1313,7 +1339,8 @@ def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, pa
             bpy.context.view_layer.objects.active = ten
             ten.select_set(True)
             try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
+                apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
+
             except Exception as e:
                 report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
@@ -1488,21 +1515,36 @@ def _combined_world_bounds(objects):
 # ---------------------------------------------------------------------------
 
 def _recalc_normals_outside(obj):
-    """Recalculate mesh normals to point outward; improves Boolean solver stability."""
+    """Recalculate face normals to point outward (improves Boolean solver stability).
+
+    Pure BMesh version. Replaces the former Edit Mode sequence
+    mode_set(EDIT) + mesh.select_all(SELECT) + mesh.normals_make_consistent(inside=False).
+    Works in Object Mode (temporary BMesh, written back) and directly on the edit
+    BMesh if the object happens to be in Edit Mode.
+    NOTE: unlike the old version this does not change the selection or the active object.
+    """
+    if not obj or obj.type != 'MESH' or obj.data is None:
+        return
     try:
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.normals_make_consistent(inside=False)
-        bpy.ops.object.mode_set(mode='OBJECT')
-        obj.select_set(False)
-    except Exception:
-        try:
-            if bpy.context.object and bpy.context.object.mode == 'EDIT':
-                bpy.ops.object.mode_set(mode='OBJECT')
-        except Exception:
-            pass
+        if obj.mode == 'EDIT':
+            # Live edit BMesh: modify in place and flush to the viewport
+            bm = bmesh.from_edit_mesh(obj.data)
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+            bmesh.update_edit_mesh(obj.data)
+        else:
+            # Object Mode: read into a temporary BMesh and write back
+            bm = bmesh.new()
+            try:
+                bm.from_mesh(obj.data)
+                bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+                bm.to_mesh(obj.data)
+            finally:
+                bm.free()
+            obj.data.update()
+    except Exception as ex:
+        print(f"[SnapSplit DEBUG] _recalc_normals_outside failed on "
+              f"'{getattr(obj, 'name', '?')}': {ex}")
+
 
 
 def _build_combined_solid_for_clip(a, b, cutters_coll, name="SnapSplit_ClipSolid"):
@@ -1641,7 +1683,8 @@ def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, pa
             bpy.context.view_layer.objects.active = ten
             ten.select_set(True)
             try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
+                apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
+
             except Exception as e:
                 report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
@@ -1745,7 +1788,8 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
             bpy.context.view_layer.objects.active = tenon
             tenon.select_set(True)
             try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
+                apply_modifier_data(tenon, mod)  # replaces the modifier_apply operator
+
             except Exception as e:
                 report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             tenon.select_set(False)
@@ -1861,7 +1905,8 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
             bpy.context.view_layer.objects.active = conn
             conn.select_set(True)
             try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
+                apply_modifier_data(conn, mod)  # replaces the modifier_apply operator
+
             except Exception as e:
                 report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             conn.select_set(False)
@@ -2138,7 +2183,8 @@ name_prefix="Dovetail_Click", return_placement=False):
             bpy.context.view_layer.objects.active = ten
             ten.select_set(True)
             try:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
+                apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
+
             except Exception as e:
                 report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
@@ -2478,7 +2524,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         bpy.context.view_layer.objects.active = tenon
                         tenon.select_set(True)
                         try:
-                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                            apply_modifier_data(tenon, mod)  # replaces the modifier_apply operator
+
                         except Exception as e:
                             report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         tenon.select_set(False)
@@ -2566,7 +2613,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         bpy.context.view_layer.objects.active = conn
                         conn.select_set(True)
                         try:
-                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                            apply_modifier_data(conn, mod)  # replaces the modifier_apply operator
+
                         except Exception as e:
                             report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         conn.select_set(False)
@@ -2678,7 +2726,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                         bpy.context.view_layer.objects.active = ten
                         ten.select_set(True)
                         try:
-                            bpy.ops.object.modifier_apply(modifier=mod.name)
+                            apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
+
                         except Exception as e:
                             report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         ten.select_set(False)

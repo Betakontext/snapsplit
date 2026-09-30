@@ -442,15 +442,6 @@ class SNAP_PT_panel(Panel):
             row_align.enabled = can_align
             row_align.operator("snapsplit.align_faces", text=tr("ui.align_faces", "Align Faces"), icon='SNAP_ON')
 
-        # =========================
-        # Donate
-        # =========================
-
-        col = layout.column(align=True)
-        col.separator()
-        op = col.operator("wm.url_open", text=tr("ui.buy_me_coffee", "Buy me a coffee "), icon='FUND')
-        op.url = "https://buymeacoffee.com/betakontext"
-        layout.separator()
 
 
 def register():

@@ -77,6 +77,30 @@ def _snapsplit_update_connector_preview(self, context):
         # Fail silently to not break UI interactions if the preview function is unavailable
         pass
 
+def _snapsplit_update_show_split_preview(self, context):
+    """Update callback of 'show_split_preview': refresh the preview, then sync the depsgraph handler."""
+    try:
+        _snapsplit_update_preview(self, context)
+    finally:
+        try:
+            from . import ops_split
+            ops_split.sync_depsgraph_handler()
+        except Exception:
+            # Never break UI interaction because of handler bookkeeping
+            pass
+
+
+def _snapsplit_update_connector_live_preview(self, context):
+    """Update callback of 'connector_live_preview': refresh the preview, then sync the depsgraph handler."""
+    try:
+        _snapsplit_update_connector_preview(self, context)
+    finally:
+        try:
+            from . import ops_split
+            ops_split.sync_depsgraph_handler()
+        except Exception:
+            pass
+
 
 def _snapsplit_update_connector_type(self, context):
     """Property update callback for connector_type.
@@ -136,11 +160,14 @@ def _mat_item_desc(key: str, val: float) -> str:
     Uses languages.py template key "profiles.mat.tooltip" and formats it
     with {val} = tolerance value in mm, rounded to 2 decimals.
     """
-    templ = tr("profiles.mat.tooltip", "Recommended tolerance per side: {val} mm")
+    # The templates in languages.py contain "{val:.2f}", so 'val' must be passed as a
+    # float. A pre-formatted string raises ValueError and always triggers the fallback.
+    templ = tr("profiles.mat.tooltip", "Recommended tolerance per side: {val:.2f} mm")
     try:
-        return templ.format(val=f"{val:.2f}")
+        return templ.format(val=float(val))
     except Exception:
         return f"Recommended tolerance per side: {val:.2f} mm"
+
 
 
 def _material_items():
@@ -189,7 +216,7 @@ class SnapSplitProps(PropertyGroup):
             "Show temporary orange planes at planned cut positions"
         ),
         default=False,
-        update=_snapsplit_update_preview,
+        update=_snapsplit_update_show_split_preview,      # was: _snapsplit_update_preview
     )
 
     parts_count: IntProperty(
