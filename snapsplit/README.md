@@ -162,7 +162,7 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
     snapsplit
     ├── blender_manifest.toml
     ├── __init__.py
-    ├── languages.py
+    ├── localization.py
     ├── LICENCE.txt
     ├── ops_align.py
     ├── ops_connectors.py
@@ -181,6 +181,18 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs. Don't hesitate to contact me or participate via fork and pull request.
 
 ### Changelog:
+**V_0.1.7**
+- Migrated translation system from key-based tr() to literal strings with _trf()
+- All translations now centralized in localization.py
+- Implemented _register_translations() for proper Blender integration
+- Enhanced stability for custom connector boolean operations
+- Optimized bpy.ops usage: replaced selection operators with RNA/BMesh API
+- Depsgraph handler now registers only when live preview is active
+- Better error handling and mesh cleanup for orphaned objects
+- Improved UI layout for connector parameter groups
+- Full adherence to Blender Extensions review requirements
+- Removed advertisement/donation links from UI
+
 **V_0.1.6**
 - Added live preview option while creating connectors in Line/Grid mode for all connector types and a more adjustment options for connector creations -> Margin, Taper, Chamfer, Edge sensitive Span, Rotations and Offset along Length/Width on the cutting plane
 - Stability fixes for cutting and cap hollow forms created via standard boolean modifier.
