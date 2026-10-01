@@ -32,7 +32,6 @@ from bpy_extras import view3d_utils
 from .utils import ensure_collection, unit_mm, report_user, apply_modifier_data
 from .languages import tr  # centralized translation helper
 from .ops_split import warn_if_unapplied_transforms
-from .utils import _trf
 
 
 
@@ -452,7 +451,10 @@ def create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
     non_manifold_found = any(not e.is_manifold for e in bm.edges)
     if non_manifold_found:
         report_user(None, 'WARNING',
-                    _trf("Custom connector source mesh '{name}' has non-manifold geometry (open or multi-shared edges); boolean results may be unreliable.", name=source_obj.name))
+                    tr("op.connect.custom.warn.nonmanifold",
+                       f"Custom connector source mesh '{source_obj.name}' has "
+                       f"non-manifold geometry (open or multi-shared edges); "
+                       f"boolean results may be unreliable."))
 
     # NEW: recalculate face normals to point consistently outward. This is the
     # actual fix for the "target part disappears" bug: an EXACT-solver DIFFERENCE
@@ -794,7 +796,7 @@ def boolean_apply(target_obj, mod):
         apply_modifier_data(target_obj, mod)
     except Exception as e:
         report_user(None, 'WARNING',
-                    _trf('Modifier apply failed ({name}): {error}', name=mod.name, error=e))
+                    tr("op.common.warn.mod_apply_fail", f"Modifier apply failed ({mod.name}): {e}"))
 
     target_obj.select_set(False)
     try:
@@ -1340,7 +1342,7 @@ def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, pa
                 apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
 
             except Exception as e:
-                report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
     union_and_dispose(part_b, ten, name=f"{name_prefix}_FlushTenonUnion")
 
@@ -1684,7 +1686,7 @@ def add_flush_barb_for_rect(base_matrix, w_mm, length_mm, props, name_prefix, pa
                 apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
 
             except Exception as e:
-                report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
     union_and_dispose(part_b, ten, name=f"{name_prefix}_FlushTenonUnion")
 
@@ -1789,7 +1791,7 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
                 apply_modifier_data(tenon, mod)  # replaces the modifier_apply operator
 
             except Exception as e:
-                report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             tenon.select_set(False)
     union_and_dispose(b, tenon, name=f"{name_prefix}_Union")
 
@@ -1817,7 +1819,7 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
 
     source_obj = getattr(props, "custom_connector_object", None)
     if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
-        report_user(None, 'ERROR', 'Please select a connector object for Custom Connector.')
+        report_user(None, 'ERROR', tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
         return None, None
 
     warn_if_unapplied_transforms(source_obj)
@@ -1851,7 +1853,8 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
         force_hard_cut = True
     elif span_axis_choice != "NONE" and span_role is None:
         report_user(None, 'WARNING',
-                    'Selected Span Axis matches the seam normal, not the seam plane; span axis ignored.')
+                    tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                       "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
 
     L_scene = depth_mm * unit_mm()
     embed_pct = float(getattr(props, "pin_embed_pct", 50.0)) * 0.01
@@ -1883,13 +1886,14 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
         clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
         if clip_solid is None:
             report_user(None, 'WARNING',
-                        'Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed.')
+                        tr("op.connect.dovetail.warn.hardcut_build_fail",
+                           "Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed."))
 
     conn = create_custom_connector_instance(source_obj, width_mm, length_mm, depth_mm,
                                              chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                              name=f"{name_prefix}")
     if conn is None:
-        report_user(None, 'ERROR', 'Selected connector object has no usable mesh data.')
+        report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
         return None, None
     conn.matrix_world = M
     cutters_coll.objects.link(conn)
@@ -1904,7 +1908,7 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
                 apply_modifier_data(conn, mod)  # replaces the modifier_apply operator
 
             except Exception as e:
-                report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             conn.select_set(False)
 
     # NEW: clip against the real combined A/B surface instead of leaving overshoot geometry.
@@ -1912,7 +1916,8 @@ def place_one_custom_connector_at(a, b, axis, point_world, frame_z=None, props=N
         ok = _clip_helper_to_combined_surface(conn, clip_solid)
         if not ok:
             report_user(None, 'WARNING',
-                        'Hard-side cut failed on the connector; keeping untrimmed connector geometry.')
+                        tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                           "Hard-side cut failed on the connector; keeping untrimmed connector geometry."))
 
     union_and_dispose_safe(b, conn, name=f"{name_prefix}_Union", warn_label=name_prefix)
 
@@ -2115,7 +2120,8 @@ name_prefix="Dovetail_Click", return_placement=False):
         force_hard_cut = True
     elif span_axis_choice != "NONE" and span_role is None:
         report_user(None, 'WARNING',
-                    'Selected Span Axis matches the seam normal, not the seam plane; span axis ignored.')
+                    tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                       "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
 
 
     # Build placement frame at click with embed percentage along n
@@ -2155,7 +2161,8 @@ name_prefix="Dovetail_Click", return_placement=False):
         clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
         if clip_solid is None:
             report_user(None, 'WARNING',
-                        'Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed.')
+                        tr("op.connect.dovetail.warn.hardcut_build_fail",
+                           "Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed."))
 
     # Create dovetail with axis-relative dimensions and signed in-plane taper
     signed_taper = float(getattr(props, "dovetail_signed_taper_pct", 0.0))
@@ -2179,7 +2186,7 @@ name_prefix="Dovetail_Click", return_placement=False):
                 apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
 
             except Exception as e:
-                report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
             ten.select_set(False)
 
     # Clip the tenon against the real object surface instead of AABB slabs
@@ -2187,7 +2194,8 @@ name_prefix="Dovetail_Click", return_placement=False):
         ok = _clip_helper_to_combined_surface(ten, clip_solid)
         if not ok:
             report_user(None, 'WARNING',
-                        'Hard-side cut failed on the connector; keeping untrimmed connector geometry.')
+                        tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                           "Hard-side cut failed on the tenon; keeping untrimmed connector geometry."))
 
     # UNION into B
     union_and_dispose(b, ten, name=f"{name_prefix}_Union")
@@ -2380,7 +2388,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
         _custom_src = getattr(props, "custom_connector_object", None)
         if _custom_src is None or _custom_src.type != 'MESH' or _custom_src.data is None:
             report_user(None, 'ERROR',
-                        'Please select a connector object for Custom Connector.')
+                        tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
             return []
         warn_if_unapplied_transforms(_custom_src)
 
@@ -2436,14 +2444,16 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 dovetail_force_hard_cut_pair = True
             elif dovetail_span_axis_choice != "NONE" and dovetail_span_role_pair is None:
                 report_user(None, 'WARNING',
-                            'Selected Span Axis matches the seam normal, not the seam plane; span axis ignored.')
+                            tr("op.connect.dovetail.warn.span_axis_not_in_plane",
+                               "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored."))
 
         dovetail_clip_solid = None
         if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"} and (bool(getattr(props, "dovetail_hard_side_cut", False)) or dovetail_force_hard_cut_pair):
             dovetail_clip_solid = _build_combined_solid_for_clip(a, b, cutters_coll)
             if dovetail_clip_solid is None:
                 report_user(None, 'WARNING',
-                            'Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed.')
+                            tr("op.connect.dovetail.warn.hardcut_build_fail",
+                               "Hard-side cut: could not build combined surface (seam may not be closed); connectors left untrimmed."))
 
 
         for i, p in enumerate(points):
@@ -2517,7 +2527,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             apply_modifier_data(tenon, mod)  # replaces the modifier_apply operator
 
                         except Exception as e:
-                            report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         tenon.select_set(False)
 
                 union_and_dispose(b, tenon, name=f"TenonUnion_{i}")
@@ -2550,7 +2560,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             elif ctype_cur == "CUSTOM":
                 source_obj = getattr(props, "custom_connector_object", None)
                 if source_obj is None or source_obj.type != 'MESH' or source_obj.data is None:
-                    report_user(None, 'ERROR', 'Please select a connector object for Custom Connector.')
+                    report_user(None, 'ERROR', tr("op.connect.custom.err.no_object", "Please select a connector object for Custom Connector."))
                     created.append(None)
                     continue
 
@@ -2592,7 +2602,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                                                         chamfer_mm=float(getattr(props, "add_chamfer_mm", 0.0)),
                                                         name=f"Custom_{i}")
                 if conn is None:
-                    report_user(None, 'ERROR', 'Selected connector object has no usable mesh data.')
+                    report_user(None, 'ERROR', tr("op.connect.custom.err.empty_mesh", "Selected connector object has no usable mesh data."))
                     created.append(None)
                     continue
                 conn.matrix_world = Mc
@@ -2606,14 +2616,15 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             apply_modifier_data(conn, mod)  # replaces the modifier_apply operator
 
                         except Exception as e:
-                            report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         conn.select_set(False)
 
                 if dovetail_clip_solid is not None:
                     ok = _clip_helper_to_combined_surface(conn, dovetail_clip_solid)
                     if not ok:
                         report_user(None, 'WARNING',
-                                    'Hard-side cut failed on the connector; keeping untrimmed connector geometry.')
+                                    tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                                       f"Hard-side cut failed on Custom_{i}; keeping untrimmed connector geometry."))
 
                 union_and_dispose_safe(b, conn, name=f"CustomUnion_{i}", warn_label=f"Custom_{i}")
 
@@ -2718,7 +2729,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
                             apply_modifier_data(ten, mod)  # replaces the modifier_apply operator
 
                         except Exception as e:
-                            report_user(None, 'WARNING', _trf('Bevel apply failure: {error}', error=e))
+                            report_user(None, 'WARNING', tr("op.common.warn.bevel_apply", f"Bevel apply failure: {e}"))
                         ten.select_set(False)
 
                 # Hard-side cut clips against the pre-built combined surface
@@ -2727,7 +2738,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
                     ok = _clip_helper_to_combined_surface(ten, dovetail_clip_solid)
                     if not ok:
                         report_user(None, 'WARNING',
-                                    'Hard-side cut failed on the connector; keeping untrimmed connector geometry.')
+                                    tr("op.connect.dovetail.warn.hardcut_tenon_fail",
+                                       f"Hard-side cut failed on Dovetail_{i}; keeping untrimmed connector geometry."))
 
                 union_and_dispose(b, ten, name=f"DovetailUnion_{i}")
 
@@ -3146,7 +3158,8 @@ def update_connector_placement_preview(context):
         if cap_hit:
             if not _connector_preview_cap_warned:
                 report_user(None, 'WARNING',
-                            _trf('Connector live preview stopped at {cap} objects; remaining points are not shown.', cap=AUTOPREVIEW_CAP))
+                            tr("op.connect.preview.warn.cap",
+                               f"Connector live preview stopped at {AUTOPREVIEW_CAP} objects; remaining points are not shown."))
                 _connector_preview_cap_warned = True
         else:
             _connector_preview_cap_warned = False
@@ -3174,7 +3187,7 @@ class SNAP_OT_place_connectors_click(Operator):
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) != 2:
             report_user(self, 'ERROR',
-                        'Select exactly 2 adjacent split parts.')
+                        tr("op.connect.click.err.need2", "Select exactly 2 adjacent split parts."))
             return {'CANCELLED'}
 
         self.a, self.b = sel
@@ -3184,7 +3197,7 @@ class SNAP_OT_place_connectors_click(Operator):
         try:
             self.seam_pos = _pair_seam_plane_pos(self.a, self.b, self.axis, props)
         except Exception:
-            report_user(self, 'ERROR', 'Could not compute seam plane.')
+            report_user(self, 'ERROR', tr("op.connect.click.err.seam", "Could not compute seam plane."))
             return {'CANCELLED'}
 
         try:
@@ -3537,7 +3550,7 @@ class SNAP_OT_place_connectors_click(Operator):
             pass
 
         if cancelled:
-            report_user(self, 'INFO', 'Placement cancelled.')
+            report_user(self, 'INFO', tr("op.connect.click.cancelled", "Placement cancelled."))
 
     def modal(self, context, event):
         """Handle mouse movement for preview updates and left-click for placement."""
@@ -3652,13 +3665,13 @@ class SNAP_OT_place_connectors_click(Operator):
 
                 except Exception as e:
                     report_user(self, 'ERROR',
-                                _trf('Placement failed: {error}', error=e))
+                                tr("op.connect.click.err.place", f"Placement failed: {e}"))
                 return {'RUNNING_MODAL'}
 
             return {'RUNNING_MODAL'}
 
         except Exception as e:
-            report_user(self, 'ERROR', _trf('Modal error: {error}', error=e))
+            report_user(self, 'ERROR', tr("op.connect.click.err.modal", f"Modal error: {e}"))
             return {'RUNNING_MODAL'}
 
     def _intersect_mouse_with_seam_plane(self, context, event):
@@ -3753,7 +3766,7 @@ class SNAP_OT_add_connectors(Operator):
         sel = [o for o in context.selected_objects if o.type == 'MESH']
         if len(sel) < 2:
             report_user(self, 'ERROR',
-                        'Select at least 2 cut mesh-pieces.')
+                        tr("op.connect.batch.err.need2", "Select at least 2 cut mesh-pieces."))
             return {'CANCELLED'}
 
         created = place_connectors_between(
@@ -3770,7 +3783,7 @@ class SNAP_OT_add_connectors(Operator):
             pass
 
         report_user(self, 'INFO',
-                    _trf('{value} connectors created.', value=len(created)))
+                    tr("op.connect.batch.info.done", f"{len(created)} connectors created.").format(n=len(created)))
         return {'FINISHED'}
 
 

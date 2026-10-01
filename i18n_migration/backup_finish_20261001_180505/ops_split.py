@@ -40,6 +40,12 @@ from .utils import _trf
 # Import translation helper
 # 'tr' resolves UI strings from a central language dictionary.
 # It accepts a key and a default English fallback text.
+try:
+    from .languages import tr
+except Exception:
+    # Fallback if languages module is unavailable
+    def tr(key: str, fallback: str = "") -> str:
+        return fallback or key
 
 
 # ---------------------------
@@ -180,18 +186,18 @@ def warn_if_unapplied_transforms(obj, operator=None):
         if has_loc or has_rot or non_uniform or negative_scale:
             # Build bilingual message via translation keys
             details = []
-            if has_loc: details.append('Location')
-            if has_rot: details.append('Rotation')
-            if non_uniform: details.append('Non-uniform Scale')
-            if negative_scale: details.append('Negative Scale')
+            if has_loc: details.append(tr("TRANSFORM_LOCATION", "Location"))
+            if has_rot: details.append(tr("TRANSFORM_ROTATION", "Rotation"))
+            if non_uniform: details.append(tr("TRANSFORM_NON_UNIFORM_SCALE", "Non-uniform Scale"))
+            if negative_scale: details.append(tr("TRANSFORM_NEGATIVE_SCALE", "Negative Scale"))
             details_str = ", ".join(details)
 
-            msg = 'Object has unapplied transforms'
-            hint = 'Consider Apply All Transforms (Ctrl+A) for exact and predictable split results.'
+            msg = tr("warn.unapplied_transforms", "Object has unapplied transforms")
+            hint = tr("warn.apply_transforms_hint", "Consider Apply All Transforms (Ctrl+A) for exact and predictable split results.")
             msg_all = f"{msg}: {details_str}. {hint}"
 
             if operator is not None:
-                report_user(operator, 'INFO', msg_all)
+                report_user(operator, 'INFO', msg_all, msg_all)
             else:
                 print(f"[SnapSplit] {msg_all}")
     except Exception:
@@ -1197,7 +1203,8 @@ class SNAP_OT_adjust_split_axis(Operator):
         obj = context.active_object
         if not obj or obj.type != 'MESH':
             report_user(self, 'ERROR',
-                        'Please select a mesh object.')
+                        tr("ERR_SELECT_MESH", "Please select a mesh object."),
+                        tr("ERR_SELECT_MESH", "Please select a mesh object."))
             return {'CANCELLED'}
 
         warn_if_unapplied_transforms(obj, operator=self)
@@ -1266,9 +1273,9 @@ class SNAP_OT_adjust_split_axis(Operator):
             try: self._region.tag_redraw()
             except Exception: pass
 
-        msg_ok = 'Split axis adjusted.'
-        msg_cancel = 'Adjust split axis cancelled.'
-        report_user(self, 'INFO', msg_cancel if cancelled else msg_ok)
+        msg_ok = tr("op.adjust_axis.done", "Split axis adjusted.")
+        msg_cancel = tr("op.adjust_axis.cancelled", "Adjust split axis cancelled.")
+        report_user(self, 'INFO', msg_cancel if cancelled else msg_ok, msg_cancel if cancelled else msg_ok)
 
     def modal(self, context, event):
         """Handle mouse/keyboard events to adjust offset and update the preview."""
@@ -1751,7 +1758,8 @@ class SNAP_OT_planar_split(Operator):
         obj = context.active_object
         if not obj or obj.type != 'MESH':
             report_user(self, 'ERROR',
-                        'Please select a mesh object.')
+                        tr("op.common.select_mesh", "Please select a mesh object."),
+                        tr("op.common.select_mesh", "Please select a mesh object."))
             return {'CANCELLED'}
 
         warn_if_unapplied_transforms(obj, operator=self)
@@ -1771,7 +1779,9 @@ class SNAP_OT_planar_split(Operator):
         axis = props.split_axis
         count = max(2, int(props.parts_count))
         if count >= 12:
-            self.report({'INFO'}, _trf('Splitting into many parts can take a while on dense meshes...'))
+            self.report({'INFO'}, _trf("op.split.many_parts_hint",
+                                       "Splitting into {count} parts can take a while on dense meshes...",
+                                       count=count))
 
         offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
@@ -1804,19 +1814,21 @@ class SNAP_OT_planar_split(Operator):
 
             if capped_cnt == 0:
                 report_user(self, 'WARNING',
-                            'Auto-cap during split did not find valid loops to fill.')
+                            tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."),
+                            tr("op.split.autocap.none", "Auto-cap during split did not find valid loops to fill."))
             else:
-                msg = _trf("Auto-capped seams on {n} part(s).", n=capped_cnt)
-                report_user(self, 'INFO', msg)
+                msg = _trf("op.split.autocap.count", "Auto-capped seams on {n} part(s).", n=capped_cnt)
+                report_user(self, 'INFO', msg, msg)
 
 
         if len(parts) < count:
-            msg = _trf("Fewer parts created than expected ({have} < {want}).",
+            msg = _trf("op.split.fewer_parts",
+                       "Fewer parts created than expected ({have} < {want}).",
                        have=len(parts), want=count)
-            report_user(self, 'WARNING', msg)
+            report_user(self, 'WARNING', msg, msg)
         else:
-            msg = _trf("{n} parts created.", n=len(parts))
-            report_user(self, 'INFO', msg)
+            msg = _trf("op.split.parts_created", "{n} parts created.", n=len(parts))
+            report_user(self, 'INFO', msg, msg)
 
         # ---------------------------
         # Route results into per-job collections (visible Parts, hidden Helpers)
@@ -2001,25 +2013,29 @@ class SNAP_OT_cap_open_seams_now(Operator):
     """Fill between exactly two split edge loops (outer+inner) per plane; prefers seed edges if present."""
     bl_idname = "snapsplit.cap_open_seams_now"
     bl_label = "Cap seams now"
-    bl_description = 'Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred.'
+    bl_description = tr(
+        "op.cap_now.desc",
+        "Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred."
+    )
     bl_options = {'REGISTER', 'UNDO'}
 
     only_selected: bpy.props.BoolProperty(
-        name='Only selected objects',
+        name=tr("op.cap_now.only_selected.name", "Only selected objects"),
         default=True
     )
     max_planes: bpy.props.IntProperty(
-        name='Max planes',
-        description='0 = all planes per object, 1 = only largest',
+        name=tr("MAX_PLANES", "Max planes"),
+        description=tr("op.cap_now.max_planes.desc", "0 = all planes per object, 1 = only largest"),
         default=0, min=0, soft_max=12
     )
     select_only: bpy.props.BoolProperty(
-        name='Select only (no fill)',
+        name=tr("op.cap_now.select_only.name", "Select only (no fill)"),
         default=False
     )
     require_two_seeds: bpy.props.BoolProperty(
-        name='Require exactly two seed edges',
-        description='If exactly two edges are selected in Edit Mode, use them as seeds only (no auto-detection).',
+        name=tr("op.cap_now.require_two_seeds.name", "Require exactly two seed edges"),
+        description=tr("op.cap_now.require_two_seeds.desc",
+                       "If exactly two edges are selected in Edit Mode, use them as seeds only (no auto-detection)."),
         default=False
     )
 
@@ -2290,7 +2306,8 @@ class SNAP_OT_cap_open_seams_now(Operator):
 
         if not targets:
             report_user(self, 'ERROR',
-                        'No mesh objects to cap. Select split parts or use the parts collection.')
+                        tr("op.cap_now.no_targets", "No mesh objects to cap. Select split parts or use the parts collection."),
+                        tr("op.cap_now.no_targets", "No mesh objects to cap. Select split parts or use the parts collection."))
             return {'CANCELLED'}
 
         success = 0
@@ -2301,25 +2318,30 @@ class SNAP_OT_cap_open_seams_now(Operator):
             except Exception as e:
                 _leave_edit_mode()
                 # Fill the {name}/{err} placeholders AFTER the translation lookup
-                msg = _trf("Processing failed on '{name}': {err}",
+                msg = _trf("op.cap_now.failed_one",
+                           "Processing failed on '{name}': {err}",
                            name=obj.name, err=str(e))
-                report_user(self, 'WARNING', msg)
+                report_user(self, 'WARNING', msg, msg)
 
         if success == 0:
             if self.select_only:
                 report_user(self, 'WARNING',
-                            'Could not determine split edge loops to select.')
+                            tr("op.cap_now.none_selected", "Could not determine split edge loops to select."),
+                            tr("op.cap_now.none_selected", "Could not determine split edge loops to select."))
             else:
                 report_user(self, 'WARNING',
-                            'Could not determine and fill split edge loops.')
+                            tr("op.cap_now.none_capped", "Could not determine and fill split edge loops."),
+                            tr("op.cap_now.none_capped", "Could not determine and fill split edge loops."))
             return {'CANCELLED'}
 
         # Fill the {n} placeholder AFTER the translation lookup
         if self.select_only:
-            msg = _trf("Selected split edge loops on {n} object(s).", n=success)
+            msg = _trf("op.cap_now.selected_count",
+                       "Selected split edge loops on {n} object(s).", n=success)
         else:
-            msg = _trf("Capped seams on {n} object(s).", n=success)
-        report_user(self, 'INFO', msg)
+            msg = _trf("op.cap_now.capped_count",
+                       "Capped seams on {n} object(s).", n=success)
+        report_user(self, 'INFO', msg, msg)
         return {'FINISHED'}
 
 

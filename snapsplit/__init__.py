@@ -18,15 +18,15 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
-# __init__.py - SnapSplit package entry point
+# __init__.py - SnapSplit add-on entry point
 
 bl_info = {
     "name": "SnapSplit  Print-ready segmentation with connectors",
     "author": "Christoph Medicus",
     "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
-    "version": (0, 1, 6),
-    "blender": (5, 2, 2),
+    "version": (0, 1, 7),
+    "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
         "Split meshes into printable parts and generate fitting connectors for 3D printing."
@@ -39,8 +39,13 @@ bl_info = {
 
 import importlib
 
-# Import submodules
-from . import languages  # NEW: central translations
+import bpy
+
+# Import submodules.
+# NOTE: "languages" is intentionally NOT imported here anymore. The other modules
+# still do "from .languages import tr" until step 3 (tr() -> literals) is finished,
+# so languages.py must stay in the add-on folder until then.
+from . import localization  # generated data module (see migrate_languages.py)
 from . import utils
 from . import profiles
 from . import prefs
@@ -49,28 +54,105 @@ from . import ops_connectors
 from . import ops_align
 from . import ui
 
-# Registration order matters if modules reference each other in register()
+# Set to False for release builds to skip the development hot-reload.
+DEV_RELOAD = True
+
+# Registration order matters if modules reference each other in register().
 # Ensure ops_align registers BEFORE ui so its WindowManager props exist.
-_modules = [languages, utils, profiles, prefs, ops_split, ops_connectors, ops_align, ui]
+# "localization" has no register(); it is listed so that it is reloaded first.
+_modules = [
+    localization,
+    utils,
+    profiles,
+    prefs,
+    ops_split,
+    ops_connectors,
+    ops_align,
+    ui,
+]
+
+# Modules whose register() completed successfully (in registration order)
+_registered = []
+
+
+# ---------------------------
+# Translations
+# ---------------------------
+
+def _unregister_translations():
+    """Remove the add-on's translation dictionary (safe to call when not registered)."""
+    try:
+        bpy.app.translations.unregister(__name__)
+    except Exception:
+        # Not registered (first start) or translation support not built in: ignore
+        pass
+
+
+def _register_translations():
+    """Register localization.DICTIONARY with Blender's translation system.
+
+    A failure here must never prevent the add-on from loading; the UI then
+    simply stays in English.
+    """
+    known = set(bpy.app.translations.locales)
+    dictionary = {
+        locale: entries
+        for locale, entries in localization.DICTIONARY.items()
+        if locale in known
+    }
+
+    skipped = sorted(set(localization.DICTIONARY) - set(dictionary))
+    if skipped:
+        print(f"SnapSplit: locales unknown to this Blender build were skipped: {skipped}")
+
+    # Hot-reload safety: drop a stale registration before registering again
+    _unregister_translations()
+    try:
+        bpy.app.translations.register(__name__, dictionary)
+    except Exception as exc:
+        print(f"SnapSplit: translation registration failed, UI stays English: {exc}")
+
+
+# ---------------------------
+# Registration
+# ---------------------------
 
 def register():
-    """Register all SnapSplit submodules (with hot-reload support during development)."""
+    """Register translations and all SnapSplit submodules (hot-reload aware)."""
     # Reload modules during development to pick up edits without restarting Blender
-    for m in _modules:
-        try:
-            importlib.reload(m)
-        except Exception:
-            # On first load, reload may fail harmlessly
-            pass
+    if DEV_RELOAD:
+        for m in _modules:
+            try:
+                importlib.reload(m)
+            except Exception:
+                # On first load, reload may fail harmlessly
+                pass
 
-    for m in _modules:
-        if hasattr(m, "register"):
-            m.register()
+    # Translations first, so labels are translatable as soon as the classes exist
+    _register_translations()
+
+    _registered.clear()
+    try:
+        for m in _modules:
+            if hasattr(m, "register"):
+                m.register()
+                _registered.append(m)
+    except Exception:
+        # Roll back everything that was registered so far, then re-raise
+        unregister()
+        raise
+
 
 def unregister():
-    """Unregister all SnapSplit submodules in reverse order."""
-    for m in reversed(_modules):
-        if hasattr(m, "unregister"):
+    """Unregister all submodules in reverse order, then the translations."""
+    while _registered:
+        m = _registered.pop()
+        try:
             m.unregister()
+        except Exception as exc:
+            # Keep going: one failing module must not block the others
+            print(f"SnapSplit: unregister failed in {m.__name__}: {exc}")
+
+    _unregister_translations()
 
 

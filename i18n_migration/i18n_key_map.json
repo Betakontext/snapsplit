@@ -1,0 +1,2438 @@
+{
+  "op.adjust_axis.label": {
+    "en": "Adjust split axis",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.adjust_axis.done": {
+    "en": "Split axis adjusted.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.adjust_axis.cancelled": {
+    "en": "Adjust split axis cancelled.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.split.label": {
+    "en": "Planar Split",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.split.many_parts_hint": {
+    "en": "Splitting into many parts can take a while on dense meshes...",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.split.autocap.none": {
+    "en": "Auto-cap during split did not find valid loops to fill.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.split.autocap.count": {
+    "en": "Auto-capped seams on {n} part(s).",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "n"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.split.fewer_parts": {
+    "en": "Fewer parts created than expected ({have} < {want}).",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "have",
+      "want"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.split.parts_created": {
+    "en": "{n} parts created.",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "n"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.cap_now.label": {
+    "en": "Cap seams now",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.desc": {
+    "en": "Fill between exactly two split edge loops (outer+inner) per plane. Seeds preferred.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.only_selected.name": {
+    "en": "Only selected objects",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.max_planes.desc": {
+    "en": "0 = all planes per object, 1 = only largest",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.select_only.name": {
+    "en": "Select only (no fill)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.require_two_seeds.name": {
+    "en": "Require exactly two seed edges",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.require_two_seeds.desc": {
+    "en": "If exactly two edges are selected in Edit Mode, use them as seeds only (no auto-detection).",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.no_targets": {
+    "en": "No mesh objects to cap. Select split parts or use the parts collection.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.failed_one": {
+    "en": "Processing failed on '{name}': {err}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "err",
+      "name"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.cap_now.none_selected": {
+    "en": "Could not determine split edge loops to select.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.none_capped": {
+    "en": "Could not determine and fill split edge loops.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.cap_now.selected_count": {
+    "en": "Selected split edge loops on {n} object(s).",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "n"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.cap_now.capped_count": {
+    "en": "Capped seams on {n} object(s).",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "n"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": true,
+    "fstring_sites": []
+  },
+  "op.common.select_mesh": {
+    "en": "Please select a mesh object.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "warn.unapplied_transforms": {
+    "en": "Object has unapplied transforms",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "warn.apply_transforms_hint": {
+    "en": "Consider Apply All Transforms (Ctrl+A) for exact and predictable split results.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_offset_mm": {
+    "en": "Split Offset (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_offset_desc": {
+    "en": "Offset of the cutting plane along the split axis (positive in axis direction)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_axis": {
+    "en": "Split Axis",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_along_x": {
+    "en": "Split along X",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_along_y": {
+    "en": "Split along Y",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.split_along_z": {
+    "en": "Split along Z",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.show_split_preview": {
+    "en": "Show split preview",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.show_split_preview_desc": {
+    "en": "Show temporary orange planes at planned cut positions",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.parts_count": {
+    "en": "Number of Parts",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.parts_count_desc": {
+    "en": "Number of desired segments (cut planes = parts - 1)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.cap_seams_during_split_short": {
+    "en": "Cap seams during split",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.cap_seams_during_split_desc": {
+    "en": "Automatically close seams after splitting. With hollow/inner shell: precise outer/inner loop fill; without hollow: simple fill. May increase runtime.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.connector_type": {
+    "en": "Connector Type",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.cyl_pin": {
+    "en": "Cylinder Pin",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.cyl_pin_desc": {
+    "en": "Dowel pin + socket",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.rect_tenon": {
+    "en": "Rectangular Tenon",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.rect_tenon_desc": {
+    "en": "Anti-rotation joint",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail": {
+    "en": "Dovetail",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_desc": {
+    "en": "Tapered wedge connector",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_pin": {
+    "en": "Snap Pin",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_pin_desc": {
+    "en": "Connector with snap spheres",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_tenon": {
+    "en": "Snap Tenon",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_tenon_desc": {
+    "en": "Rectangular tenon with snap spheres",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_dovetail": {
+    "en": "Snap Dovetail",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_dovetail_desc": {
+    "en": "Tapered wedge connector with snap spheres",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector": {
+    "en": "Custom Connector",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_desc": {
+    "en": "Use another mesh object from the scene as connector shape",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_object": {
+    "en": "Select connector object",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_object_desc": {
+    "en": "Mesh object from this scene used as connector shape. Its local Z axis is treated as the insertion direction; it will be rescaled to the Width/Length/Depth values below.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_width_mm": {
+    "en": "Custom Width (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_width_desc": {
+    "en": "Target size along the object's local X axis",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_length_mm": {
+    "en": "Custom Length (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_length_desc": {
+    "en": "Target size along the object's local Y axis",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_depth_mm": {
+    "en": "Custom Depth (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_connector_depth_desc": {
+    "en": "Target size along the object's local Z axis (insertion depth)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.custom.err.no_object": {
+    "en": "Please select a connector object for Custom Connector.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.custom.err.empty_mesh": {
+    "en": "Selected connector object has no usable mesh data.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_base": {
+    "en": "Base size",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_width_mm": {
+    "en": "Dovetail Width (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_length_mm": {
+    "en": "Dovetail Length (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_length_mm_desc": {
+    "en": "Length along seam plane (local v)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_depth_mm": {
+    "en": "Dovetail Depth (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_taper_pct": {
+    "en": "Taper (%)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_taper_pct_desc": {
+    "en": "Percentage by which the tip is narrower than the base",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_signed_taper_pct": {
+    "en": "Signed Taper (%)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_signed_taper_desc": {
+    "en": "Signed taper along insertion. Positive widens, negative narrows. If non-zero, overrides plain taper.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_span_axis": {
+    "en": "Span Axis",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_span_axis_desc": {
+    "en": "Auto stretches along the Dovetail Width axis and trims to the outer sides; X/Y/Z force overshoot along that world axis if it lies in the seam plane; None uses the manually configured Dovetail Length",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.none": {
+    "en": "None",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_none": {
+    "en": "Use the manually configured Dovetail Length; only trim edges if Hard-side Cut is enabled",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_auto": {
+    "en": "Automatically stretch along the Dovetail Width axis and trim to the outer sides",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_x": {
+    "en": "Force overshoot along world X, if it lies in the seam plane",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_y": {
+    "en": "Force overshoot along world Y, if it lies in the seam plane",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_z": {
+    "en": "Force overshoot along world Z, if it lies in the seam plane",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.span_axis_hint": {
+    "en": "Forces hard-side cut along this axis.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_hard_side_cut": {
+    "en": "Hard-side Cut",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_hard_side_cut_desc": {
+    "en": "Prefer sharp side cut for dovetail socket/slot",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_margin_pct": {
+    "en": "Margin (%)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_margin_pct_desc": {
+    "en": "Trim percentage at both ends of seam span",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_extra": {
+    "en": "Placement",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_offset_u_mm": {
+    "en": "Offset along Width (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_offset_u_mm_desc": {
+    "en": "Offset within the cut plane along the width (u) axis to shift the dovetail pattern",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_offset_v_mm": {
+    "en": "Offset along Length (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_offset_v_mm_desc": {
+    "en": "Offset within the cut plane along the length (v) axis to shift the dovetail pattern",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_rotation_deg": {
+    "en": "Rotation in plane (deg)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.inplane_rotation_deg_desc": {
+    "en": "Rotation within the cut plane to orient the dovetail pattern",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_span_mode": {
+    "en": "Span Mode",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.dovetail_span_mode_desc": {
+    "en": "How the dovetail spans along the seam",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.auto": {
+    "en": "Auto",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.auto_span_tip": {
+    "en": "Use full edge-to-edge span of the seam",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.fixed": {
+    "en": "Fixed",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.fixed_span_tip": {
+    "en": "Use a fixed repeating spacing",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.centered": {
+    "en": "Centered",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.centered_span_tip": {
+    "en": "Center block(s) with margins",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.connector_live_preview": {
+    "en": "Live Preview",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.connector_live_preview_desc": {
+    "en": "Show a live wireframe preview of connector placement (LINE/GRID) for the current selection. Capped at 200 preview objects for performance.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.preview.warn.cap": {
+    "en": "Connector live preview stopped at 200 objects; remaining points are not shown.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:3161",
+        "template": "Connector live preview stopped at {AUTOPREVIEW_CAP} objects; remaining points are not shown.",
+        "args": {
+          "AUTOPREVIEW_CAP": "AUTOPREVIEW_CAP"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "ui.distribution": {
+    "en": "Distribution",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.distribution_desc": {
+    "en": "Distribute connectors along a line or a grid across the seam face",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.line": {
+    "en": "Line",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.line_desc": {
+    "en": "Place connectors along a line in the seam face",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.grid": {
+    "en": "Grid",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.grid_desc": {
+    "en": "Distribute connectors in a grid over the seam face",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.connectors_per_seam": {
+    "en": "Connectors per Seam",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.rows_grid": {
+    "en": "Rows (GRID)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.rows_grid_desc": {
+    "en": "Number of rows for grid distribution",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.margin_pct": {
+    "en": "Margin (%)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.margin_pct_desc": {
+    "en": "Edge margin along the seam (and perpendicular in GRID) as percentage of part length (0–40% recommended)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.spheres_per_side": {
+    "en": "Spheres per side",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.spheres_per_side_desc": {
+    "en": "Number of snap spheres per side/around",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.sphere_diameter_mm": {
+    "en": "Sphere Diameter (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.sphere_diameter_mm_desc": {
+    "en": "Diameter of snap spheres",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.protrusion_mm": {
+    "en": "Protrusion (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.protrusion_mm_desc": {
+    "en": "How far spheres protrude from side surface",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.pin_diameter_mm": {
+    "en": "Pin Diameter (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.pin_length_mm": {
+    "en": "Pin Length (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.segments": {
+    "en": "Segments",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.segments_desc": {
+    "en": "Cylinder pin radial segments (visual smoothness)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.tenon_width_mm": {
+    "en": "Tenon Width (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.tenon_depth_mm": {
+    "en": "Tenon Depth (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.chamfer_mm": {
+    "en": "Chamfer (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.insert_depth_pct": {
+    "en": "Insert Depth (%)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.insert_depth_pct_desc": {
+    "en": "Percentage of connector length recessed into part A",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.material_profiles": {
+    "en": "Material Profiles",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.material_profile_desc": {
+    "en": "Select a material profile to auto-fill tolerance per side",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "profiles.mat.tooltip": {
+    "en": "Recommended tolerance per side: {val:.2f} mm",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "val"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.tol_per_face_mm": {
+    "en": "Tolerance per Face (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.tol_override_desc": {
+    "en": "Overrides material profile (0 = use profile value)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_seg": {
+    "en": "More segmentation settings",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_seg_desc": {
+    "en": "Show advanced segmentation options",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_conn": {
+    "en": "More connection settings",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_conn_desc": {
+    "en": "Show advanced connection/geometry options",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_tol": {
+    "en": "More tolerance settings",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_tol_desc": {
+    "en": "Show advanced tolerance options",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_align": {
+    "en": "More alignment settings",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.foldout.more_align_desc": {
+    "en": "Show advanced alignment options",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.segmentation_title": {
+    "en": "Segmentation",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.less": {
+    "en": "Less...",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": true,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.adjust": {
+    "en": "Adjust",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.connections_title": {
+    "en": "Connections",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.add_connectors": {
+    "en": "Add connectors",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.place_connectors_click": {
+    "en": "Place connectors (click)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.pick_faces_hint": {
+    "en": "Pick faces in Object Mode (A = target, B = moving)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.face_a_none": {
+    "en": "A: none",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.face_b_none": {
+    "en": "B: none",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.pick_face_a": {
+    "en": "Pick Face A",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.pick_face_b": {
+    "en": "Pick Face B",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.align_faces": {
+    "en": "Align Faces",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ALIGN_FACES_LABEL": {
+    "en": "Align Faces",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "CLEAR_PICKS_LABEL": {
+    "en": "Clear Picks",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PICK_FACE_A_LABEL": {
+    "en": "Pick Face A",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PICK_FACE_B_LABEL": {
+    "en": "Pick Face B",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "INFO_ALIGNED": {
+    "en": "Aligned {name} to {name2}.",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "name",
+      "name2"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_align.py:583",
+        "template": "Aligned {name} to {name2}.",
+        "args": {
+          "name": "objB.name",
+          "name2": "objA.name"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "INFO_PICKS_CLEARED": {
+    "en": "Picks cleared",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "MSG_CANCELLED": {
+    "en": "Canceled.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "INFO_PICKED_A": {
+    "en": "Picked A: {name} face {fidx}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "fidx",
+      "name"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_align.py:388",
+        "template": "Picked A: {name} face {fidx}",
+        "args": {
+          "name": "obj.name",
+          "fidx": "fidx"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "ERR_RUN_IN_3DVIEW": {
+    "en": "Run in a 3D View.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "INFO_PICKED_B": {
+    "en": "Picked B: {name} face {fidx}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "fidx",
+      "name"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_align.py:438",
+        "template": "Picked B: {name} face {fidx}",
+        "args": {
+          "name": "obj.name",
+          "fidx": "fidx"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "ERR_PICK_A_B_FIRST": {
+    "en": "Pick Face A and Face B first (Object Mode).",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ERR_STORED_FACES_NOT_FOUND": {
+    "en": "Stored faces not found or not meshes.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PROP_FACE_A_OBJECT": {
+    "en": "Face A Object",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PROP_FACE_A_INDEX": {
+    "en": "Face A Index",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PROP_FACE_B_OBJECT": {
+    "en": "Face B Object",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "PROP_FACE_B_INDEX": {
+    "en": "Face B Index",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "HINT_RAYCAST_NO_FACE": {
+    "en": "No face hit. Orbit/zoom and click directly on a visible mesh.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ERR_FACE_FRAMES_COMPUTE": {
+    "en": "Could not compute face frames: {error}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "error"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_align.py:548",
+        "template": "Could not compute face frames: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "ERR_ALIGN_SINGULAR": {
+    "en": "Alignment transform invalid (singular frame).",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.click.label": {
+    "en": "Place connectors (click)",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.click.doc": {
+    "en": "Interactively place a connector (pin/tenon/dovetail) by clicking on the seam plane between two parts.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.batch.label": {
+    "en": "Add connectors",
+    "operator": true,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.batch.doc": {
+    "en": "Batch-place connectors between all adjacent selected parts using current settings.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.custom.warn.nonmanifold": {
+    "en": "Custom connector source mesh '{name}' has non-manifold geometry (open or multi-shared edges); boolean results may be unreliable.",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "name"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:454",
+        "template": "Custom connector source mesh '{name}' has non-manifold geometry (open or multi-shared edges); boolean results may be unreliable.",
+        "args": {
+          "name": "source_obj.name"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "op.common.warn.mod_apply_fail": {
+    "en": "Modifier apply failed ({name}): {error}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "error",
+      "name"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:799",
+        "template": "Modifier apply failed ({name}): {error}",
+        "args": {
+          "name": "mod.name",
+          "error": "e"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "op.connect.click.err.need2": {
+    "en": "Select exactly 2 adjacent split parts.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.click.cancelled": {
+    "en": "Placement cancelled.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.batch.err.need2": {
+    "en": "Select at least 2 cut mesh-pieces.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.dovetail.warn.span_axis_not_in_plane": {
+    "en": "Selected Span Axis matches the seam normal, not the seam plane; span axis ignored.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.click.err.seam": {
+    "en": "Could not compute seam plane.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.click.err.modal": {
+    "en": "Modal error: {error}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "error"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:3673",
+        "template": "Modal error: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "op.connect.batch.info.done": {
+    "en": "{value} connectors created.",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "value"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:3784",
+        "template": "{value} connectors created.",
+        "args": {
+          "value": "len(created)"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "op.common.warn.bevel_apply": {
+    "en": "Bevel apply failure: {error}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "error"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:1345",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:1689",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:1794",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:1911",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:2189",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:2530",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:2619",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:2732",
+        "template": "Bevel apply failure: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "op.connect.click.err.place": {
+    "en": "Placement failed: {error}",
+    "operator": false,
+    "template": true,
+    "placeholders": [
+      "error"
+    ],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:3667",
+        "template": "Placement failed: {error}",
+        "args": {
+          "error": "e"
+        },
+        "problem": ""
+      }
+    ]
+  },
+  "MAX_PLANES": {
+    "en": "Max planes",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ERR_SELECT_MESH": {
+    "en": "Please select a mesh object.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "TRANSFORM_LOCATION": {
+    "en": "Location",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "TRANSFORM_ROTATION": {
+    "en": "Rotation",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "TRANSFORM_NON_UNIFORM_SCALE": {
+    "en": "Non-uniform Scale",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "TRANSFORM_NEGATIVE_SCALE": {
+    "en": "Negative Scale",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_snap_spheres_enabled": {
+    "en": "Enable Snap Spheres",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.custom_snap_spheres_enabled_desc": {
+    "en": "Add a ring of snap spheres around the Custom Connector, using Custom Width as the reference axis",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.flush_barb_height_mm": {
+    "en": "Barb Height (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.flush_barb_height_desc": {
+    "en": "Axial height of the shallow barb near the seam",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.flush_barb_lip_mm": {
+    "en": "Barb Lip (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.flush_barb_lip_desc": {
+    "en": "Radial/XY lip amount for the barb at the seam",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.section.tolerance": {
+    "en": "Tolerance",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.section.alignment": {
+    "en": "Alignment",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.msg.props_missing": {
+    "en": "SnapSplit properties not available.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.msg.please_reenable": {
+    "en": "Please re-enable the Add-on.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.tolerance_hint": {
+    "en": "For tight fit, reduce tolerance; for easy assembly, increase.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.suggested": {
+    "en": "Suggested:",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.face_a": {
+    "en": "A",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.face_b": {
+    "en": "B",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.cap_seams_hint": {
+    "en": "To close existing seams, run 'Cap seams now'.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.columns": {
+    "en": "Columns",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.rows": {
+    "en": "Rows",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_group": {
+    "en": "Snap spheres:",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_spheres_per_side": {
+    "en": "Spheres per side",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.flush_group": {
+    "en": "Flush snap (barb near seam):",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.profile_value_mm": {
+    "en": "Profile:",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.high_part_count_slow": {
+    "en": "High part count may be slow",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_sphere_diameter_mm": {
+    "en": "Sphere Diameter (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.snap_sphere_protrusion_mm": {
+    "en": "Protrusion (mm)",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.effective_value_mm": {
+    "en": "Effective:",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.unsupported_connector_type": {
+    "en": "Unsupported connector type",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": false,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "ui.more_less_more": {
+    "en": "More...",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": true,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.dovetail.warn.hardcut_build_fail": {
+    "en": "Hard-side cut: could not build combined surface (seam may not be closed); connector left untrimmed.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": true,
+    "called_with_trf": false,
+    "fstring_sites": []
+  },
+  "op.connect.dovetail.warn.hardcut_tenon_fail": {
+    "en": "Hard-side cut failed on the connector; keeping untrimmed connector geometry.",
+    "operator": false,
+    "template": false,
+    "placeholders": [],
+    "used_via_tr": true,
+    "overridden": true,
+    "called_with_trf": false,
+    "fstring_sites": [
+      {
+        "where": "ops_connectors.py:2626",
+        "template": "Hard-side cut failed on Custom_{i}; keeping untrimmed connector geometry.",
+        "args": {
+          "i": "i"
+        },
+        "problem": ""
+      },
+      {
+        "where": "ops_connectors.py:2741",
+        "template": "Hard-side cut failed on Dovetail_{i}; keeping untrimmed connector geometry.",
+        "args": {
+          "i": "i"
+        },
+        "problem": ""
+      }
+    ]
+  }
+}

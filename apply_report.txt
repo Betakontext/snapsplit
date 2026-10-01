@@ -1,0 +1,11 @@
+
+Dry run: False   Files changed: 0
+
+== Text not in localization.py: 0
+
+== Manual work: 5
+   ops_connectors.py:1011: 'op.connect.custom.warn.boolean_degenerate' has no plain English default
+   ops_connectors.py:1069: 'op.connect.custom.warn.boolean_degenerate' has no plain English default
+   ops_connectors.py: tr() still called at lines [1011, 1069]; imports kept
+   profiles.py:165: 'profiles.mat.tooltip' has placeholders but no .format()
+   profiles.py: tr() still called at lines [165]; imports kept
