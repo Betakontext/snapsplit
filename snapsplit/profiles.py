@@ -32,9 +32,7 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
-# Only use the translation helper; remove any custom language branches
-from .languages import tr
-
+from .utils import unit_mm, mm_to_scene, scene_to_mm, _trf
 
 # ---------------------------
 # Material profiles (tolerance per side, in mm)
@@ -157,17 +155,24 @@ def _mat_item_desc(key: str, val: float) -> str:
     """
     Build a localized tooltip text for a material profile entry.
 
-    Uses languages.py template key "profiles.mat.tooltip" and formats it
-    with {val} = tolerance value in mm, rounded to 2 decimals.
+    Formats the English template with {val} = tolerance value in mm, rounded to 2 decimals.
     """
-    # The templates in languages.py contain "{val:.2f}", so 'val' must be passed as a
-    # float. A pre-formatted string raises ValueError and always triggers the fallback.
-    templ = tr("profiles.mat.tooltip", "Recommended tolerance per side: {val:.2f} mm")
+    # Use _trf to format the template with the tolerance value.
+    # val must be passed as a float for proper formatting.
     try:
-        return templ.format(val=float(val))
+        return _trf("Recommended tolerance per side: {val:.2f} mm", val=float(val))
     except Exception:
         return f"Recommended tolerance per side: {val:.2f} mm"
 
+def material_tooltip(val):
+    """Return a localized tooltip for the material tolerance value.
+
+    Formats the English template with {val} = tolerance value in mm, rounded to 2 decimals.
+    """
+    try:
+        return _trf("Recommended tolerance per side: {val:.2f} mm", val=float(val))
+    except Exception:
+        return f"Recommended tolerance per side: {val:.2f} mm"
 
 
 def _material_items():

@@ -30,7 +30,6 @@ from bpy.types import Operator
 from bpy_extras import view3d_utils
 
 from .utils import ensure_collection, unit_mm, report_user, apply_modifier_data
-from .languages import tr  # centralized translation helper
 from .ops_split import warn_if_unapplied_transforms
 from .utils import _trf
 
@@ -1008,11 +1007,7 @@ def union_and_dispose_safe(target_obj, union_obj, name="SnapSplit_Union", warn_l
         if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
             _restore_mesh_data(target_obj, retry_backup)
             report_user(None, 'WARNING',
-                        tr("op.connect.custom.warn.boolean_degenerate",
-                           "Custom connector UNION produced degenerate/collapsed geometry"
-                           + (f" ({warn_label})" if warn_label else "")
-                           + "; part left unmodified. Try a different Insert "
-                             "Depth or a simpler connector source mesh."))
+                        "Custom connector UNION produced degenerate/collapsed geometry; part left unmodified. Try a different Insert geometry.")
         else:
             restored = False
             try:
@@ -1066,11 +1061,7 @@ def cut_socket_with_cutter_and_dispose_safe(target_obj, cutter_obj, warn_label=N
         if _mesh_is_degenerate(target_obj, reference_volume, CUSTOM_CONNECTOR_BOOLEAN_VOLUME_DROP_THRESHOLD) and retry_backup is not None:
             _restore_mesh_data(target_obj, retry_backup)
             report_user(None, 'WARNING',
-                        tr("op.connect.custom.warn.boolean_degenerate",
-                           "Custom connector socket cut produced degenerate/collapsed geometry"
-                           + (f" ({warn_label})" if warn_label else "")
-                           + "; part left unmodified. Try a different Insert "
-                             "Depth or a simpler connector source mesh."))
+                        "Custom connector socket cut produced degenerate/collapsed geometry; part left unmodified. Try a different Insert geometry.")
         else:
             restored = False
             try:

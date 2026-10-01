@@ -273,7 +273,7 @@ DICTIONARY = {
         ("*", "Center block(s) with margins"): "Centrer le(s) bloc(s) avec des marges",
         ("*", "Live Preview"): "Aperçu en direct",
         ("*", "Show a live wireframe preview of connector placement (LINE/GRID) for the current selection. Capped at 200 preview objects for performance."): "Afficher un aperçu filaire en direct du placement des connecteurs (Ligne/Grille) pour la sélection actuelle. Limité à 200 objets d'aperçu pour des raisons de performance.",
-        ("*", "Connector live preview stopped at 200 objects; remaining points are not shown."): "L'aperçu en direct des connecteurs s'est arrêté à 200 objets ; les points restants ne sont pas affichés.",
+        ("*", "Connector live preview stopped at {cap} objects; remaining points are not shown."): "L'aperçu en direct des connecteurs s'est arrêté à 200 objets ; les points restants ne sont pas affichés.",
         ("*", "Distribution"): "Répartition",
         ("*", "Distribute connectors along a line or a grid across the seam face"): "Répartir les connecteurs le long d'une ligne ou en grille sur la surface de la couture",
         ("*", "Line"): "Ligne",
