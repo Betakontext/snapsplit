@@ -416,11 +416,12 @@ class SNAP_PT_panel(Panel):
             col = box.column(align=True)
             col.label(text='Pick faces in Object Mode (A = target, B = moving)')
 
-            wm = context.window_manager
-            nameA = getattr(wm, "snapsplit_face_a_obj", "")
-            idxA = getattr(wm, "snapsplit_face_a_index", -1)
-            nameB = getattr(wm, "snapsplit_face_b_obj", "")
-            idxB = getattr(wm, "snapsplit_face_b_index", -1)
+            # Read the picks from the PropertyGroup; fall back to "nothing picked" if it is missing
+            picks = getattr(context.window_manager, "snapsplit_picks", None)
+            nameA = picks.face_a_obj if picks else ""
+            idxA = picks.face_a_index if picks else -1
+            nameB = picks.face_b_obj if picks else ""
+            idxB = picks.face_b_index if picks else -1
 
             status_a = (f"{'A'}: {nameA} [#{idxA}]" if nameA and idxA >= 0 else 'A: none')
             status_b = (f"{'B'}: {nameB} [#{idxB}]" if nameB and idxB >= 0 else 'B: none')

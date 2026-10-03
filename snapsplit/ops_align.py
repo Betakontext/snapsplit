@@ -335,6 +335,18 @@ def _highlight_picked_face_persistent(objA, idxA, objB=None, idxB=-1):
     if objB and objB != objA and idxB >= 0:
         _select_single_face(objB, idxB)
 
+# ---------------------------
+# Pick storage (PropertyGroup on WindowManager)
+# ---------------------------
+
+class SNAP_PG_picks(bpy.types.PropertyGroup):
+    """Stores the picked Face A (target) and Face B (moving) for the align tool."""
+
+    face_a_obj: bpy.props.StringProperty(name='Face A Object')
+    face_a_index: bpy.props.IntProperty(name='Face A Index', default=-1)
+    face_b_obj: bpy.props.StringProperty(name='Face B Object')
+    face_b_index: bpy.props.IntProperty(name='Face B Index', default=-1)
+
 
 # ---------------------------
 # Modal pick operators (Object Mode, normal cursor)
@@ -359,14 +371,15 @@ class SNAP_OT_pick_face_a(Operator):
                             'No face hit. Orbit/zoom and click directly on a visible mesh.')
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
-            wm = context.window_manager
-            wm.snapsplit_face_a_obj = obj.name
-            wm.snapsplit_face_a_index = fidx
+            picks = context.window_manager.snapsplit_picks
+            picks.face_a_obj = obj.name
+            picks.face_a_index = fidx
 
             # If B already exists, keep both highlighted; else highlight only A
-            nameB = getattr(wm, "snapsplit_face_b_obj", "")
-            idxB = getattr(wm, "snapsplit_face_b_index", -1)
+            nameB = picks.face_b_obj
+            idxB = picks.face_b_index
             objB = bpy.data.objects.get(nameB) if nameB else None
+
 
             _highlight_picked_face_persistent(objA=obj, idxA=fidx, objB=objB, idxB=idxB)
 
@@ -411,14 +424,15 @@ class SNAP_OT_pick_face_b(Operator):
                             'No face hit. Orbit/zoom and click directly on a visible mesh.')
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
-            wm = context.window_manager
-            wm.snapsplit_face_b_obj = obj.name
-            wm.snapsplit_face_b_index = fidx
+            picks = context.window_manager.snapsplit_picks
+            picks.face_b_obj = obj.name
+            picks.face_b_index = fidx
 
             # If A already exists, keep both highlighted; else highlight only B
-            nameA = getattr(wm, "snapsplit_face_a_obj", "")
-            idxA = getattr(wm, "snapsplit_face_a_index", -1)
+            nameA = picks.face_a_obj
+            idxA = picks.face_a_index
             objA = bpy.data.objects.get(nameA) if nameA else None
+
 
             _highlight_picked_face_persistent(objA=(objA or obj), idxA=(idxA if objA else fidx),
                                               objB=(obj if objA else None), idxB=(fidx if objA else -1))
@@ -501,11 +515,12 @@ class SNAP_OT_align_faces(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        wm = context.window_manager
-        nameA = getattr(wm, "snapsplit_face_a_obj", "")
-        idxA = getattr(wm, "snapsplit_face_a_index", -1)
-        nameB = getattr(wm, "snapsplit_face_b_obj", "")
-        idxB = getattr(wm, "snapsplit_face_b_index", -1)
+        picks = context.window_manager.snapsplit_picks
+        nameA = picks.face_a_obj
+        idxA = picks.face_a_index
+        nameB = picks.face_b_obj
+        idxB = picks.face_b_index
+
 
         if not nameA or idxA < 0 or not nameB or idxB < 0:
             report_user(self, 'ERROR',
@@ -578,11 +593,11 @@ class SNAP_OT_clear_picks(bpy.types.Operator):
     bl_options = {'INTERNAL', 'UNDO'}
 
     def execute(self, context):
-        wm = context.window_manager
+        picks = context.window_manager.snapsplit_picks
 
-        # buffer names before clearing WM, so we can remove highlights
-        nameA = getattr(wm, "snapsplit_face_a_obj", "")
-        nameB = getattr(wm, "snapsplit_face_b_obj", "")
+        # Buffer names before clearing, so we can remove highlights
+        nameA = picks.face_a_obj
+        nameB = picks.face_b_obj
         objA = bpy.data.objects.get(nameA) if nameA else None
         objB = bpy.data.objects.get(nameB) if nameB else None
 
@@ -595,52 +610,37 @@ class SNAP_OT_clear_picks(bpy.types.Operator):
         # go back to Object Mode
         _exit_to_object_mode_safe()
 
-        # clear WM fields
-        try:
-            wm.snapsplit_face_a_obj = ""
-            wm.snapsplit_face_a_index = -1
-            wm.snapsplit_face_b_obj = ""
-            wm.snapsplit_face_b_index = -1
-        except Exception:
-            pass
+        # Reset the stored picks
+        picks.face_a_obj = ""
+        picks.face_a_index = -1
+        picks.face_b_obj = ""
+        picks.face_b_index = -1
 
         self.report({'INFO'}, 'Picks cleared')
         return {'FINISHED'}
 
 
-# ---------------------------
-# WindowManager storage for picks
-# ---------------------------
-
-def _register_picker_storage():
-    """Ensure WindowManager properties for storing picks exist."""
-    wm = bpy.types.WindowManager
-    if not hasattr(wm, "snapsplit_face_a_obj"):
-        wm.snapsplit_face_a_obj = bpy.props.StringProperty(name='Face A Object')
-    if not hasattr(wm, "snapsplit_face_a_index"):
-        wm.snapsplit_face_a_index = bpy.props.IntProperty(name='Face A Index', default=-1)
-    if not hasattr(wm, "snapsplit_face_b_obj"):
-        wm.snapsplit_face_b_obj = bpy.props.StringProperty(name='Face B Object')
-    if not hasattr(wm, "snapsplit_face_b_index"):
-        wm.snapsplit_face_b_index = bpy.props.IntProperty(name='Face B Index', default=-1)
-
-
 classes = (
+    SNAP_PG_picks,          # PropertyGroup must be registered before the operators and the pointer
     SNAP_OT_pick_face_a,
     SNAP_OT_pick_face_b,
     SNAP_OT_align_faces,
     SNAP_OT_clear_picks,
 )
 
+
 def register():
-    """Register operators and ensure WindowManager storage exists."""
-    # Labels are plain class attributes now; Blender translates them itself.
+    """Register classes and attach the pick storage to bpy.types.WindowManager."""
+    # Labels are plain class attributes; Blender translates them itself.
     for c in classes:
         bpy.utils.register_class(c)
-    _register_picker_storage()
+    bpy.types.WindowManager.snapsplit_picks = bpy.props.PointerProperty(type=SNAP_PG_picks)
 
 
 def unregister():
-    """Unregister operators."""
+    """Detach the pick storage from bpy.types.WindowManager and unregister all classes."""
+    # Remove the pointer first, then the PropertyGroup it references
+    if hasattr(bpy.types.WindowManager, "snapsplit_picks"):
+        del bpy.types.WindowManager.snapsplit_picks
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

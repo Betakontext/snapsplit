@@ -18,14 +18,14 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 '''
-# __init__.py - SnapSplit add-on entry point
+# __init__.py
 
 bl_info = {
     "name": "SnapSplit  Print-ready segmentation with connectors",
     "author": "Christoph Medicus",
     "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
-    "version": (0, 1, 7),
+    "version": (0, 1, 8),
     "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
@@ -41,11 +41,8 @@ import importlib
 
 import bpy
 
-# Import submodules.
-# NOTE: "languages" is intentionally NOT imported here anymore. The other modules
-# still do "from .languages import tr" until step 3 (tr() -> literals) is finished,
-# so languages.py must stay in the add-on folder until then.
-from . import localization  # generated data module (see migrate_languages.py)
+# Import submodules
+from . import localization  # translation data (DICTIONARY), no register() of its own
 from . import utils
 from . import profiles
 from . import prefs
@@ -55,11 +52,8 @@ from . import ops_align
 from . import ui
 
 # Set to False for release builds to skip the development hot-reload.
-DEV_RELOAD = True
+DEV_RELOAD = False
 
-# Registration order matters if modules reference each other in register().
-# Ensure ops_align registers BEFORE ui so its WindowManager props exist.
-# "localization" has no register(); it is listed so that it is reloaded first.
 _modules = [
     localization,
     utils,
