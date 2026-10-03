@@ -19,9 +19,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, see <https://www.gnu.org/licenses>.
 """
 
-
 # ops_align.py
-
 
 import bpy
 import bmesh
@@ -30,14 +28,25 @@ from mathutils import Vector, Matrix
 from bpy_extras import view3d_utils
 
 from .utils import report_user
+from .utils import _trf
 
 # Translation helper: tr(key, fallback)
-try:
-    from .languages import tr
-except Exception:
-    # Fallback if languages module is unavailable
-    def tr(key: str, fallback: str = "") -> str:
-        return fallback or key
+
+# ---------------------------
+# Policy notes (documented for Extensions review)
+# ---------------------------
+# Selection operators (bpy.ops.mesh.select_all / select_mode, bpy.ops.object.select_all)
+# are replaced by direct RNA / BMesh access:
+#   - object selection:  Object.select_set()
+#   - select mode:       tool_settings.mesh_select_mode (set BEFORE entering Edit Mode)
+#                        and BMesh.select_mode on the live edit BMesh
+#   - element selection: BMesh element select_set() + bmesh.update_edit_mesh()
+# Remaining operator: bpy.ops.object.mode_set. There is no public non-operator
+# API to switch object modes, so it is kept on purpose.
+
+# Set to True to use the corrected face-to-face flip (local 180 degree rotation about the
+# face X axis). Set to False to restore the previous behaviour (row negation in world space).
+_FACE_TO_FACE_LOCAL_FLIP = True
 
 
 # ---------------------------
@@ -129,6 +138,63 @@ def _make_frame_matrix(origin, R):
 
 
 # ---------------------------
+# Selection helpers (RNA / BMesh only, no selection operators)
+# ---------------------------
+
+def _deselect_all_objects():
+    """Deselect all objects of the current view layer via RNA (replaces bpy.ops.object.select_all)."""
+    try:
+        for o in list(bpy.context.view_layer.objects):
+            try:
+                # select_set() can raise for objects that cannot be selected (e.g. hidden); ignore
+                o.select_set(False)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _bm_clear_selection(bm):
+    """Deselect every vertex, edge and face of an edit BMesh (replaces bpy.ops.mesh.select_all)."""
+    for f in bm.faces:
+        f.select_set(False)
+    for e in bm.edges:
+        e.select_set(False)
+    for v in bm.verts:
+        v.select_set(False)
+    try:
+        bm.select_history.clear()
+    except Exception:
+        pass
+
+
+def _edit_bmesh_deselect_all(obj):
+    """Deselect all elements of obj's live edit BMesh and flush to the viewport.
+
+    Returns True on success, False if obj is not in Edit Mode or BMesh access failed.
+    """
+    if not obj or obj.type != 'MESH' or obj.mode != 'EDIT':
+        return False
+    try:
+        bm = bmesh.from_edit_mesh(obj.data)
+        # Keep the BMesh itself in face select mode (matches the tool setting)
+        bm.select_mode = {'FACE'}
+        _bm_clear_selection(bm)
+        bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+        return True
+    except Exception:
+        return False
+
+
+def _set_face_select_mode_tool_setting():
+    """Set FACE select mode via tool settings (must happen BEFORE entering Edit Mode)."""
+    try:
+        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+    except Exception:
+        pass
+
+
+# ---------------------------
 # Highlight utilities (persistent until alignment) — BMesh based
 # ---------------------------
 
@@ -146,43 +212,34 @@ def _ensure_multi_object_edit(obj_list):
 
     view_layer = bpy.context.view_layer
 
-    # Deselect all, select targets
-    for o in list(bpy.context.selected_objects):
-        try:
-            o.select_set(False)
-        except Exception:
-            pass
-
+    # Deselect all objects (RNA), then select targets
+    _deselect_all_objects()
     for o in objs:
         try:
             o.select_set(True)
         except Exception:
             pass
 
-    # Set an active
+    # Set an active object
     try:
         view_layer.objects.active = objs[0]
     except Exception:
         pass
 
-    # Enter Edit Mode (multi-object)
+    # Face select mode through tool settings; the edit mesh is created with this mode,
+    # so bpy.ops.mesh.select_mode(type='FACE') is no longer needed.
+    _set_face_select_mode_tool_setting()
+
+    # Enter Edit Mode (multi-object). No public non-operator equivalent exists.
     try:
         bpy.ops.object.mode_set(mode='EDIT')
     except Exception:
         return
 
-    # Face select mode
-    try:
-        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
-        bpy.ops.mesh.select_mode(type='FACE')
-    except Exception:
-        pass
-
-    # Clear existing edit selection on all edit meshes
-    try:
-        bpy.ops.mesh.select_all(action='DESELECT')
-    except Exception:
-        pass
+    # Clear existing edit selection on every edit mesh (replaces mesh.select_all DESELECT,
+    # which only worked on the meshes the operator context happened to cover).
+    for o in objs:
+        _edit_bmesh_deselect_all(o)
 
 
 def _select_single_face(obj, face_index):
@@ -206,69 +263,58 @@ def _select_single_face(obj, face_index):
     except Exception:
         pass
     if obj.mode != 'EDIT':
+        _set_face_select_mode_tool_setting()
         try:
             bpy.ops.object.mode_set(mode='EDIT')
         except Exception:
             return
 
-    # 2) Face select mode
-    try:
-        bpy.context.tool_settings.mesh_select_mode = (False, False, True)
-        bpy.ops.mesh.select_mode(type='FACE')
-    except Exception:
-        pass
-
-    # 3) Operate directly on the active edit mesh (obj)
+    # 2) Operate directly on the live edit BMesh (obj is in Edit Mode here)
     try:
         bm = bmesh.from_edit_mesh(me)
     except Exception:
-        # Fallback if BMesh not available for some reason
-        try:
-            bpy.ops.mesh.select_all(action='DESELECT')
-            me.polygons[face_index].select = True
-            bpy.ops.mesh.select_mode(type='EDGE')
-            bpy.ops.mesh.select_mode(type='FACE')
-            me.update()
-        except Exception:
-            pass
+        # No BMesh available: nothing sensible left to do without selection operators
         return
 
-    # Clear selection on this mesh, then select target face
-    for f in bm.faces:
-        f.select = False
+    # Face select mode on the BMesh itself (replaces bpy.ops.mesh.select_mode(type='FACE'))
+    bm.select_mode = {'FACE'}
 
+    # Lookup tables are required for index access on BMesh sequences
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+
+    # Clear selection on this mesh, then select target face
+    _bm_clear_selection(bm)
+
+    bm_face = None
     try:
         bm_face = bm.faces[face_index]
     except Exception:
-        poly = me.polygons[face_index]
-        poly_verts = set(poly.vertices)
-        bm_face = None
+        # Fallback: match by vertex index set (only valid while topology is unchanged)
+        bm.verts.index_update()
+        poly_verts = set(me.polygons[face_index].vertices)
         for f in bm.faces:
             if set(v.index for v in f.verts) == poly_verts:
                 bm_face = f
                 break
-        if bm_face is None:
-            return
+    if bm_face is None:
+        return
 
-    bm_face.select = True
+    # select_set(True) also selects the face's edges and vertices
+    bm_face.select_set(True)
 
-    # 4) Flush to viewport
-    bm.select_mode = {'FACE'}
+    # 3) Flush to viewport (replaces the old EDGE/FACE select_mode toggle trick)
     bm.select_flush_mode()
     try:
         bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
     except Exception:
         try:
-            bpy.ops.mesh.select_mode(type='EDGE')
-            bpy.ops.mesh.select_mode(type='FACE')
-        except Exception:
-            pass
-        try:
             me.update()
         except Exception:
             pass
 
-    # 5) Optionally restore previous active edit object if it differs
+    # 4) Optionally restore previous active edit object if it differs
     try:
         if prev_active and prev_active != obj and prev_active.type == 'MESH' and prev_active.select_get():
             view_layer.objects.active = prev_active
@@ -289,6 +335,18 @@ def _highlight_picked_face_persistent(objA, idxA, objB=None, idxB=-1):
     if objB and objB != objA and idxB >= 0:
         _select_single_face(objB, idxB)
 
+# ---------------------------
+# Pick storage (PropertyGroup on WindowManager)
+# ---------------------------
+
+class SNAP_PG_picks(bpy.types.PropertyGroup):
+    """Stores the picked Face A (target) and Face B (moving) for the align tool."""
+
+    face_a_obj: bpy.props.StringProperty(name='Face A Object')
+    face_a_index: bpy.props.IntProperty(name='Face A Index', default=-1)
+    face_b_obj: bpy.props.StringProperty(name='Face B Object')
+    face_b_index: bpy.props.IntProperty(name='Face B Index', default=-1)
+
 
 # ---------------------------
 # Modal pick operators (Object Mode, normal cursor)
@@ -297,43 +355,43 @@ def _highlight_picked_face_persistent(objA, idxA, objB=None, idxB=-1):
 class SNAP_OT_pick_face_a(Operator):
     """Pick target face (A) in Object Mode"""
     bl_idname = "snapsplit.pick_face_a"
-    bl_label = tr("ui.pick_face_a", "Pick Face A")
+    bl_label = "Pick Face A"
     bl_options = {'REGISTER', 'UNDO'}
 
     def modal(self, context, event):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             report_user(self, 'INFO',
-                        tr("MSG_CANCELLED", "Canceled."),
-                        tr("MSG_CANCELLED", "Canceled."))
+                        'Canceled.')
             return {'CANCELLED'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             hit = _raycast_pick_face(context, event)
             if not hit:
                 report_user(self, 'INFO',
-                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."),
-                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."))
+                            'No face hit. Orbit/zoom and click directly on a visible mesh.')
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
-            wm = context.window_manager
-            wm.snapsplit_face_a_obj = obj.name
-            wm.snapsplit_face_a_index = fidx
+            picks = context.window_manager.snapsplit_picks
+            picks.face_a_obj = obj.name
+            picks.face_a_index = fidx
 
             # If B already exists, keep both highlighted; else highlight only A
-            nameB = getattr(wm, "snapsplit_face_b_obj", "")
-            idxB = getattr(wm, "snapsplit_face_b_index", -1)
+            nameB = picks.face_b_obj
+            idxB = picks.face_b_index
             objB = bpy.data.objects.get(nameB) if nameB else None
+
 
             _highlight_picked_face_persistent(objA=obj, idxA=fidx, objB=objB, idxB=idxB)
 
+            # Make B the active object if it exists (guarded: never set active to None)
             try:
-                context.view_layer.objects.active = bpy.data.objects.get(wm.snapsplit_face_b_obj)
+                if objB is not None:
+                    context.view_layer.objects.active = objB
             except Exception:
                 pass
 
             report_user(self, 'INFO',
-                        tr("INFO_PICKED_A", f"Picked A: {obj.name} face {fidx}"),
-                        tr("INFO_PICKED_A", f"Picked A: {obj.name} face {fidx}"))
+                        _trf('Picked A: {name} face {fidx}', name=obj.name, fidx=fidx))
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
@@ -341,8 +399,7 @@ class SNAP_OT_pick_face_a(Operator):
     def invoke(self, context, event):
         if context.space_data is None or context.space_data.type != 'VIEW_3D':
             report_user(self, 'ERROR',
-                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."),
-                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."))
+                        'Run in a 3D View.')
             return {'CANCELLED'}
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
@@ -351,39 +408,37 @@ class SNAP_OT_pick_face_a(Operator):
 class SNAP_OT_pick_face_b(Operator):
     """Pick moving face (B) in Object Mode"""
     bl_idname = "snapsplit.pick_face_b"
-    bl_label = tr("ui.pick_face_b", "Pick Face B")
+    bl_label = "Pick Face B"
     bl_options = {'REGISTER', 'UNDO'}
 
     def modal(self, context, event):
         if event.type in {'RIGHTMOUSE', 'ESC'}:
             report_user(self, 'INFO',
-                        tr("MSG_CANCELLED", "Canceled."),
-                        tr("MSG_CANCELLED", "Canceled."))
+                        'Canceled.')
             return {'CANCELLED'}
 
         if event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             hit = _raycast_pick_face(context, event)
             if not hit:
                 report_user(self, 'INFO',
-                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."),
-                            tr("HINT_RAYCAST_NO_FACE", "No face hit. Orbit/zoom and click directly on a visible mesh."))
+                            'No face hit. Orbit/zoom and click directly on a visible mesh.')
                 return {'RUNNING_MODAL'}
             obj, pos, nrm, fidx = hit
-            wm = context.window_manager
-            wm.snapsplit_face_b_obj = obj.name
-            wm.snapsplit_face_b_index = fidx
+            picks = context.window_manager.snapsplit_picks
+            picks.face_b_obj = obj.name
+            picks.face_b_index = fidx
 
             # If A already exists, keep both highlighted; else highlight only B
-            nameA = getattr(wm, "snapsplit_face_a_obj", "")
-            idxA = getattr(wm, "snapsplit_face_a_index", -1)
+            nameA = picks.face_a_obj
+            idxA = picks.face_a_index
             objA = bpy.data.objects.get(nameA) if nameA else None
+
 
             _highlight_picked_face_persistent(objA=(objA or obj), idxA=(idxA if objA else fidx),
                                               objB=(obj if objA else None), idxB=(fidx if objA else -1))
 
             report_user(self, 'INFO',
-                        tr("INFO_PICKED_B", f"Picked B: {obj.name} face {fidx}"),
-                        tr("INFO_PICKED_B", f"Picked B: {obj.name} face {fidx}"))
+                        _trf('Picked B: {name} face {fidx}', name=obj.name, fidx=fidx))
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}
@@ -391,11 +446,62 @@ class SNAP_OT_pick_face_b(Operator):
     def invoke(self, context, event):
         if context.space_data is None or context.space_data.type != 'VIEW_3D':
             report_user(self, 'ERROR',
-                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."),
-                        tr("ERR_RUN_IN_3DVIEW", "Run in a 3D View."))
+                        'Run in a 3D View.')
             return {'CANCELLED'}
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
+
+
+# ---------------------------
+# Clear Picks helpers
+# ---------------------------
+
+def _exit_to_object_mode_safe():
+    """Try to return to OBJECT mode ignoring errors."""
+    # NOTE: bpy.ops.object.mode_set has no public non-operator equivalent; kept on purpose.
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+
+
+def _deselect_edit_mesh(obj):
+    """Deselect all elements of obj's mesh (works in Edit Mode and in Object Mode).
+
+    - Edit Mode:   live edit BMesh (replaces bpy.ops.mesh.select_all).
+    - Object Mode: mesh data select flags through foreach_set, no mode switch needed.
+    - If the RNA route is unavailable, enter Edit Mode and use the BMesh route.
+    """
+    if not obj or obj.type != 'MESH':
+        return
+
+    try:
+        bpy.context.view_layer.objects.active = obj
+    except Exception:
+        pass
+
+    # Edit Mode: use the live BMesh
+    if obj.mode == 'EDIT':
+        _edit_bmesh_deselect_all(obj)
+        return
+
+    # Object Mode: write select flags directly into the mesh data
+    me = obj.data
+    try:
+        me.vertices.foreach_set("select", [False] * len(me.vertices))
+        me.edges.foreach_set("select", [False] * len(me.edges))
+        me.polygons.foreach_set("select", [False] * len(me.polygons))
+        me.update()
+        return
+    except Exception:
+        pass
+
+    # Fallback: go through Edit Mode and the BMesh route
+    try:
+        bpy.ops.object.mode_set(mode='EDIT')
+        _edit_bmesh_deselect_all(obj)
+    except Exception:
+        pass
 
 
 # ---------------------------
@@ -405,29 +511,33 @@ class SNAP_OT_pick_face_b(Operator):
 class SNAP_OT_align_faces(Operator):
     """Align moving face B to target face A (face-to-face, centers matched)"""
     bl_idname = "snapsplit.align_faces"
-    bl_label = tr("ALIGN_FACES_LABEL", "Align Faces")
+    bl_label = "Align Faces"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        wm = context.window_manager
-        nameA = getattr(wm, "snapsplit_face_a_obj", "")
-        idxA = getattr(wm, "snapsplit_face_a_index", -1)
-        nameB = getattr(wm, "snapsplit_face_b_obj", "")
-        idxB = getattr(wm, "snapsplit_face_b_index", -1)
+        picks = context.window_manager.snapsplit_picks
+        nameA = picks.face_a_obj
+        idxA = picks.face_a_index
+        nameB = picks.face_b_obj
+        idxB = picks.face_b_index
+
 
         if not nameA or idxA < 0 or not nameB or idxB < 0:
             report_user(self, 'ERROR',
-                        tr("ERR_PICK_A_B_FIRST", "Pick Face A and Face B first (Object Mode)."),
-                        tr("ERR_PICK_A_B_FIRST", "Pick Face A and Face B first (Object Mode)."))
+                        'Pick Face A and Face B first (Object Mode).')
             return {'CANCELLED'}
 
         objA = bpy.data.objects.get(nameA)
         objB = bpy.data.objects.get(nameB)
         if not objA or not objB or objA.type != 'MESH' or objB.type != 'MESH':
             report_user(self, 'ERROR',
-                        tr("ERR_STORED_FACES_NOT_FOUND", "Stored faces not found or not meshes."),
-                        tr("ERR_STORED_FACES_NOT_FOUND", "Stored faces not found or not meshes."))
+                        'Stored faces not found or not meshes.')
             return {'CANCELLED'}
+
+        # Leave Edit Mode first (the persistent highlight keeps objects in Edit Mode).
+        # Leaving flushes the face selection into the mesh data, so the highlight stays
+        # visible, and the frame computation below reads up-to-date mesh data.
+        _exit_to_object_mode_safe()
 
         try:
             originA, RA = _object_face_frame_world(objA, idxA)
@@ -435,12 +545,19 @@ class SNAP_OT_align_faces(Operator):
 
         except Exception as e:
             report_user(self, 'ERROR',
-                tr("ERR_FACE_FRAMES_COMPUTE", f"Could not compute face frames: {e}"),
-                tr("ERR_FACE_FRAMES_COMPUTE", f"Could not compute face frames: {e}"))
+                _trf('Could not compute face frames: {error}', error=e))
             return {'CANCELLED'}
 
-        # Face-to-face: flip B’s Z and Y to keep right-handed
-        RB_ff = Matrix((RB[0], -RB[1], -RB[2]))
+        # Face-to-face: flip B's frame by 180 degrees to keep it right-handed
+        if _FACE_TO_FACE_LOCAL_FLIP:
+            # Columns of RB are the face axes (x, y, z). Negating the Y and Z COLUMNS is a
+            # local 180 degree rotation about the face X axis, so B's normal ends up
+            # opposite to A's normal for any orientation.
+            RB_ff = RB @ Matrix.Diagonal(Vector((1.0, -1.0, -1.0)))
+        else:
+            # Previous behaviour: negates the ROWS (world components). Only correct for some
+            # orientations (e.g. normals along +/-Z). Kept for A/B comparison testing.
+            RB_ff = Matrix((RB[0], -RB[1], -RB[2]))
 
         FA = _make_frame_matrix(originA, RA)
         FB = _make_frame_matrix(originB, RB_ff)
@@ -449,8 +566,7 @@ class SNAP_OT_align_faces(Operator):
             M_align = FA @ FB.inverted()
         except Exception:
             report_user(self, 'ERROR',
-                        tr("ERR_ALIGN_SINGULAR", "Alignment transform invalid (singular frame)."),
-                        tr("ERR_ALIGN_SINGULAR", "Alignment transform invalid (singular frame)."))
+                        'Alignment transform invalid (singular frame).')
             return {'CANCELLED'}
 
         # Apply to moving object B
@@ -461,15 +577,8 @@ class SNAP_OT_align_faces(Operator):
         except Exception:
             pass
 
-        # Return to Object Mode after alignment so users continue object-level workflow
-        try:
-            bpy.ops.object.mode_set(mode='OBJECT')
-        except Exception:
-            pass
-
         report_user(self, 'INFO',
-                    tr("INFO_ALIGNED", f"Aligned {objB.name} to {objA.name}."),
-                    tr("INFO_ALIGNED", f"Aligned {objB.name} to {objA.name}."))
+                    _trf('Aligned {name} to {name2}.', name=objB.name, name2=objA.name))
         return {'FINISHED'}
 
 
@@ -477,42 +586,22 @@ class SNAP_OT_align_faces(Operator):
 # Clear Picks operator
 # ---------------------------
 
-def _deselect_edit_mesh(obj):
-    """Deselect all faces of obj in Edit Mode (safe-ops)."""
-    if not obj or obj.type != 'MESH':
-        return
-    try:
-        bpy.context.view_layer.objects.active = obj
-        if obj.mode != 'EDIT':
-            bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='DESELECT')
-    except Exception:
-        pass
-
-def _exit_to_object_mode_safe():
-    """Try to return to OBJECT mode ignoring errors."""
-    try:
-        bpy.ops.object.mode_set(mode='OBJECT')
-    except Exception:
-        pass
-
-
 class SNAP_OT_clear_picks(bpy.types.Operator):
     """Clear stored Face A/B picks and remove their highlights."""
     bl_idname = "snapsplit.clear_picks"
-    bl_label = tr("CLEAR_PICKS_LABEL", "Clear Picks")
+    bl_label = "Clear Picks"
     bl_options = {'INTERNAL', 'UNDO'}
 
     def execute(self, context):
-        wm = context.window_manager
+        picks = context.window_manager.snapsplit_picks
 
-        # buffer names before clearing WM, so we can remove highlights
-        nameA = getattr(wm, "snapsplit_face_a_obj", "")
-        nameB = getattr(wm, "snapsplit_face_b_obj", "")
+        # Buffer names before clearing, so we can remove highlights
+        nameA = picks.face_a_obj
+        nameB = picks.face_b_obj
         objA = bpy.data.objects.get(nameA) if nameA else None
         objB = bpy.data.objects.get(nameB) if nameB else None
 
-        # try to remove edit selections
+        # remove the highlight selection (Edit Mode: BMesh, Object Mode: mesh data)
         if objA:
             _deselect_edit_mesh(objA)
         if objB and objB is not objA:
@@ -521,58 +610,37 @@ class SNAP_OT_clear_picks(bpy.types.Operator):
         # go back to Object Mode
         _exit_to_object_mode_safe()
 
-        # clear WM fields
-        try:
-            wm.snapsplit_face_a_obj = ""
-            wm.snapsplit_face_a_index = -1
-            wm.snapsplit_face_b_obj = ""
-            wm.snapsplit_face_b_index = -1
-        except Exception:
-            pass
+        # Reset the stored picks
+        picks.face_a_obj = ""
+        picks.face_a_index = -1
+        picks.face_b_obj = ""
+        picks.face_b_index = -1
 
-        self.report({'INFO'}, tr("INFO_PICKS_CLEARED", "Picks cleared"))
+        self.report({'INFO'}, 'Picks cleared')
         return {'FINISHED'}
 
 
-# ---------------------------
-# WindowManager storage for picks
-# ---------------------------
-
-def _register_picker_storage():
-    """Ensure WindowManager properties for storing picks exist."""
-    wm = bpy.types.WindowManager
-    if not hasattr(wm, "snapsplit_face_a_obj"):
-        wm.snapsplit_face_a_obj = bpy.props.StringProperty(name=tr("PROP_FACE_A_OBJECT", "Face A Object"))
-    if not hasattr(wm, "snapsplit_face_a_index"):
-        wm.snapsplit_face_a_index = bpy.props.IntProperty(name=tr("PROP_FACE_A_INDEX", "Face A Index"), default=-1)
-    if not hasattr(wm, "snapsplit_face_b_obj"):
-        wm.snapsplit_face_b_obj = bpy.props.StringProperty(name=tr("PROP_FACE_B_OBJECT", "Face B Object"))
-    if not hasattr(wm, "snapsplit_face_b_index"):
-        wm.snapsplit_face_b_index = bpy.props.IntProperty(name=tr("PROP_FACE_B_INDEX", "Face B Index"), default=-1)
-
-
 classes = (
+    SNAP_PG_picks,          # PropertyGroup must be registered before the operators and the pointer
     SNAP_OT_pick_face_a,
     SNAP_OT_pick_face_b,
     SNAP_OT_align_faces,
     SNAP_OT_clear_picks,
 )
 
-def register():
-    """Register operators and ensure WindowManager storage exists. Also refresh labels via tr()."""
-    try:
-        SNAP_OT_pick_face_a.bl_label = tr("PICK_FACE_A_LABEL", "Pick Face A")
-        SNAP_OT_pick_face_b.bl_label = tr("PICK_FACE_B_LABEL", "Pick Face B")
-        SNAP_OT_align_faces.bl_label = tr("ALIGN_FACES_LABEL", "Align Faces")
-        SNAP_OT_clear_picks.bl_label = tr("CLEAR_PICKS_LABEL", "Clear Picks")
-    except Exception:
-        pass
 
+def register():
+    """Register classes and attach the pick storage to bpy.types.WindowManager."""
+    # Labels are plain class attributes; Blender translates them itself.
     for c in classes:
         bpy.utils.register_class(c)
-    _register_picker_storage()
+    bpy.types.WindowManager.snapsplit_picks = bpy.props.PointerProperty(type=SNAP_PG_picks)
+
 
 def unregister():
-    """Unregister operators."""
+    """Detach the pick storage from bpy.types.WindowManager and unregister all classes."""
+    # Remove the pointer first, then the PropertyGroup it references
+    if hasattr(bpy.types.WindowManager, "snapsplit_picks"):
+        del bpy.types.WindowManager.snapsplit_picks
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

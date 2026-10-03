@@ -5,11 +5,14 @@
 /V_0.1.4_more_connectors/
 /V_0.1.5_more_languages/
 /V_0.1.6_Preview/
+/V_0.1.7_extension-ready/
+/i18n_migration/
 /img/
 /Tests/
 /Examples/
 snapsplit_aktuell.txt
 snapsplit_funktioniert-noch.txt
+snapsplit_plan.txt
 Debugging.txt
 snapsplit.zip
 snapsplit/ui00.py
