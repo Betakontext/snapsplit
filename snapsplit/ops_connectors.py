@@ -209,8 +209,155 @@ def _axis_vectors(axis):
     return Vector((0, 0, 1)), Vector((1, 0, 0)), Vector((0, 1, 0))
 
 
+# ---------------------------
+# Seam detection from geometry (works for cut parts AND for parts joined by Align Faces)
+# ---------------------------
+
+
+# Max. distance (mm) between two bounding-box faces that still counts as "touching".
+SEAM_CONTACT_TOL_MM = 0.05
+
+
+def _axis_unit_vector(axis):
+    """Return a fresh world unit vector for the axis letter (fallback: Z)."""
+    return {"X": Vector((1, 0, 0)),
+            "Y": Vector((0, 1, 0)),
+            "Z": Vector((0, 0, 1))}.get(axis, Vector((0, 0, 1)))
+
+
+def _world_aabb_min_max(obj):
+    """Return world-space AABB as two lists (min[3], max[3])."""
+    corners = _bb_world(obj)
+    mn = [min(c[i] for c in corners) for i in range(3)]
+    mx = [max(c[i] for c in corners) for i in range(3)]
+    return mn, mx
+
+
+def _detect_seam_contact(obj_p, obj_q):
+    """Detect an axis-aligned face contact between the world AABBs of two objects.
+
+    Returns (axis_letter, seam_pos, sign) or None.
+    - axis_letter: world axis that is the seam normal (X/Y/Z)
+    - seam_pos: world coordinate of the contact plane along that axis
+    - sign: +1 if Q lies on the +axis side of P, -1 if on the -axis side
+    The axis with the largest contact area wins. Returns None for edge/corner
+    contact, gaps, or strongly rotated objects (loose AABBs).
+    """
+    tol = max(1e-7, SEAM_CONTACT_TOL_MM * unit_mm())
+    p_min, p_max = _world_aabb_min_max(obj_p)
+    q_min, q_max = _world_aabb_min_max(obj_q)
+
+    best = None  # (area, axis_letter, seam_pos, sign)
+    for i, letter in enumerate(("X", "Y", "Z")):
+        o1 = (i + 1) % 3
+        o2 = (i + 2) % 3
+
+        # The contact face must have a real overlap on both tangential axes
+        ov1 = min(p_max[o1], q_max[o1]) - max(p_min[o1], q_min[o1])
+        ov2 = min(p_max[o2], q_max[o2]) - max(p_min[o2], q_min[o2])
+        if ov1 <= tol or ov2 <= tol:
+            continue
+
+        # Distance between facing box sides along the candidate axis
+        gap_up = q_min[i] - p_max[i]   # Q above P
+        gap_dn = p_min[i] - q_max[i]   # Q below P
+        if abs(gap_up) <= abs(gap_dn):
+            gap, sign, seam = gap_up, 1, 0.5 * (q_min[i] + p_max[i])
+        else:
+            gap, sign, seam = gap_dn, -1, 0.5 * (p_min[i] + q_max[i])
+        if abs(gap) > tol:
+            continue
+
+        area = ov1 * ov2
+        if best is None or area > best[0]:
+            best = (area, letter, seam, sign)
+
+    if best is None:
+        return None
+    return best[1], best[2], best[3]
+
+
+def _align_role_swap(obj_p, obj_q):
+
+    return None
+
+
+
+def _resolve_pair(obj_p, obj_q):
+    """Resolve a touching pair into (a, b, axis, seam_pos, sign) or None.
+
+    Role rule (identical for cut parts and parts joined by Align Faces):
+    - a = socket part (DIFFERENCE), lies on the +axis side of the seam
+    - b = pin part (UNION), lies on the -axis side of the seam
+    The connector frame z points from B towards A, i.e. along the +world axis,
+    so the pin is embedded in B (negative side) and protrudes into A. The snap
+    sphere ring is placed on the protruding half and is therefore visible.
+    'sign' is always +1 and kept only so that all callers stay unchanged.
+    """
+    contact = _detect_seam_contact(obj_p, obj_q)
+    if contact is None:
+        return None
+    axis, seam_pos, sign_q = contact  # sign_q describes Q relative to P
+
+    if sign_q > 0:
+        # Q lies on the +axis side of P -> Q is the socket part (A), P the pin part (B)
+        a, b = obj_q, obj_p
+    else:
+        # Q lies on the -axis side of P -> P is the socket part (A), Q the pin part (B)
+        a, b = obj_p, obj_q
+    return a, b, axis, seam_pos, 1
+
+
+
+def _build_connector_pairs(parts, fallback_axis, warn=False):
+    """Build connector pairs as tuples (a, b, axis, seam_pos_or_None, sign).
+
+    Every touching pair of parts is used. If no contact is found at all, the
+    legacy behaviour is used: consecutive parts sorted along fallback_axis.
+    """
+    objs = [o for o in parts if o is not None]
+    pairs = []
+    for i in range(len(objs)):
+        for j in range(i + 1, len(objs)):
+            res = _resolve_pair(objs[i], objs[j])
+            if res is not None:
+                pairs.append(res)
+
+    if pairs:
+        if warn:
+            used = {id(o) for pr in pairs for o in pr[:2]}
+            if any(id(o) not in used for o in objs):
+                report_user(None, 'WARNING',
+                            'Some selected parts do not touch any other part and were skipped.')
+        return pairs
+
+    # Legacy fallback: sort along the scene split axis
+    if warn and len(objs) >= 2:
+        report_user(None, 'WARNING',
+                    'No face contact detected between the parts; using the Split Axis setting.')
+    idx = _axis_index(fallback_axis)
+    ordered = sorted(objs, key=lambda o: o.location[idx])
+    fb = []
+    for k in range(len(ordered) - 1):
+        lo, hi = ordered[k], ordered[k + 1]
+        if _align_role_swap(lo, hi):
+            fb.append((hi, lo, fallback_axis, None, -1))   # Align tag: hi is the target
+        else:
+            fb.append((lo, hi, fallback_axis, None, 1))
+    return fb
+
+
 def _pair_seam_plane_pos(obj_a, obj_b, axis, props):
-    """Return world-space seam plane coordinate along axis for a specific adjacent pair (A,B)."""
+    """Return the world-space seam plane coordinate along axis for the pair (A,B).
+
+    Uses the real contact plane if the pair touches along this axis. Otherwise it
+    falls back to the middle of the combined bounding box (legacy behaviour,
+    without the old split_offset_mm shift).
+    """
+    contact = _detect_seam_contact(obj_a, obj_b)
+    if contact is not None and contact[0] == axis:
+        return contact[1]
+
     idx = _axis_index(axis)
     bb_a = _bb_world(obj_a); bb_b = _bb_world(obj_b)
     vals_a = [c[idx] for c in bb_a]; vals_b = [c[idx] for c in bb_b]
@@ -218,9 +365,8 @@ def _pair_seam_plane_pos(obj_a, obj_b, axis, props):
     hi = max(max(vals_a), max(vals_b))
     if not (lo < hi):
         return lo  # degenerate but safe
-    mid = 0.5 * (lo + hi)
-    off_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
-    return max(lo, min(hi, mid + off_scene))
+    return 0.5 * (lo + hi)
+
 
 
 # ---------------------------
@@ -2359,11 +2505,11 @@ def place_connectors_between(parts, axis, count, ctype, props):
     if not parts:
         return []
 
-    idx = _axis_index(axis)
-    ordered = sorted(parts, key=lambda o: o.location[idx])
-    pairs = [(ordered[i], ordered[i + 1]) for i in range(len(ordered) - 1)]
+    # 'axis' is only the fallback (scene Split Axis); each pair detects its own seam axis
+    pairs = _build_connector_pairs(parts, axis, warn=True)
     if not pairs:
         return []
+
 
     # Validate the Custom Connector source object once, before processing any pairs/points,
     # to avoid repeating the same error report for every generated point.
@@ -2388,8 +2534,13 @@ def place_connectors_between(parts, axis, count, ctype, props):
     margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
     cols = max(1, int(getattr(props, "connectors_per_seam", count)))
 
-    for a, b in pairs:
-        seam_pos = _pair_seam_plane_pos(a, b, axis, props)
+    for a, b, axis, pair_seam_pos, pair_sign in pairs:
+        # Per-pair seam axis (shadows the function argument on purpose, so all code
+        # below that uses 'axis' and 'naxis' automatically works with the detected seam).
+        # naxis points from B (pin) towards A (socket).
+        naxis = axis_map[axis] * pair_sign
+        seam_pos = pair_seam_pos if pair_seam_pos is not None else _pair_seam_plane_pos(a, b, axis, props)
+
 
         if getattr(props, "connector_distribution", "LINE") == "GRID":
             rows = max(1, int(getattr(props, "connectors_rows", 2)))
@@ -2852,10 +3003,8 @@ def update_connector_placement_preview(context):
         # Always rebuild from scratch so stale points/rings never linger
         _clear_connector_placement_preview()
 
-        axis = getattr(props, "split_axis", "Z")
-        idx = _axis_index(axis)
-        ordered = sorted(sel, key=lambda o: o.location[idx])
-        pairs = [(ordered[i], ordered[i + 1]) for i in range(len(ordered) - 1)]
+        fallback_axis = getattr(props, "split_axis", "Z")
+        pairs = _build_connector_pairs(sel, fallback_axis, warn=False)
         if not pairs:
             return
 
@@ -2871,7 +3020,6 @@ def update_connector_placement_preview(context):
         prev_coll = ensure_collection("_SnapSplit_Preview")
 
         axis_map = {"X": Vector((1, 0, 0)), "Y": Vector((0, 1, 0)), "Z": Vector((0, 0, 1))}
-        naxis = axis_map.get(axis, Vector((0, 0, 1)))
 
         embed_pct = max(0.0, min(1.0, float(getattr(props, "pin_embed_pct", 50.0)) * 0.01))
         margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
@@ -2904,10 +3052,12 @@ def update_connector_placement_preview(context):
                 prev_coll.objects.link(sph_prev)
                 created_count += 1
 
-        for a, b in pairs:
+        for a, b, axis, pair_seam_pos, pair_sign in pairs:
             if cap_hit:
                 break
-            seam_pos = _pair_seam_plane_pos(a, b, axis, props)
+            naxis = axis_map[axis] * pair_sign   # points from B (pin) towards A (socket)
+            seam_pos = pair_seam_pos if pair_seam_pos is not None else _pair_seam_plane_pos(a, b, axis, props)
+
 
             if distribution == "GRID":
                 rows = max(1, int(getattr(props, "connectors_rows", 2)))
@@ -3168,15 +3318,33 @@ class SNAP_OT_place_connectors_click(Operator):
                         'Select exactly 2 adjacent split parts.')
             return {'CANCELLED'}
 
-        self.a, self.b = sel
-        self.axis = props.split_axis
         self.props = props
 
-        try:
-            self.seam_pos = _pair_seam_plane_pos(self.a, self.b, self.axis, props)
-        except Exception:
-            report_user(self, 'ERROR', 'Could not compute seam plane.')
-            return {'CANCELLED'}
+        # Detect seam axis, roles (A = socket, B = pin) and insertion direction from geometry
+        resolved = _resolve_pair(sel[0], sel[1])
+        if resolved is not None:
+            self.a, self.b, self.axis, self.seam_pos, sign = resolved
+        else:
+            # Legacy fallback: scene Split Axis, lower coordinate = A (unless Align tag says otherwise)
+            fb_axis = props.split_axis
+            fb_idx = _axis_index(fb_axis)
+            lo, hi = sorted(sel, key=lambda o: o.location[fb_idx])
+            if _align_role_swap(lo, hi):
+                self.a, self.b, sign = hi, lo, -1
+            else:
+                self.a, self.b, sign = lo, hi, 1
+            self.axis = fb_axis
+            report_user(self, 'WARNING',
+                        'No face contact detected between the parts; using the Split Axis setting.')
+            try:
+                self.seam_pos = _pair_seam_plane_pos(self.a, self.b, self.axis, props)
+            except Exception:
+                report_user(self, 'ERROR', 'Could not compute seam plane.')
+                return {'CANCELLED'}
+
+        # Insertion direction (points from B (pin) towards A (socket), used by preview and placement
+        self.frame_z = _axis_unit_vector(self.axis) * sign
+
 
         try:
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
@@ -3587,12 +3755,13 @@ class SNAP_OT_place_connectors_click(Operator):
                     hit = self._intersect_mouse_with_seam_plane(context, event)
                     if hit is not None:
                         ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
+                        fz = self.frame_z  # insertion direction A -> B
                         if ctype_cur == "CYL_PIN":
-                            place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
+                            place_one_cyl_pin_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Pin_Click")
                         elif ctype_cur == "RECT_TENON":
-                            place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
+                            place_one_rect_tenon_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Tenon_Click")
                         elif ctype_cur == "SNAP_PIN":
-                            place_one_cyl_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Pin_Click")
+                            place_one_cyl_pin_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Pin_Click")
                             M = self._build_frame_at(hit)
                             mm = unit_mm()
                             pin_radius_scene = 0.5 * float(self.props.pin_diameter_mm) * mm
@@ -3609,7 +3778,7 @@ class SNAP_OT_place_connectors_click(Operator):
                                 cutters_coll=cutters_coll
                             )
                         elif ctype_cur == "SNAP_TENON":
-                            place_one_rect_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Tenon_Click")
+                            place_one_rect_tenon_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Tenon_Click")
                             M = self._build_frame_at(hit)
                             mm = unit_mm()
                             half_w_scene = 0.5 * float(self.props.tenon_width_mm) * mm
@@ -3626,15 +3795,16 @@ class SNAP_OT_place_connectors_click(Operator):
                                 cutters_coll=cutters_coll
                             )
                         elif ctype_cur == "DOVETAIL":
-                            place_one_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Dovetail_Click")
+                            place_one_dovetail_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Dovetail_Click")
                         elif ctype_cur == "SNAP_DOVETAIL":
-                            place_one_snap_dovetail_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="SnapDovetail_Click")
+                            place_one_snap_dovetail_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="SnapDovetail_Click")
                         elif ctype_cur == "SNAP_FLUSH_PIN":
-                            place_one_flush_pin_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="FlushPin_Click")
+                            place_one_flush_pin_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="FlushPin_Click")
                         elif ctype_cur == "SNAP_FLUSH_TENON":
-                            place_one_flush_tenon_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="FlushTenon_Click")
+                            place_one_flush_tenon_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="FlushTenon_Click")
                         elif ctype_cur == "CUSTOM":
-                            place_one_custom_connector_at(self.a, self.b, self.axis, hit, props=self.props, name_prefix="Custom_Click")
+                            place_one_custom_connector_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Custom_Click")
+
 
                         try:
                             remove_cutters_collection()
@@ -3692,12 +3862,9 @@ class SNAP_OT_place_connectors_click(Operator):
         Note: For preview, we use tenon_depth_mm by legacy for non-dovetail types.
         Dovetail placement later overrides depth with dovetail_depth_mm.
         """
-        z = {
-            "X": Vector((1, 0, 0)),
-            "Y": Vector((0, 1, 0)),
-            "Z": Vector((0, 0, 1)),
-        }.get(self.axis, Vector((0, 0, 1))).normalized()
+        z = self.frame_z.normalized()
         x = Vector((1, 0, 0))
+
         if abs(z.dot(x)) > 0.99:
             x = Vector((0, 1, 0))
         y = z.cross(x); y.normalize()
