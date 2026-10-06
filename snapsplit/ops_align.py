@@ -30,22 +30,6 @@ from bpy_extras import view3d_utils
 from .utils import report_user
 from .utils import _trf
 
-# Translation helper: tr(key, fallback)
-
-# ---------------------------
-# Policy notes (documented for Extensions review)
-# ---------------------------
-# Selection operators (bpy.ops.mesh.select_all / select_mode, bpy.ops.object.select_all)
-# are replaced by direct RNA / BMesh access:
-#   - object selection:  Object.select_set()
-#   - select mode:       tool_settings.mesh_select_mode (set BEFORE entering Edit Mode)
-#                        and BMesh.select_mode on the live edit BMesh
-#   - element selection: BMesh element select_set() + bmesh.update_edit_mesh()
-# Remaining operator: bpy.ops.object.mode_set. There is no public non-operator
-# API to switch object modes, so it is kept on purpose.
-
-# Set to True to use the corrected face-to-face flip (local 180 degree rotation about the
-# face X axis). Set to False to restore the previous behaviour (row negation in world space).
 _FACE_TO_FACE_LOCAL_FLIP = True
 
 

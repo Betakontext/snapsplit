@@ -525,8 +525,15 @@ def position_preview_planes_for_object(context, obj, axis, parts_count, offset_s
 
 def _disable_split_preview_and_cleanup(context):
     """Disable the split preview toggle and remove all preview planes and empty collections."""
+    # Give the viewport's X-Ray state back (no-op if the cut preview never switched it on)
+    try:
+        from .utils import xray_release
+        xray_release("split_preview")
+    except Exception:
+        pass
     try:
         props = getattr(context.scene, "snapsplit", None)
+
         if props and getattr(props, "show_split_preview", False):
             props.show_split_preview = False
     except Exception:
@@ -1232,6 +1239,15 @@ class SNAP_OT_adjust_split_axis(Operator):
             self.preview_plane = None
 
         self._area = context.area; self._region = context.region
+
+        # Keep the preview planes visible inside solid objects while adjusting
+        try:
+            from .utils import xray_acquire
+            xray_acquire(context, "adjust_axis")
+        except Exception:
+            pass
+
+
         context.window_manager.modal_handler_add(self)
         if self._area: self._area.tag_redraw()
         if self._region:
@@ -1243,6 +1259,13 @@ class SNAP_OT_adjust_split_axis(Operator):
     def finish(self, context, cancelled=False):
         """Stop modal mode, optionally remove preview planes and report status."""
         keep = False
+        # Restore X-Ray (finish() is called on every exit path of the modal operator)
+        try:
+            from .utils import xray_release
+            xray_release("adjust_axis")
+        except Exception:
+            pass
+
         try: keep = bool(getattr(context.scene.snapsplit, "show_split_preview", False))
         except Exception: pass
         if not keep:
@@ -1734,6 +1757,99 @@ def cap_single_object_hollow_style(obj) -> bool:
             pass
         print(f"[SnapSplit DEBUG] ---- cap_single_object_hollow_style: {obj.name} DONE, any_ok={any_ok} ----")
 
+# ---------------------------
+# Auto "Apply Rotation & Scale" before the planar split
+# ---------------------------
+
+def apply_rotation_and_scale(obj):
+    """Bake rotation and scale of obj into its mesh data. Location is NOT applied.
+
+    The result is the same as Ctrl+A > Rotation & Scale: the object keeps its world
+    position and shape, but its local axes become the world axes. Cut planes,
+    capping and seam detection (all world-axis based) then work in the same space.
+
+    Handles parents (detached while keeping the world matrix), children (world
+    matrix restored), shared mesh data (own copy is made), shape keys and
+    mirrored (negative determinant) transforms.
+    Returns True if the object was modified, False if nothing was done or the
+    object could not be baked safely.
+    """
+    from mathutils import Matrix  # local import: no change to the module header needed
+
+    if obj is None or obj.type != 'MESH' or obj.data is None:
+        return False
+    # Mesh.transform() cannot be used while the mesh is in Edit Mode
+    if obj.mode != 'OBJECT':
+        return False
+
+    # Make sure matrix_world is up to date before reading it
+    try:
+        bpy.context.view_layer.update()
+    except Exception:
+        pass
+
+    M = obj.matrix_world.copy()
+    rs = M.to_3x3()  # rotation + scale (+ parent contribution), without translation
+
+    # Nothing to do if the object space is already aligned with the world axes
+    dev = max(abs(rs[i][j] - (1.0 if i == j else 0.0)) for i in range(3) for j in range(3))
+    if dev < 1e-6:
+        return False
+
+    # Remember the world matrices of children so they do not move afterwards
+    children = [(c, c.matrix_world.copy()) for c in obj.children]
+
+    # Detach from the parent while keeping the world transform
+    if obj.parent is not None:
+        obj.parent = None
+        obj.matrix_world = M
+
+    # Shared mesh data would change other objects too: give this object its own copy
+    if obj.data.users > 1:
+        obj.data = obj.data.copy()
+
+    if rs.determinant() < 0.0:
+        # DOCUMENTED FALLBACK (same reason as in _apply_object_scale_if_needed):
+        # a mirroring transform flips the winding, so use Blender's own operator.
+        # The context override restricts the operator to this single object.
+        try:
+            with bpy.context.temp_override(active_object=obj, object=obj,
+                                           selected_objects=[obj],
+                                           selected_editable_objects=[obj]):
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        except Exception as ex:
+            print(f"[SnapSplit] transform_apply fallback failed: {ex}")
+            return False
+    else:
+        has_keys = getattr(obj.data, "shape_keys", None) is not None
+        m4 = rs.to_4x4()
+        try:
+            # Transform shape keys together with the base mesh
+            obj.data.transform(m4, shape_keys=True)
+        except TypeError:
+            # 'shape_keys' argument not available: only safe without shape keys
+            if has_keys:
+                print("[SnapSplit] Object has shape keys; transform not applied.")
+                return False
+            obj.data.transform(m4)
+        obj.data.update()
+        # Keep only the world position on the object (rotation 0, scale 1)
+        obj.matrix_world = Matrix.Translation(M.translation)
+
+    try:
+        bpy.context.view_layer.update()
+    except Exception:
+        pass
+
+    # Restore the world matrices of the children
+    for c, mw in children:
+        try:
+            c.matrix_world = mw
+        except Exception:
+            pass
+    return True
+
+
 
 class SNAP_OT_planar_split(Operator):
     """Split the active mesh into multiple parts along a selected axis, with optional auto-capping."""
@@ -1749,10 +1865,9 @@ class SNAP_OT_planar_split(Operator):
                         'Please select a mesh object.')
             return {'CANCELLED'}
 
-        warn_if_unapplied_transforms(obj, operator=self)
-
         # Normalize hollow and record used_hollow flag
         used_hollow = False
+
         try:
             obj, used_hollow = robust_prepare_hollow(obj, operator=self)
             obj.data.validate(); obj.data.update()
@@ -1769,6 +1884,18 @@ class SNAP_OT_planar_split(Operator):
             self.report({'INFO'}, _trf('Splitting into many parts can take a while on dense meshes...'))
 
         offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
+        # Apply rotation and scale AFTER the cuts were computed (so they match the orange
+        # preview exactly) and BEFORE the split (so mesh space == world space).
+        # The cut planes are world coordinates and the object keeps its world position
+        # and shape, so the cuts stay valid. A failure must never block the split.
+        try:
+            if apply_rotation_and_scale(obj):
+                report_user(self, 'INFO',
+                            'Rotation and scale were applied before splitting.')
+        except Exception as ex:
+            print(f"[SnapSplit] Auto apply rotation/scale failed: {ex}")
+
+
         cuts = create_cut_data_with_offset(obj, axis, count, global_offset_scene=offset_scene)
 
         parts = apply_bmesh_split_sequence(obj, axis, count, cuts_override=cuts, operator=self)
@@ -2346,7 +2473,12 @@ def register():
 def unregister():
     """Unregister operators and make sure no SnapSplit handler stays behind."""
     global _last_preview_active_obj, _last_connector_preview_selection_key
-
+    # Never leave X-Ray switched on when the add-on is disabled
+    try:
+        from .utils import xray_release
+        xray_release(None)
+    except Exception:
+        pass
     _remove_handlers_named(bpy.app.handlers.depsgraph_update_post, _DEPSGRAPH_HANDLER_NAME)
     _remove_handlers_named(bpy.app.handlers.load_post, _LOAD_HANDLER_NAME)
     _last_preview_active_obj = None

@@ -76,8 +76,18 @@ def _snapsplit_update_connector_preview(self, context):
         pass
 
 def _snapsplit_update_show_split_preview(self, context):
-    """Update callback of 'show_split_preview': refresh the preview, then sync the depsgraph handler."""
+    """Update callback of 'show_split_preview': X-Ray, refresh the preview, sync the depsgraph handler."""
     try:
+        # X-Ray on while the cut preview is shown, so the planes are visible inside solid
+        # objects; restored when the preview is switched off (also via cleanup code).
+        try:
+            from .utils import xray_acquire, xray_release
+            if bool(getattr(self, "show_split_preview", False)):
+                xray_acquire(context, "split_preview")
+            else:
+                xray_release("split_preview")
+        except Exception:
+            pass
         _snapsplit_update_preview(self, context)
     finally:
         try:
@@ -89,8 +99,17 @@ def _snapsplit_update_show_split_preview(self, context):
 
 
 def _snapsplit_update_connector_live_preview(self, context):
-    """Update callback of 'connector_live_preview': refresh the preview, then sync the depsgraph handler."""
+    """Update callback of 'connector_live_preview': X-Ray, refresh the preview, sync the handler."""
     try:
+        # Same X-Ray handling as the cut preview, with its own reason so both can run together
+        try:
+            from .utils import xray_acquire, xray_release
+            if bool(getattr(self, "connector_live_preview", False)):
+                xray_acquire(context, "connector_preview")
+            else:
+                xray_release("connector_preview")
+        except Exception:
+            pass
         _snapsplit_update_connector_preview(self, context)
     finally:
         try:
@@ -98,6 +117,7 @@ def _snapsplit_update_connector_live_preview(self, context):
             ops_split.sync_depsgraph_handler()
         except Exception:
             pass
+
 
 
 def _snapsplit_update_connector_type(self, context):
@@ -245,8 +265,7 @@ class SnapSplitProps(PropertyGroup):
             ("SNAP_TENON", 'Snap Tenon', 'Rectangular tenon with snap spheres'),
             ("SNAP_DOVETAIL", 'Snap Dovetail', 'Tapered wedge connector with snap spheres'),
             ("CUSTOM", 'Custom Connector', 'Use another mesh object from the scene as connector shape'),
-            # ("SNAP_FLUSH_PIN", tr("ui.snap_flush_pin", "Snap Flush Pin"), tr("ui.snap_flush_pin_desc", "Flush snap-fit cylindrical mortise/tenon")),
-            # ("SNAP_FLUSH_TENON", tr("ui.snap_flush_tenon", "Snap Flush Tenon"), tr("ui.snap_flush_tenon_desc", "Flush snap-fit rectangular mortise/tenon")),
+
         ],
         default="CYL_PIN",
         update=_snapsplit_update_connector_type,
@@ -300,8 +319,10 @@ class SnapSplitProps(PropertyGroup):
         name='Live Preview',
         description='Show a live wireframe preview of connector placement (LINE/GRID) for the current selection. Capped at 200 preview objects for performance.',
         default=False,
-        update=_snapsplit_update_connector_preview,
+        # Dedicated callback: switches X-Ray, refreshes the preview and syncs the depsgraph handler
+        update=_snapsplit_update_connector_live_preview,
     )
+
 
     # Snap options (sphere ring; used by SNAP_PIN / SNAP_TENON)
     snap_spheres_per_side: IntProperty(
@@ -472,24 +493,6 @@ class SnapSplitProps(PropertyGroup):
         update=_snapsplit_update_connector_preview,
     )
 
-    # Flush snap barb parameters (shared for pin/tenon)
-    flush_barb_height_mm: FloatProperty(
-        name='Barb Height (mm)',
-        description='Axial height of the shallow barb near the seam',
-        default=0.6,
-        min=0.2,
-        soft_max=1.2,
-        update=_snapsplit_update_connector_preview,
-    )
-
-    flush_barb_lip_mm: FloatProperty(
-        name='Barb Lip (mm)',
-        description='Radial/XY lip amount for the barb at the seam',
-        default=0.25,
-        min=0.1,
-        soft_max=0.6,
-        update=_snapsplit_update_connector_preview,
-    )
 
     # Tolerances / material profile
     material_profile: EnumProperty(
