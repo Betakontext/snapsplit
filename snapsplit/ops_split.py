@@ -37,11 +37,6 @@ from .utils import (
 
 from .utils import _trf
 
-# Import translation helper
-# 'tr' resolves UI strings from a central language dictionary.
-# It accepts a key and a default English fallback text.
-
-
 # ---------------------------
 # Preview naming
 # ---------------------------
