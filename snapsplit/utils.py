@@ -245,6 +245,134 @@ def report_user(self, level, msg, *_legacy, **fmt):
 
 
 # ---------------------------
+# Viewport X-Ray management (reference counted per 3D viewport)
+# ---------------------------
+
+# Maps a viewport key (SpaceView3D pointer) to its saved state:
+#   {"attr": "show_xray" | "show_xray_wireframe", "saved": bool, "reasons": set of str}
+# Several previews can be active at once; X-Ray is only restored when the last one ends.
+_XRAY_STATES = {}
+
+
+def _xray_attr_for_space(space):
+    """Return the X-Ray property name valid for the viewport's shading mode, or None."""
+    shading_type = space.shading.type
+    if shading_type == 'SOLID':
+        return "show_xray"
+    if shading_type == 'WIREFRAME':
+        return "show_xray_wireframe"
+    # Material Preview / Rendered have no X-Ray, nothing is hidden there anyway
+    return None
+
+
+def _xray_find_view3d_space(context):
+    """Find the 3D viewport the user is working in (context first, then the window's screen)."""
+    try:
+        space = getattr(context, "space_data", None)
+        if space is not None and getattr(space, "type", "") == 'VIEW_3D':
+            return space
+    except Exception:
+        pass
+    try:
+        area = getattr(context, "area", None)
+        if area is not None and area.type == 'VIEW_3D':
+            return area.spaces.active
+    except Exception:
+        pass
+    try:
+        window = getattr(context, "window", None) or bpy.context.window
+        screen = getattr(window, "screen", None)
+        if screen is not None:
+            for area in screen.areas:
+                if area.type == 'VIEW_3D':
+                    return area.spaces.active
+    except Exception:
+        pass
+    return None
+
+
+def _xray_space_from_key(key):
+    """Find a live SpaceView3D by its pointer key; return None if it no longer exists."""
+    try:
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type != 'VIEW_3D':
+                    continue
+                for sp in area.spaces:
+                    if sp.type == 'VIEW_3D' and sp.as_pointer() == key:
+                        return sp
+    except Exception:
+        pass
+    return None
+
+
+def xray_acquire(context, reason):
+    """Switch X-Ray on in the clicked 3D viewport and remember its previous state.
+
+    'reason' identifies the preview that needs X-Ray (e.g. "split_preview").
+    The previous state is stored once per viewport, so it is never overwritten by
+    a second preview. Returns True if X-Ray is active for this reason.
+    """
+    try:
+        space = _xray_find_view3d_space(context)
+        if space is None:
+            return False
+        attr = _xray_attr_for_space(space)
+        if attr is None:
+            return False
+
+        key = space.as_pointer()
+        state = _XRAY_STATES.get(key)
+        if state is not None and state["attr"] != attr:
+            # Shading mode changed since the first acquire: restore the old property first
+            try:
+                setattr(space.shading, state["attr"], state["saved"])
+            except Exception:
+                pass
+            state = None
+        if state is None:
+            state = {"attr": attr, "saved": bool(getattr(space.shading, attr)), "reasons": set()}
+            _XRAY_STATES[key] = state
+
+        state["reasons"].add(reason)
+        # Set it again every time, in case it was switched off by hand in the meantime
+        setattr(space.shading, attr, True)
+        return True
+    except Exception as ex:
+        print(f"[SnapSplit] X-Ray acquire failed: {ex}")
+        return False
+
+
+def xray_release(reason=None):
+    """Drop one reason for X-Ray; restore the saved state when no reason is left.
+
+    reason=None drops all reasons (used on unregister). Safe to call at any time,
+    it does nothing if the reason is not active.
+    """
+    try:
+        for key in list(_XRAY_STATES.keys()):
+            state = _XRAY_STATES[key]
+            if reason is None:
+                state["reasons"].clear()
+            elif reason in state["reasons"]:
+                state["reasons"].discard(reason)
+            else:
+                continue
+            if state["reasons"]:
+                continue  # another preview still needs X-Ray
+            space = _xray_space_from_key(key)
+            if space is not None:
+                try:
+                    setattr(space.shading, state["attr"], state["saved"])
+                except Exception:
+                    pass
+            del _XRAY_STATES[key]
+    except Exception as ex:
+        print(f"[SnapSplit] X-Ray release failed: {ex}")
+
+
+
+# ---------------------------
 # Add-on hooks
 # ---------------------------
 

@@ -160,7 +160,7 @@ class SNAP_PT_panel(Panel):
 
 
             # --- Pin-like connectors ---
-            if ctype in {"CYL_PIN", "SNAP_PIN", "SNAP_FLUSH_PIN"}:
+            if ctype in {"CYL_PIN", "SNAP_PIN"}:
                 if _exists(props, "pin_diameter_mm"):
                     gbox.prop(props, "pin_diameter_mm", text='Pin Diameter (mm)')
                 if _exists(props, "pin_length_mm"):
@@ -182,8 +182,10 @@ class SNAP_PT_panel(Panel):
                 except Exception:
                     pass
 
-                if ctype in {"CYL_PIN", "SNAP_PIN"} and _exists(props, "add_chamfer_mm"):
+                # Both remaining pin types (CYL_PIN, SNAP_PIN) support a chamfer
+                if _exists(props, "add_chamfer_mm"):
                     gbox.prop(props, "add_chamfer_mm", text='Chamfer (mm)')
+
 
 
                 if ctype == "SNAP_PIN" and _exists(props, "snap_spheres_per_side"):
@@ -195,16 +197,9 @@ class SNAP_PT_panel(Panel):
                     if _exists(props, "snap_sphere_protrusion_mm"):
                         s.prop(props, "snap_sphere_protrusion_mm", text='Protrusion (mm)')
 
-                if ctype == "SNAP_FLUSH_PIN":
-                    s = gbox.column(align=True)
-                    s.label(text='Flush snap (barb near seam):', icon='MOD_SOLIDIFY')
-                    if _exists(props, "flush_barb_height_mm"):
-                        s.prop(props, "flush_barb_height_mm", text='Barb Height (mm)')
-                    if _exists(props, "flush_barb_lip_mm"):
-                        s.prop(props, "flush_barb_lip_mm", text='Barb Lip (mm)')
 
             # --- Tenon-like connectors ---
-            elif ctype in {"RECT_TENON", "SNAP_TENON", "SNAP_FLUSH_TENON"}:
+            elif ctype in {"RECT_TENON", "SNAP_TENON"}:
                 if _exists(props, "tenon_width_mm"):
                     gbox.prop(props, "tenon_width_mm", text='Tenon Width (mm)')
                 if _exists(props, "tenon_depth_mm"):
@@ -212,8 +207,10 @@ class SNAP_PT_panel(Panel):
                 if _exists(props, "pin_embed_pct"):
                     gbox.prop(props, "pin_embed_pct", text='Insert Depth (%)')
 
-                if ctype in {"RECT_TENON", "SNAP_TENON"} and _exists(props, "add_chamfer_mm"):
+                # Both remaining tenon types (RECT_TENON, SNAP_TENON) support a chamfer
+                if _exists(props, "add_chamfer_mm"):
                     gbox.prop(props, "add_chamfer_mm", text='Chamfer (mm)')
+
 
 
                 if ctype == "SNAP_TENON" and _exists(props, "snap_spheres_per_side"):
@@ -224,14 +221,6 @@ class SNAP_PT_panel(Panel):
                         s.prop(props, "snap_sphere_diameter_mm", text='Sphere Diameter (mm)')
                     if _exists(props, "snap_sphere_protrusion_mm"):
                         s.prop(props, "snap_sphere_protrusion_mm", text='Protrusion (mm)')
-
-                if ctype == "SNAP_FLUSH_TENON":
-                    s = gbox.column(align=True)
-                    s.label(text='Flush snap (barb near seam):', icon='MOD_SOLIDIFY')
-                    if _exists(props, "flush_barb_height_mm"):
-                        s.prop(props, "flush_barb_height_mm", text='Barb Height (mm)')
-                    if _exists(props, "flush_barb_lip_mm"):
-                        s.prop(props, "flush_barb_lip_mm", text='Barb Lip (mm)')
 
             # --- Dovetail connector ---
             # NOTE: extended from "ctype == \"DOVETAIL\"" to also cover the new

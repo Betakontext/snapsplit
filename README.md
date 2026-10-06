@@ -181,6 +181,17 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs. Don't hesitate to contact me or participate via fork and pull request.
 
 ### Changelog:
+
+
+**V_0.1.9**
+- Auto switch to X-ray while Cut-preview, Connector Live Preview and Place Connector per Click
+- Auto-apply rotation and scale before cut
+- Auto connector orientation for connectors after face-align of non split objects
+
+**V_0.1.8**
+- Face-pick storage for the alignment tool is now a PropertyGroup that is registered and unregistered with the add-on
+- localization cleanup
+
 **V_0.1.7**
 - Migrated translation system from key-based tr() to literal strings with _trf()
 - All translations now centralized in localization.py
