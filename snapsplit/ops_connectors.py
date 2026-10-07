@@ -184,8 +184,258 @@ def _clear_connector_placement_preview():
 # ---------------------------
 
 def _bb_world(obj):
-    """Return the world-space bounding box corner coordinates of an object."""
+    """Return the 8 corners of the world-axis-aligned bounding box of an object.
+
+    For plain meshes the box is TIGHT around the real vertices (vertices transformed by
+    matrix_world). This equals the box you get after Ctrl+A > Rotation & Scale, but the
+    mesh and the object transform stay untouched. The old approach (rotating the local
+    bound_box into world space) gives a box that is far too large for rotated round
+    shapes such as an icosphere, which breaks seam contact detection.
+
+    Falls back to the rotated local bound_box for non-mesh objects, objects with
+    modifiers (the evaluated shape differs from the base mesh), objects in Edit Mode
+    (mesh data is not up to date) and on any error.
+    """
+    try:
+        if (obj.type == 'MESH' and obj.mode == 'OBJECT'
+                and len(obj.modifiers) == 0
+                and obj.data is not None and len(obj.data.vertices) > 0):
+            import numpy as np  # local import: no change to the module header needed
+
+            me = obj.data
+            n = len(me.vertices)
+            co = np.empty(n * 3, dtype=np.float32)
+            me.vertices.foreach_get("co", co)
+            co = co.reshape(n, 3).astype(np.float64)
+
+            # World transform: p_world = R*S * p_local + t
+            m = np.array([list(row) for row in obj.matrix_world], dtype=np.float64)
+            world = co @ m[:3, :3].T + m[:3, 3]
+
+            mn = world.min(axis=0)
+            mx = world.max(axis=0)
+
+            # Same corner structure as bound_box: 8 corners of the axis-aligned box
+            return [Vector((x, y, z))
+                    for x in (float(mn[0]), float(mx[0]))
+                    for y in (float(mn[1]), float(mx[1]))
+                    for z in (float(mn[2]), float(mx[2]))]
+    except Exception as ex:
+        print(f"[SnapSplit] _bb_world: tight box failed, using bound_box: {ex}")
+
+    # Fallback: previous behaviour (rotated local bounding box)
     return [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+
+
+# ---------------------------
+# Slanted seams (contact planes that are not parallel to a world axis)
+# ---------------------------
+
+# Custom property keys written by SNAP_OT_align_faces on the moved object
+_SEAM_KEY_ORIGIN = "snapsplit_seam_origin"
+_SEAM_KEY_NORMAL = "snapsplit_seam_normal"
+_SEAM_KEY_XDIR = "snapsplit_seam_xdir"
+_SEAM_KEY_PARTNER = "snapsplit_seam_partner"
+
+
+def _world_verts_np(obj):
+    """Return an (N, 3) float64 array of world-space vertex positions, or None.
+
+    Only plain meshes in Object Mode without modifiers are supported; everything else
+    returns None so that callers can fall back to the old behaviour.
+    """
+    try:
+        if not (obj.type == 'MESH' and obj.mode == 'OBJECT'
+                and len(obj.modifiers) == 0
+                and obj.data is not None and len(obj.data.vertices) > 0):
+            return None
+        import numpy as np  # local import: no change to the module header needed
+        me = obj.data
+        n = len(me.vertices)
+        co = np.empty(n * 3, dtype=np.float32)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(n, 3).astype(np.float64)
+        m = np.array([list(row) for row in obj.matrix_world], dtype=np.float64)
+        return co @ m[:3, :3].T + m[:3, 3]
+    except Exception:
+        return None
+
+
+def _orient_normal_to_positive_axis(n):
+    """Flip n so that its dominant world-axis component is positive.
+
+    This generalises the axis rule 'socket lies on the +axis side' to slanted seams:
+    for an axis-parallel normal the result is identical to the existing behaviour.
+    """
+    i = max(range(3), key=lambda k: abs(n[k]))
+    return n.copy() if n[i] >= 0.0 else -n
+
+
+def _stored_seam_candidate(obj_p, obj_q):
+    """Read the seam data written by Align Faces from either object.
+
+    Returns (origin, normal, xdir) as world-space Vectors, or None if no data exists
+    or the stored partner name does not match the other object.
+    """
+    for holder, other in ((obj_p, obj_q), (obj_q, obj_p)):
+        try:
+            if holder.get(_SEAM_KEY_PARTNER) != other.name:
+                continue
+            origin = Vector(holder[_SEAM_KEY_ORIGIN])
+            normal = Vector(holder[_SEAM_KEY_NORMAL])
+            xdir = Vector(holder[_SEAM_KEY_XDIR])
+            if normal.length < 1e-9:
+                continue
+            return origin, normal.normalized(), xdir
+        except Exception:
+            continue
+    return None
+
+
+def _resolve_pair_plane(obj_p, obj_q, tol=None):
+    """Find a slanted seam between two parts from the stored Align data.
+
+    The stored plane is VALIDATED against the real vertices: one part must lie completely
+    behind the plane, the other completely in front of it, and both must touch it.
+    If the parts were moved after the alignment the check fails and None is returned.
+    Axis-parallel planes return None on purpose (handled by the box based detection).
+
+    Returns (obj_a, obj_b, origin, z, x) or None, with:
+      obj_a = socket (on the side z points to), obj_b = pin,
+      z = seam normal pointing from the pin part to the socket part,
+      x = in-plane tangent (orthogonal to z).
+    """
+    try:
+        import numpy as np
+        if tol is None:
+            # Same tolerance (in scene units) as _detect_seam_contact
+            tol = max(1e-7, SEAM_CONTACT_TOL_MM * unit_mm())
+
+        cand = _stored_seam_candidate(obj_p, obj_q)
+        if cand is None:
+            return None
+        origin, normal, xdir = cand
+        z = _orient_normal_to_positive_axis(normal)
+
+        # Axis-parallel seams are handled by the box based detection (unchanged behaviour)
+        if max(abs(z.x), abs(z.y), abs(z.z)) > 1.0 - 1e-6:
+            return None
+
+        vp = _world_verts_np(obj_p)
+        vq = _world_verts_np(obj_q)
+        if vp is None or vq is None:
+            return None
+
+        o = np.array([origin.x, origin.y, origin.z])
+        nz = np.array([z.x, z.y, z.z])
+        dp = (vp - o) @ nz
+        dq = (vq - o) @ nz
+
+        def behind(d):
+            # whole part behind the plane and touching it
+            return -tol <= d.max() <= tol
+
+        def in_front(d):
+            # whole part in front of the plane and touching it
+            return -tol <= d.min() <= tol
+
+        if behind(dp) and in_front(dq):
+            obj_b, obj_a = obj_p, obj_q   # p is the pin, q is the socket
+        elif behind(dq) and in_front(dp):
+            obj_b, obj_a = obj_q, obj_p
+        else:
+            return None
+
+        # In-plane tangent: remove the normal component of the stored x direction
+        x = xdir - z * xdir.dot(z)
+        if x.length < 1e-6:
+            x = z.orthogonal()
+        x.normalize()
+        return obj_a, obj_b, origin, z, x
+    except Exception as ex:
+        print(f"[SnapSplit] _resolve_pair_plane failed: {ex}")
+        return None
+
+
+def _slanted_contact_patch(obj_a, obj_b, origin, z, x, tol=None):
+    """Measure the real contact patch of two parts on a slanted seam plane.
+
+    Uses only the vertices that lie within 'tol' of the plane and intersects the extents
+    of both parts in the plane's (x, y) frame. For an icosphere touching a cube this is
+    the small triangle and not the whole bounding box.
+
+    Returns (center_world, x_axis, y_axis, (u_min, u_max, v_min, v_max)) or None.
+    """
+    try:
+        import numpy as np
+        if tol is None:
+            tol = max(1e-7, SEAM_CONTACT_TOL_MM * unit_mm())
+        y = z.cross(x).normalized()          # x cross y = z (right-handed frame)
+        o = np.array([origin.x, origin.y, origin.z])
+        nz = np.array([z.x, z.y, z.z])
+        ax = np.array([x.x, x.y, x.z])
+        ay = np.array([y.x, y.y, y.z])
+
+        spans = []
+        for obj in (obj_a, obj_b):
+            v = _world_verts_np(obj)
+            if v is None:
+                return None
+            near = v[np.abs((v - o) @ nz) <= tol]
+            if len(near) == 0:
+                return None
+            rel = near - o
+            u = rel @ ax
+            w = rel @ ay
+            spans.append((u.min(), u.max(), w.min(), w.max()))
+
+        u_min = max(spans[0][0], spans[1][0])
+        u_max = min(spans[0][1], spans[1][1])
+        v_min = max(spans[0][2], spans[1][2])
+        v_max = min(spans[0][3], spans[1][3])
+        if u_max <= u_min or v_max <= v_min:
+            return None  # edge / point contact only
+
+        center = origin + x * float(0.5 * (u_min + u_max)) + y * float(0.5 * (v_min + v_max))
+        return center, x, y, (float(u_min), float(u_max), float(v_min), float(v_max))
+    except Exception as ex:
+        print(f"[SnapSplit] _slanted_contact_patch failed: {ex}")
+        return None
+
+
+# ---------------------------
+# Pin / socket role swap
+# ---------------------------
+
+def _roles_swapped():
+    """True if the user switched the pin/socket definition (scene property swap_pin_socket)."""
+    try:
+        return bool(bpy.context.scene.snapsplit.swap_pin_socket)
+    except Exception:
+        return False
+
+
+def _swap_roles(resolved):
+    """Exchange pin and socket in a resolved pair tuple.
+
+    Input:  (a, b, axis, seam_pos, sign[, plane]), a = socket, b = pin.
+    Axis seam:    a and b are exchanged and the sign is inverted, so z points the other way.
+    Slanted seam: a and b are exchanged and the plane normal z is inverted; the sign is not
+                  used there (it stays as it is).
+    """
+    if resolved is None:
+        return None
+    a, b, axis, seam_pos, sign = resolved[:5]
+    tail = tuple(resolved[5:])
+    if tail and tail[0] is not None:
+        origin, z, x = tail[0]
+        return (b, a, axis, seam_pos, sign, (origin, -z, x)) + tail[1:]
+    return (b, a, axis, seam_pos, -sign) + tail
+
+
+def _maybe_swap(resolved):
+    """Apply the role swap only if the scene switch is on."""
+    return _swap_roles(resolved) if _roles_swapped() else resolved
 
 
 def _proj_interval(points, axis_dir, origin):
@@ -227,7 +477,8 @@ def _axis_unit_vector(axis):
 
 
 def _world_aabb_min_max(obj):
-    """Return world-space AABB as two lists (min[3], max[3])."""
+    """Return the world-space AABB as two lists (min[3], max[3]); tight around the vertices, see _bb_world()."""
+
     corners = _bb_world(obj)
     mn = [min(c[i] for c in corners) for i in range(3)]
     mx = [max(c[i] for c in corners) for i in range(3)]
@@ -242,7 +493,10 @@ def _detect_seam_contact(obj_p, obj_q):
     - seam_pos: world coordinate of the contact plane along that axis
     - sign: +1 if Q lies on the +axis side of P, -1 if on the -axis side
     The axis with the largest contact area wins. Returns None for edge/corner
-    contact, gaps, or strongly rotated objects (loose AABBs).
+    contact, gaps, or contact planes that are not parallel to a world axis.
+    (The boxes are tight around the real vertices, see _bb_world(), so rotated
+    parts such as an icosphere aligned to an axis-parallel face are detected too.)
+
     """
     tol = max(1e-7, SEAM_CONTACT_TOL_MM * unit_mm())
     p_min, p_max = _world_aabb_min_max(obj_p)
@@ -279,8 +533,12 @@ def _detect_seam_contact(obj_p, obj_q):
 
 
 def _resolve_pair(obj_p, obj_q):
-    """Resolve a touching pair into (a, b, axis, seam_pos, sign) or None.
+    """Resolve the seam and roles of a part pair; honours the 'Swap Pin / Socket' switch."""
+    return _maybe_swap(_resolve_pair_raw(obj_p, obj_q))
 
+
+def _resolve_pair_raw(obj_p, obj_q):
+    """Resolve a touching pair into (a, b, axis, seam_pos, sign[, plane]) or None.
     Role rule (identical for cut parts and parts joined by Align Faces):
     - a = socket part (DIFFERENCE), lies on the +axis side of the seam
     - b = pin part (UNION), lies on the -axis side of the seam
@@ -289,6 +547,18 @@ def _resolve_pair(obj_p, obj_q):
     sphere ring is placed on the protruding half and is therefore visible.
     'sign' is always +1 and kept only so that all callers stay unchanged.
     """
+
+    # Slanted seam stored by Align Faces, validated against the real vertices.
+    # Only returned for planes that are NOT parallel to a world axis, so axis-parallel
+    # seams keep the box based detection below and their results do not change.
+    slanted = _resolve_pair_plane(obj_p, obj_q)
+    if slanted is not None:
+        s_a, s_b, s_origin, s_z, s_x = slanted
+        s_letter = _world_axis_letter_from_direction(s_z)   # dominant axis, for legacy code
+        s_pos = float(s_origin[_axis_index(s_letter)])
+        # 6th element: (origin, z from pin to socket, in-plane tangent x)
+        return s_a, s_b, s_letter, s_pos, 1, (s_origin, s_z, s_x)
+
     contact = _detect_seam_contact(obj_p, obj_q)
     if contact is None:
         return None
@@ -337,7 +607,9 @@ def _build_connector_pairs(parts, fallback_axis, warn=False):
         lo, hi = ordered[k], ordered[k + 1]
         # Fallback role rule: lower coordinate = A (socket), higher coordinate = B (pin)
         fb.append((lo, hi, fallback_axis, None, 1))
-    return fb
+    # Apply the pin/socket swap to the fallback pairs as well
+    return [_maybe_swap(t) for t in fb]
+
 
 
 
@@ -466,6 +738,53 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
             sc = lo1_i * (1.0 - fc) + hi1_i * fc
             pts.append(origin + t1n * sc + t2n * sr)
     return pts
+
+def distribute_points_on_plane(obj_a, obj_b, plane, distribution, cols, rows, margin_pct=10.0):
+    """Distribute connector points on a slanted seam plane.
+
+    plane = (origin, z, x) as returned by _resolve_pair_plane(). The points lie inside the
+    real contact patch (vertices near the plane), not inside the bounding boxes.
+    distribution is "LINE" (cols points along the longer side) or "GRID" (cols x rows).
+    """
+    origin, z, x = plane
+    patch = _slanted_contact_patch(obj_a, obj_b, origin, z, x)
+    if patch is None:
+        # No measurable patch: fall back to the stored seam origin
+        n_pts = max(1, cols * rows if distribution == "GRID" else cols)
+        return [origin.copy() for _ in range(n_pts)]
+
+    _center, ax, ay, (u0, u1, v0, v1) = patch
+    m_pct = max(0.0, float(margin_pct)) * 0.01
+
+    def _inner(lo, hi):
+        """Shrink [lo, hi] by the margin; collapse to the middle if nothing is left."""
+        m = m_pct * (hi - lo)
+        lo_i, hi_i = lo + m, hi - m
+        if hi_i < lo_i:
+            mid = 0.5 * (lo + hi)
+            return mid, mid
+        return lo_i, hi_i
+
+    def _lerp(lo, hi, i, n):
+        return 0.5 * (lo + hi) if n <= 1 else lo + (hi - lo) * (i / (n - 1))
+
+    if distribution == "GRID":
+        lu, hu = _inner(u0, u1)
+        lv, hv = _inner(v0, v1)
+        pts = []
+        for r in range(rows):
+            for c in range(cols):
+                pts.append(origin + ax * _lerp(lu, hu, c, cols) + ay * _lerp(lv, hv, r, rows))
+        return pts
+
+    # LINE: along the longer side of the patch, centered on the other side
+    if (u1 - u0) >= (v1 - v0):
+        lo, hi = _inner(u0, u1)
+        mid_v = 0.5 * (v0 + v1)
+        return [origin + ax * _lerp(lo, hi, i, cols) + ay * mid_v for i in range(max(1, cols))]
+    lo, hi = _inner(v0, v1)
+    mid_u = 0.5 * (u0 + u1)
+    return [origin + ay * _lerp(lo, hi, i, cols) + ax * mid_u for i in range(max(1, cols))]
 
 
 # ---------------------------
@@ -1380,15 +1699,40 @@ def add_snap_spheres_for_dovetail_ring(base_matrix, width_u_mm, length_v_mm,
 # Dovetail helpers: span width, frame ops, side-cut
 # ---------------------------
 
-def _orthonormal_frame_from_z(z: Vector):
-    """Build a stable orthonormal frame (x,y,z) from a given z-axis."""
+# Optional in-plane tangent hint for slanted seams. It is only set while the click operator
+# places a connector (the place_one_*_at() helpers build their own frame); None means
+# "derive x from world X" (previous behaviour).
+_FRAME_X_HINT = None
+
+
+def _set_frame_x_hint(x_dir):
+    """Set (Vector) or clear (None) the module-wide in-plane tangent hint."""
+    global _FRAME_X_HINT
+    _FRAME_X_HINT = x_dir.copy() if x_dir is not None else None
+
+
+def _orthonormal_frame_from_z(z: Vector, x_hint=None):
+    """Build a stable orthonormal frame (x,y,z) from a given z-axis.
+
+    If x_hint (or the module-wide hint) is given, x is the hint projected into the plane
+    orthogonal to z. Otherwise x is derived from the world X axis (previous behaviour).
+    """
     z = z.normalized()
+    if x_hint is None:
+        x_hint = _FRAME_X_HINT
+    if x_hint is not None:
+        xh = x_hint - z * x_hint.dot(z)
+        if xh.length > 1e-6:
+            x = xh.normalized()
+            y = z.cross(x); y.normalize()   # x cross y = z (right-handed)
+            return x, y, z
     x = Vector((1, 0, 0))
     if abs(z.dot(x)) > 0.99:
         x = Vector((0, 1, 0))
     y = z.cross(x); y.normalize()
     x = y.cross(z); x.normalize()
     return x, y, z
+
 
 
 def _apply_inplane_offset_and_rotation(M: Matrix, offset_u_mm: float, offset_v_mm: float, rotation_deg: float):
@@ -2266,19 +2610,32 @@ def place_connectors_between(parts, axis, count, ctype, props):
     margin_pct = float(getattr(props, "connector_margin_pct", 10.0))
     cols = max(1, int(getattr(props, "connectors_per_seam", count)))
 
-    for a, b, axis, pair_seam_pos, pair_sign in pairs:
+    for pair in pairs:
+        a, b, axis, pair_seam_pos, pair_sign = pair[:5]
+        # 6th element only exists for slanted seams: (origin, z pin->socket, in-plane tangent x)
+        pair_plane = pair[5] if len(pair) > 5 else None
+        x_hint = pair_plane[2] if pair_plane is not None else None
+
         # Per-pair seam axis (shadows the function argument on purpose, so all code
         # below that uses 'axis' and 'naxis' automatically works with the detected seam).
         # naxis points from B (pin) towards A (socket).
         naxis = axis_map[axis] * pair_sign
+        if pair_plane is not None:
+            naxis = pair_plane[1].copy()   # slanted seam: normal from B (pin) towards A (socket)
         seam_pos = pair_seam_pos if pair_seam_pos is not None else _pair_seam_plane_pos(a, b, axis, props)
 
 
-        if getattr(props, "connector_distribution", "LINE") == "GRID":
+        if pair_plane is not None:
+            # Slanted seam: distribute inside the real contact patch
+            points = distribute_points_on_plane(
+                a, b, pair_plane, getattr(props, "connector_distribution", "LINE"),
+                cols, max(1, int(getattr(props, "connectors_rows", 2))), margin_pct=margin_pct)
+        elif getattr(props, "connector_distribution", "LINE") == "GRID":
             rows = max(1, int(getattr(props, "connectors_rows", 2)))
             points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
         else:
             points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
+
 
 
         ctype_for_pair = getattr(props, "connector_type", ctype)
@@ -2289,12 +2646,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
         dovetail_force_hard_cut_pair = False
         dovetail_span_axis_letter_pair = None  # resolved world axis letter (X/Y/Z) used for forced sizing
         if ctype_for_pair in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
-            z_pair = naxis.normalized()
-            x_pair = Vector((1, 0, 0))
-            if abs(z_pair.dot(x_pair)) > 0.99:
-                x_pair = Vector((0, 1, 0))
-            y_pair = z_pair.cross(x_pair); y_pair.normalize()
-            x_pair = y_pair.cross(z_pair); x_pair.normalize()
+            x_pair, y_pair, z_pair = _orthonormal_frame_from_z(naxis, x_hint)
+
             dovetail_span_role_pair = _dovetail_span_axis_role(dovetail_span_axis_choice, x_pair, y_pair)
             if dovetail_span_role_pair == "U":
                 dovetail_span_axis_letter_pair = (
@@ -2321,12 +2674,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
 
         for i, p in enumerate(points):
-            z = naxis.normalized()
-            x = Vector((1, 0, 0))
-            if abs(z.dot(x)) > 0.99:
-                x = Vector((0, 1, 0))
-            y = z.cross(x); y.normalize()
-            x = y.cross(z); x.normalize()
+            x, y, z = _orthonormal_frame_from_z(naxis, x_hint)
+
 
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
@@ -2430,12 +2779,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
 
                 # Build a dedicated u/v/n frame, matching the DOVETAIL/SNAP_DOVETAIL
                 # batch-path pattern, so Span Axis / Placement resolve consistently.
-                z_c = naxis.normalized()
-                x_c = Vector((1, 0, 0))
-                if abs(z_c.dot(x_c)) > 0.99:
-                    x_c = Vector((0, 1, 0))
-                y_c = z_c.cross(x_c); y_c.normalize()
-                x_c = y_c.cross(z_c); x_c.normalize()
+                x_c, y_c, z_c = _orthonormal_frame_from_z(naxis, x_hint)
+
 
                 width_mm = float(getattr(props, "custom_connector_width_mm", 6.0))
                 length_mm = float(getattr(props, "custom_connector_length_mm", 6.0))
@@ -2521,12 +2866,8 @@ def place_connectors_between(parts, axis, count, ctype, props):
             elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
                 # Build a dedicated local u/v/n frame for the dovetail, matching
                 # the click-placement pipeline (place_one_dovetail_at).
-                z_d = naxis.normalized()
-                x_d = Vector((1, 0, 0))
-                if abs(z_d.dot(x_d)) > 0.99:
-                    x_d = Vector((0, 1, 0))
-                y_d = z_d.cross(x_d); y_d.normalize()
-                x_d = y_d.cross(z_d); x_d.normalize()
+                x_d, y_d, z_d = _orthonormal_frame_from_z(naxis, x_hint)
+
 
                 # Frame at p with embed along depth_n
                 depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))
@@ -2759,18 +3100,32 @@ def update_connector_placement_preview(context):
                 prev_coll.objects.link(sph_prev)
                 created_count += 1
 
-        for a, b, axis, pair_seam_pos, pair_sign in pairs:
+        for pair in pairs:
             if cap_hit:
                 break
+            a, b, axis, pair_seam_pos, pair_sign = pair[:5]
+            # 6th element only exists for slanted seams: (origin, z pin->socket, in-plane tangent x)
+            pair_plane = pair[5] if len(pair) > 5 else None
+            x_hint = pair_plane[2] if pair_plane is not None else None
+
             naxis = axis_map[axis] * pair_sign   # points from B (pin) towards A (socket)
+            if pair_plane is not None:
+                naxis = pair_plane[1].copy()   # slanted seam: normal from B (pin) towards A (socket)
+
             seam_pos = pair_seam_pos if pair_seam_pos is not None else _pair_seam_plane_pos(a, b, axis, props)
 
 
-            if distribution == "GRID":
+            if pair_plane is not None:
+                # Slanted seam: distribute inside the real contact patch
+                points = distribute_points_on_plane(
+                    a, b, pair_plane, distribution,
+                    cols, max(1, int(getattr(props, "connectors_rows", 2))), margin_pct=margin_pct)
+            elif distribution == "GRID":
                 rows = max(1, int(getattr(props, "connectors_rows", 2)))
                 points = distribute_points_grid_on_seam(a, b, cols, rows, axis, seam_pos, margin_pct=margin_pct)
             else:
                 points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
+
 
             for p in points:
                 if created_count >= AUTOPREVIEW_CAP:
@@ -2780,12 +3135,8 @@ def update_connector_placement_preview(context):
                 point_counter += 1
                 name_base = f"{AUTOPREVIEW_PREFIX}{point_counter}"
 
-                z = naxis.normalized()
-                x = Vector((1, 0, 0))
-                if abs(z.dot(x)) > 0.99:
-                    x = Vector((0, 1, 0))
-                y = z.cross(x); y.normalize()
-                x = y.cross(z); x.normalize()
+                x, y, z = _orthonormal_frame_from_z(naxis, x_hint)
+
 
                 # --- DOVETAIL / SNAP_DOVETAIL and CUSTOM: dedicated u/v/n frame + in-plane offset/rotation ---
                 if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
@@ -3013,15 +3364,26 @@ class SNAP_OT_place_connectors_click(Operator):
 
         # Detect seam axis, roles (A = socket, B = pin) and insertion direction from geometry
         resolved = _resolve_pair(sel[0], sel[1])
+        # Slanted seam data; stays None for axis-parallel seams and for the fallback
+        self.plane_center = None
+        self.frame_x = None
+        slanted_plane = None
         if resolved is not None:
-            self.a, self.b, self.axis, self.seam_pos, sign = resolved
+            # Slice: resolved has 6 elements for slanted seams
+            self.a, self.b, self.axis, self.seam_pos, sign = resolved[:5]
+            slanted_plane = resolved[5] if len(resolved) > 5 else None
         else:
+
             # Legacy fallback: scene Split Axis, lower coordinate = A (socket), higher = B (pin)
             fb_axis = props.split_axis
             fb_idx = _axis_index(fb_axis)
             lo, hi = sorted(sel, key=lambda o: o.location[fb_idx])
             self.a, self.b, sign = lo, hi, 1
             self.axis = fb_axis
+            # Apply the pin/socket swap to the fallback roles as well
+            if _roles_swapped():
+                self.a, self.b, sign = self.b, self.a, -sign
+
 
 
             report_user(self, 'WARNING',
@@ -3035,6 +3397,14 @@ class SNAP_OT_place_connectors_click(Operator):
         # Insertion direction (points from B (pin) towards A (socket)); used by preview and placement
 
         self.frame_z = _axis_unit_vector(self.axis) * sign
+        if slanted_plane is not None:
+            # Slanted seam: insertion direction and in-plane tangent come from the seam plane
+            origin_s, z_s, x_s = slanted_plane
+            self.frame_z = z_s.copy()
+            self.frame_x = x_s.copy()
+            patch_s = _slanted_contact_patch(self.a, self.b, origin_s, z_s, x_s)
+            # The mouse ray is intersected with this plane (point inside the contact patch)
+            self.plane_center = patch_s[0] if patch_s is not None else origin_s.copy()
 
         # Show the placement preview through solid objects in the clicked viewport.
         # Released in finish() (ESC / right click).
@@ -3259,13 +3629,24 @@ class SNAP_OT_place_connectors_click(Operator):
             self.preview_objs = []
 
 
+        # Key hints in the status bar; reset in finish()
+        self.roles_flipped_live = False
+        self._update_status_text(context)
+
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
+
         """Tear down preview objects and collections; also remove cutters collection on cancel or end."""
         # Restore the X-Ray state saved in invoke() (no-op if nothing was acquired)
         xray_release("click_place")
+        # Restore the default status bar text
+        try:
+            context.workspace.status_text_set(None)
+        except Exception:
+            pass
+
         try:
             to_purge = set()
 
@@ -3382,12 +3763,24 @@ class SNAP_OT_place_connectors_click(Operator):
                 self.finish(context, cancelled=True)
                 return {'CANCELLED'}
 
-            if event.type == 'MOUSEMOVE':
+            # Key S: swap pin / socket while placing. Key repeat and modifier combos
+            # (e.g. Ctrl+S) are ignored so nothing toggles by accident.
+            swapped_now = False
+            if (event.type == 'S' and event.value == 'PRESS'
+                    and not getattr(event, "is_repeat", False)
+                    and not (event.ctrl or event.alt or event.shift or event.oskey)):
+                self._toggle_roles_now(context)
+                swapped_now = True
+
+            # After a swap the existing preview code runs once with the last mouse position,
+            # so the preview flips immediately without moving the mouse.
+            if event.type == 'MOUSEMOVE' or swapped_now:
                 try:
                     hit = self._intersect_mouse_with_seam_plane(context, event)
                     if hit is not None:
                         M = self._build_frame_at(hit)
                         if self.preview_obj:
+
                             ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
                             # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
                             if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
@@ -3433,6 +3826,9 @@ class SNAP_OT_place_connectors_click(Operator):
                     if hit is not None:
                         ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
                         fz = self.frame_z  # insertion direction B (pin) -> A (socket)
+                        # place_one_*_at() build their own frame; give them the seam tangent
+                        _set_frame_x_hint(getattr(self, "frame_x", None))
+
                         if ctype_cur == "CYL_PIN":
                             place_one_cyl_pin_at(self.a, self.b, self.axis, hit, frame_z=fz, props=self.props, name_prefix="Pin_Click")
                         elif ctype_cur == "RECT_TENON":
@@ -3487,13 +3883,41 @@ class SNAP_OT_place_connectors_click(Operator):
                 except Exception as e:
                     report_user(self, 'ERROR',
                                 _trf('Placement failed: {error}', error=e))
+                finally:
+                    # Always clear the tangent hint so later calls use the world-X based frame
+                    _set_frame_x_hint(None)
                 return {'RUNNING_MODAL'}
+
 
             return {'RUNNING_MODAL'}
 
         except Exception as e:
             report_user(self, 'ERROR', _trf('Modal error: {error}', error=e))
             return {'RUNNING_MODAL'}
+
+    def _update_status_text(self, context):
+        """Show the key hints (and the live role state) in the Blender status bar."""
+        try:
+            state = "swapped" if getattr(self, "roles_flipped_live", False) else "default"
+            context.workspace.status_text_set(
+                f"S: swap pin / socket ({state})  |  LMB: place  |  RMB / Esc: cancel")
+        except Exception:
+            pass
+
+    def _toggle_roles_now(self, context):
+        """Swap pin and socket during placement (key S).
+
+        Same effect as the 'Swap Pin / Socket' panel switch (see _swap_roles()):
+        A and B are exchanged and the insertion direction frame_z is inverted.
+        The in-plane tangent frame_x of a slanted seam stays unchanged.
+        The panel property is NOT touched on purpose: changing it would fire the live
+        preview update callback while this modal operator owns the preview objects.
+        """
+        self.a, self.b = self.b, self.a
+        self.frame_z = -self.frame_z
+        self.roles_flipped_live = not getattr(self, "roles_flipped_live", False)
+        self._update_status_text(context)
+
 
     def _intersect_mouse_with_seam_plane(self, context, event):
         """Raycast from mouse into the seam plane and return the hit point in world space."""
@@ -3510,6 +3934,11 @@ class SNAP_OT_place_connectors_click(Operator):
         c[idx] = self.seam_pos
         plane_point = c
         plane_normal = n
+        # Slanted seam: use the real plane (contact patch center + seam normal)
+        if getattr(self, "plane_center", None) is not None:
+            plane_point = self.plane_center
+            plane_normal = self.frame_z.normalized()
+
 
         region = context.region
         rv3d = context.region_data
@@ -3535,13 +3964,9 @@ class SNAP_OT_place_connectors_click(Operator):
         Note: For preview, we use tenon_depth_mm by legacy for non-dovetail types.
         Dovetail placement later overrides depth with dovetail_depth_mm.
         """
-        z = self.frame_z.normalized()
-        x = Vector((1, 0, 0))
+        # Uses the in-plane tangent of a slanted seam if there is one (frame_x is None otherwise)
+        x, y, z = _orthonormal_frame_from_z(self.frame_z, getattr(self, "frame_x", None))
 
-        if abs(z.dot(x)) > 0.99:
-            x = Vector((0, 1, 0))
-        y = z.cross(x); y.normalize()
-        x = y.cross(z); x.normalize()
 
         ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
         if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:

@@ -125,6 +125,10 @@ class SNAP_PT_panel(Panel):
             col.prop(props, "connector_type", text='Connector Type')
         if _exists(props, "connector_distribution"):
             col.prop(props, "connector_distribution", text='Distribution')
+        # Pin/socket role switch (applies to Add Connectors, live preview and click placement)
+        if _exists(props, "swap_pin_socket"):
+            col.prop(props, "swap_pin_socket", text='Swap Pin / Socket')
+
 
         # Action buttons
         col = layout.column(align=True)
