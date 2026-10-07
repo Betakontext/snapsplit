@@ -107,9 +107,10 @@ class SNAP_PT_panel(Panel):
                             icon="MOD_BOOLEAN",
                             text='Planar Split')
 
-        # Invoke the modal preview from the sidebar.
+        # Invoke the modal preview in the viewport WINDOW region.
         freehand_row = col_bottom.row(align=True)
-        freehand_row.operator_context = 'INVOKE_DEFAULT'
+        freehand_row.operator_context = 'INVOKE_REGION_WIN'
+
         freehand_row.operator(
             "snapsplit.freehand_cut",
             icon='GREASEPENCIL',
@@ -435,8 +436,11 @@ class SNAP_PT_panel(Panel):
             stat.operator("snapsplit.clear_picks", text="", icon='X')
 
             row = box.row(align=True)
+            # Invoke both face pickers in the viewport WINDOW region.
+            row.operator_context = 'INVOKE_REGION_WIN'
             row.operator("snapsplit.pick_face_a", text='Pick Face A', icon='MOUSE_LMB')
             row.operator("snapsplit.pick_face_b", text='Pick Face B', icon='MOUSE_LMB')
+
 
             can_align = (bool(nameA) and idxA >= 0 and bool(nameB) and idxB >= 0)
             row_align = box.row(align=True)

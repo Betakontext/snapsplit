@@ -182,6 +182,8 @@ Thanks to your hints and comments, I cleaned up the collections, added more conn
 
 ### Changelog:
 
+**V_0.2.0**
+- Implemented freehand cut operators via line draw preview
 
 **V_0.1.9**
 - Added toggle to swap Pin-Socket orientation, and option to swap in Click placement via s key
