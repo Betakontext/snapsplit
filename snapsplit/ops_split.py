@@ -37,6 +37,11 @@ from .utils import (
 
 from .utils import _trf
 
+# Import translation helper
+# 'tr' resolves UI strings from a central language dictionary.
+# It accepts a key and a default English fallback text.
+
+
 # ---------------------------
 # Preview naming
 # ---------------------------
@@ -1884,7 +1889,7 @@ class SNAP_OT_planar_split(Operator):
             self.report({'INFO'}, _trf('Splitting into many parts can take a while on dense meshes...'))
 
         offset_scene = float(getattr(props, "split_offset_mm", 0.0)) * unit_mm()
-        # Apply rotation and scale AFTER the cuts were computed (so they match the orange
+                # Apply rotation and scale AFTER the cuts were computed (so they match the orange
         # preview exactly) and BEFORE the split (so mesh space == world space).
         # The cut planes are world coordinates and the object keeps its world position
         # and shape, so the cuts stay valid. A failure must never block the split.
