@@ -184,7 +184,7 @@ Thanks to your hints and comments, I cleaned up the collections, added more conn
 
 
 **V_0.1.9**
-- Added toggle option to swap Pin-Socket orientation
+- Added toggle to swap Pin-Socket orientation, and option to swap in Click placement via s key
 - Auto switch to X-ray while Cut-preview, Connector Live Preview and Place Connector per Click
 - Auto-apply rotation and scale before cut
 - Auto connector orientation for connectors after face-align of non split objects
