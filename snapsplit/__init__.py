@@ -25,7 +25,7 @@ bl_info = {
     "author": "Christoph Medicus",
     "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
-    "version": (0, 1, 8),
+    "version": (0, 2, 0),
     "blender": (5, 2, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
@@ -49,6 +49,7 @@ from . import prefs
 from . import ops_split
 from . import ops_connectors
 from . import ops_align
+from . import ops_freehand
 from . import ui
 
 # Set to False for release builds to skip the development hot-reload.
@@ -62,6 +63,7 @@ _modules = [
     ops_split,
     ops_connectors,
     ops_align,
+    ops_freehand,
     ui,
 ]
 

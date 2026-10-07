@@ -107,7 +107,17 @@ class SNAP_PT_panel(Panel):
                             icon="MOD_BOOLEAN",
                             text='Planar Split')
 
+        # Invoke the modal preview from the sidebar.
+        freehand_row = col_bottom.row(align=True)
+        freehand_row.operator_context = 'INVOKE_DEFAULT'
+        freehand_row.operator(
+            "snapsplit.freehand_cut",
+            icon='GREASEPENCIL',
+            text='Freehand Cut',
+        )
+
         layout.separator()
+
 
         # =========================
         # CONNECTIONS
