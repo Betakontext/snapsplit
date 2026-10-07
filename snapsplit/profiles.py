@@ -323,6 +323,15 @@ class SnapSplitProps(PropertyGroup):
         update=_snapsplit_update_connector_live_preview,
     )
 
+    swap_pin_socket: BoolProperty(
+        name='Swap Pin / Socket',
+        description='Exchange the roles of the two parts: the pin sits in the other part and the '
+                    'socket is cut into this one. Also flips the insertion direction',
+        default=False,
+        update=_snapsplit_update_connector_preview,
+    )
+
+
 
     # Snap options (sphere ring; used by SNAP_PIN / SNAP_TENON)
     snap_spheres_per_side: IntProperty(

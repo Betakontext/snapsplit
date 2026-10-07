@@ -556,6 +556,22 @@ class SNAP_OT_align_faces(Operator):
         # Apply to moving object B
         objB.matrix_world = M_align @ objB.matrix_world
 
+        # Remember the seam plane of this alignment (world space) so that connectors can be
+        # placed on slanted seams later. The data is validated against the real vertices
+        # before every use, so stale values (parts moved afterwards) are simply ignored.
+        # The sign of the normal does not matter: the consumer orients it itself.
+        try:
+            nA = RA.col[2].to_3d().normalized()   # normal of face A
+            xA = RA.col[0].to_3d().normalized()   # stable tangent of face A
+            objB["snapsplit_seam_origin"] = [float(originA[0]), float(originA[1]), float(originA[2])]
+            objB["snapsplit_seam_normal"] = [float(nA[0]), float(nA[1]), float(nA[2])]
+            objB["snapsplit_seam_xdir"] = [float(xA[0]), float(xA[1]), float(xA[2])]
+            objB["snapsplit_seam_partner"] = objA.name
+            print(f"[SnapSplit] seam stored on '{objB.name}': normal={tuple(round(c, 4) for c in nA)}")
+        except Exception as ex:
+            print(f"[SnapSplit] could not store seam data: {ex}")
+
+
         try:
             objB.data.validate(); objB.data.update()
         except Exception:
