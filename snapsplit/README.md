@@ -185,9 +185,7 @@ Capping an initially open Freehand seam later does not, by itself, satisfy the r
 
 Expand the connections section using **More…** to choose the connector type and adjust its placement and dimensions.
 
-![SnapSplit connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1)
-
-![SnapSplit additional connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_04.jpg?cache=1)
+![SnapSplit connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1) ![SnapSplit additional connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_04.jpg?cache=1)
 
 Available connector options include:
 
