@@ -167,9 +167,11 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
     ├── ops_align.py
     ├── ops_connectors.py
     ├── ops_split.py
+    ├── ops_freehand.py
     ├── prefs.py
     ├── profiles.py
     ├── README.md
+    ├── seam_data.py
     ├── ui.py
     └── utils.py
 
@@ -178,12 +180,13 @@ Accessible via Edit → Preferences → Add-ons → SnapSplit:
 ---------------------------
 ---------------------------
 
-Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs. Don't hesitate to contact me or participate via fork and pull request.
+Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs.
+Don't hesitate to contact me or participate via fork and pull request.
 
 ### Changelog:
 
 **V_0.2.0**
-- Implemented freehand cut operators via line draw preview
+- Implemented hollow sensible freehand-cut operator via line draw preview
 
 **V_0.1.9**
 - Added toggle to swap Pin-Socket orientation, and option to swap in Click placement via s key
