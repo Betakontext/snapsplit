@@ -136,6 +136,14 @@ class SNAP_PT_panel(Panel):
             col.prop(props, "connector_type", text='Connector Type')
         if _exists(props, "connector_distribution"):
             col.prop(props, "connector_distribution", text='Distribution')
+
+        # Live wireframe preview toggle for LINE/GRID connector placement.
+        # Independent of connector_type, since the preview builder itself
+        # decides per-type what shape/ring to draw. Capped at 200 objects
+        # internally (see ops_connectors.update_connector_placement_preview).
+        if _exists(props, "connector_live_preview"):
+            col.prop(props, "connector_live_preview", text='Live Preview')
+
         # Pin/socket role switch (applies to Add Connectors, live preview and click placement)
         if _exists(props, "swap_pin_socket"):
             col.prop(props, "swap_pin_socket", text='Swap Pin / Socket')
@@ -162,12 +170,7 @@ class SNAP_PT_panel(Panel):
             if _exists(props, "connector_margin_pct"):
                 adv.prop(props, "connector_margin_pct", text='Margin (%)')
 
-            # Live wireframe preview toggle for LINE/GRID connector placement.
-            # Independent of connector_type, since the preview builder itself
-            # decides per-type what shape/ring to draw. Capped at 200 objects
-            # internally (see ops_connectors.update_connector_placement_preview).
-            if _exists(props, "connector_live_preview"):
-                adv.prop(props, "connector_live_preview", text='Live Preview')
+
 
             # Connector-specific geometry/settings
             gbox = box.box()

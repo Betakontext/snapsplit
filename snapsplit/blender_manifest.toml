@@ -10,4 +10,5 @@ website = "https://github.com/betakontext/snapsplit"
 issues = "https://github.com/betakontext/snapsplit"
 type = "add-on"
 blender_version_min = "4.2.0"
+tags = ["Modeling", "Mesh", "3d print", "Object" ]
 license = ["SPDX:GPL-3.0-or-later"]
