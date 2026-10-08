@@ -33,6 +33,12 @@ from .utils import ensure_collection, unit_mm, report_user, apply_modifier_data
 from .ops_split import warn_if_unapplied_transforms
 from .utils import _trf
 from .utils import xray_acquire, xray_release
+from .seam_data import (
+    SeamValidationError,
+    has_freehand_metadata,
+    resolve_freehand_plane,
+)
+
 
 
 
@@ -536,6 +542,61 @@ def _resolve_pair(obj_p, obj_q):
     """Resolve the seam and roles of a part pair; honours the 'Swap Pin / Socket' switch."""
     return _maybe_swap(_resolve_pair_raw(obj_p, obj_q))
 
+def _resolve_freehand_pair_raw(obj_p, obj_q):
+    """Adapt a validated Freehand seam to the existing connector pair format."""
+    result = resolve_freehand_plane(obj_p, obj_q)
+
+    if result is None:
+        return None
+
+    socket, pin, origin, normal, tangent = result
+    axis = _world_axis_letter_from_direction(normal)
+    position = float(origin[_axis_index(axis)])
+
+    return (
+        socket,
+        pin,
+        axis,
+        position,
+        1,
+        (origin, normal, tangent),
+    )
+
+
+def diagnose_selected_freehand_pair():
+    """Validate two selected partners without generating any geometry."""
+    objects = list(bpy.context.selected_objects)
+
+    if len(objects) != 2:
+        print("[SnapSplit C2] Select exactly two Freehand result objects.")
+        return None
+
+    try:
+        result = _resolve_freehand_pair_raw(*objects)
+
+        if result is None:
+            print("[SnapSplit C2] No shared Freehand seam was found.")
+            return None
+
+        result = _maybe_swap(result)
+        socket, pin = result[:2]
+        origin, normal, tangent = result[5]
+
+        print("[SnapSplit C2] VALID")
+        print(f"  Socket: {socket.name}")
+        print(f"  Pin: {pin.name}")
+        print(f"  Origin: {tuple(origin)}")
+        print(f"  Normal: {tuple(normal)}")
+        print(f"  Tangent: {tuple(tangent)}")
+        print("  Placement uses the existing explicit-plane pipeline.")
+        print("  Material-boundary and wall-depth checks are not enabled.")
+
+        return result
+
+    except SeamValidationError as exc:
+        print(f"[SnapSplit C2] REJECTED: {exc}")
+        return None
+
 
 def _resolve_pair_raw(obj_p, obj_q):
     """Resolve a touching pair into (a, b, axis, seam_pos, sign[, plane]) or None.
@@ -547,6 +608,17 @@ def _resolve_pair_raw(obj_p, obj_q):
     sphere ring is placed on the protruding half and is therefore visible.
     'sign' is always +1 and kept only so that all callers stay unchanged.
     """
+    # Route Freehand seams through the existing explicit-plane pipeline.
+    # Invalid or unrelated Freehand pairs must never use legacy detection.
+    if (
+        has_freehand_metadata(obj_p)
+        or has_freehand_metadata(obj_q)
+    ):
+        try:
+            return _resolve_freehand_pair_raw(obj_p, obj_q)
+        except SeamValidationError:
+            return None
+
 
     # Slanted seam stored by Align Faces, validated against the real vertices.
     # Only returned for planes that are NOT parallel to a world axis, so axis-parallel
@@ -573,15 +645,11 @@ def _resolve_pair_raw(obj_p, obj_q):
     return a, b, axis, seam_pos, 1
 
 
-
 def _build_connector_pairs(parts, fallback_axis, warn=False):
-    """Build connector pairs as tuples (a, b, axis, seam_pos_or_None, sign).
-
-    Every touching pair of parts is used. If no contact is found at all, the
-    legacy behaviour is used: consecutive parts sorted along fallback_axis.
-    """
+    """Build detected pairs, preserving explicit Freehand seam planes."""
     objs = [o for o in parts if o is not None]
     pairs = []
+
     for i in range(len(objs)):
         for j in range(i + 1, len(objs)):
             res = _resolve_pair(objs[i], objs[j])
@@ -592,9 +660,28 @@ def _build_connector_pairs(parts, fallback_axis, warn=False):
         if warn:
             used = {id(o) for pr in pairs for o in pr[:2]}
             if any(id(o) not in used for o in objs):
-                report_user(None, 'WARNING',
-                            'Some selected parts do not touch any other part and were skipped.')
+                report_user(
+                    None,
+                    'WARNING',
+                    'Some selected parts have no valid contact partner '
+                    'and were skipped.',
+                )
         return pairs
+
+
+    # Never guess contacts when Freehand metadata requires an explicit partner.
+    if any(has_freehand_metadata(obj) for obj in objs):
+        if warn:
+            report_user(
+                None,
+                'WARNING',
+                "No valid closed Freehand seam was found between the "
+                "selected parts. No Split Axis fallback was used. "
+                "Run the Freehand seam diagnostic for details.",
+            )
+        return []
+
+
 
     # Legacy fallback: sort along the scene split axis
     if warn and len(objs) >= 2:
@@ -3373,8 +3460,23 @@ class SNAP_OT_place_connectors_click(Operator):
             self.a, self.b, self.axis, self.seam_pos, sign = resolved[:5]
             slanted_plane = resolved[5] if len(resolved) > 5 else None
         else:
+            # Reject invalid Freehand relationships before the legacy fallback.
+            if any(has_freehand_metadata(obj) for obj in sel):
+                message = (
+                    "No shared Freehand seam was found between "
+                    "the selected parts."
+                )
+
+                try:
+                    _resolve_freehand_pair_raw(sel[0], sel[1])
+                except SeamValidationError as exc:
+                    message = str(exc)
+
+                report_user(self, 'ERROR', message)
+                return {'CANCELLED'}
 
             # Legacy fallback: scene Split Axis, lower coordinate = A (socket), higher = B (pin)
+
             fb_axis = props.split_axis
             fb_idx = _axis_index(fb_axis)
             lo, hi = sorted(sel, key=lambda o: o.location[fb_idx])

@@ -28,4 +28,6 @@ snapsplit/ops_align00.py
 snapsplit/ops_connectors00.py
 snapsplit/ops_split.py
 snapsplit/prefs00.py
+snapsplit/seam_data00.py
 snapsplit/README00.py
+snapsplit/ops_freehand00.py
