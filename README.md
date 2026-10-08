@@ -106,6 +106,10 @@ Expand the segmentation section using **More…** to access the additional setti
 
 The split offset shifts the planned cutting positions along the selected axis. An offset of **0** means no additional shift; for a two-part split, the default plane is at the middle of the object’s extent along that axis.
 
+![Planar segmentation preview](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_04.jpg?cache=1)
+
+Freehand cut along a hand drawn line for partial and/or shifted segmentations.
+
 #### Seam capping
 
 With **Cap seams during split** enabled, SnapSplit attempts to close the new cut boundaries:
