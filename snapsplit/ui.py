@@ -107,7 +107,18 @@ class SNAP_PT_panel(Panel):
                             icon="MOD_BOOLEAN",
                             text='Planar Split')
 
+        # Invoke the modal preview in the viewport WINDOW region.
+        freehand_row = col_bottom.row(align=True)
+        freehand_row.operator_context = 'INVOKE_REGION_WIN'
+
+        freehand_row.operator(
+            "snapsplit.freehand_cut",
+            icon='GREASEPENCIL',
+            text='Freehand Cut',
+        )
+
         layout.separator()
+
 
         # =========================
         # CONNECTIONS
@@ -125,6 +136,14 @@ class SNAP_PT_panel(Panel):
             col.prop(props, "connector_type", text='Connector Type')
         if _exists(props, "connector_distribution"):
             col.prop(props, "connector_distribution", text='Distribution')
+
+        # Live wireframe preview toggle for LINE/GRID connector placement.
+        # Independent of connector_type, since the preview builder itself
+        # decides per-type what shape/ring to draw. Capped at 200 objects
+        # internally (see ops_connectors.update_connector_placement_preview).
+        if _exists(props, "connector_live_preview"):
+            col.prop(props, "connector_live_preview", text='Live Preview')
+
         # Pin/socket role switch (applies to Add Connectors, live preview and click placement)
         if _exists(props, "swap_pin_socket"):
             col.prop(props, "swap_pin_socket", text='Swap Pin / Socket')
@@ -151,12 +170,7 @@ class SNAP_PT_panel(Panel):
             if _exists(props, "connector_margin_pct"):
                 adv.prop(props, "connector_margin_pct", text='Margin (%)')
 
-            # Live wireframe preview toggle for LINE/GRID connector placement.
-            # Independent of connector_type, since the preview builder itself
-            # decides per-type what shape/ring to draw. Capped at 200 objects
-            # internally (see ops_connectors.update_connector_placement_preview).
-            if _exists(props, "connector_live_preview"):
-                adv.prop(props, "connector_live_preview", text='Live Preview')
+
 
             # Connector-specific geometry/settings
             gbox = box.box()
@@ -425,8 +439,11 @@ class SNAP_PT_panel(Panel):
             stat.operator("snapsplit.clear_picks", text="", icon='X')
 
             row = box.row(align=True)
+            # Invoke both face pickers in the viewport WINDOW region.
+            row.operator_context = 'INVOKE_REGION_WIN'
             row.operator("snapsplit.pick_face_a", text='Pick Face A', icon='MOUSE_LMB')
             row.operator("snapsplit.pick_face_b", text='Pick Face B', icon='MOUSE_LMB')
+
 
             can_align = (bool(nameA) and idxA >= 0 and bool(nameB) and idxB >= 0)
             row_align = box.row(align=True)

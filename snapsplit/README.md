@@ -1,258 +1,522 @@
 # SnapSplit
 
-Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It has easy workflow options to create hollow forms and  generates precise, glue-free snap-fit connectors.
-Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
+SnapSplit is a Blender add-on for splitting 3D models into printable parts and creating matching connectors and sockets. It is useful for models that exceed your print bed, modular sculptures, props, prototypes, and other projects that need to be assembled after printing.
 
-This is version 0.1.9
+SnapSplit combines planar segmentation, stroke-based local cuts, hollow-aware seam capping, and connector placement in one workflow. Connector options include pins, tenons, dovetails, snap variants, and custom mesh shapes.
 
-For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
+Material-specific tolerance presets and a manual override help you adjust the fit for your printing process. Final fit depends on your material, printer calibration, print orientation, and connector dimensions.
+
+**Current version: 0.2.0**
 
 ![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SLAIDSHOW.gif?cache=1)
 
 ### Why SnapSplit?
 
-SnapSplit combines two work steps into one: cleanly segmenting large models and automatically creating matching snap/plug pins or tenons, dovetail or custom connections. Placement along an adjustable line or grid and/or freehand per click onto the spot on the split surface. That saves hours of manual modeling and reduces trial‑and‑error printing thanks to preset tolerances and the new Live‑Preview. Ideal for artists (casting molds, modular sculptures), prop designers, product prototypers, and makers who need large models to be printable and transportable.
+SnapSplit brings two common modeling tasks together:
 
-Thanks for your feedback. I tried to build in as much as possible. I'm always happy to hear your further needs for next versions and hints for better building experiences.
+- Splitting large or complex models into manageable parts.
+- Creating matching connector and socket geometry for assembly.
 
-### Installation:
-- Download the repository and zip the snapsplit folder
-- In Blender: Edit → Preferences → Add-ons → Install… → select the *.ZIP → enable.
+Place connectors along a seam line, distribute them across a grid, or position them individually with mouse clicks. Live Preview helps you inspect placement before applying the connector operations.
 
-### Blender setup:
-- Unit system: Metric, Unit scale: 1.000, Length: Adaptive
-- The UI is accessible over the N-Panel in Blender.
+SnapSplit also supports splitting and capping **existing hollow models**. It is not a replacement for a dedicated hollowing tool or a final printability check.
 
-### Quality assurance and error prevention:
-- Scale Unit = 1.000, Metric: Adaptive
-- Before splitting: use f.e. 3D-Printing Toolbox (manifold, thin walls, intersections).
-- Select a watertight (manifold) mesh.
-- Ctrl + A -> Apply all transforms
-- This is also important after each change, f.e. rotations or scale.
-- After splitting: visually check that all parts contain polygons.
+Snap variants are intended for glue-free assembly. Test the fit on a small sample before printing a large project.
 
--------------------------
-### Cut / Split workflow:
+Feedback, bug reports, and suggestions are welcome.
 
-Unfold the segmentation part (More...) to get ready for the split.
+### Blender compatibility
 
+The maintainer reports successful testing with:
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_01.jpg?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_02.jpg?cache=1)
+- Blender 4.5.3 LTS
+- Blender 4.5.9 LTS
+- Blender 5.0.1
+- Blender 5.1.0
+- Blender 5.1.1
+- Blender 5.2.0 LTS
+- Blender 5.2.2 LTS
 
--> Click "Show split preview" if you want to see the split preview plane permanently. Offset 0 is the middle of the selected part.
+Please report your results with other Blender versions, including the SnapSplit version and the workflow you tested.
 
-![F.e. Segmentation](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_01.jpg?cache=1)
+**Metadata note:** The current extension manifest declares Blender 4.2.0 as the minimum version, while the legacy `bl_info` metadata specifies Blender 5.2.0. These declarations are not a guarantee that every intervening version has been tested.
 
--> Choose desired number of parts and adjust the split axis offset.
--> Push: "Adjust split axis"
+### Installation
 
--> For larger part numbers you can deselect "cap seams" and create the caps afterwards.
--> Cap seams closes walls, if hollow or solidify is detected. If none it closes the whole cut area. You can also use it per part afterwards if "Cap seams" is deselected
+1. Download the packaged SnapSplit release ZIP.
+2. In Blender, open **Edit → Preferences → Add-ons**.
+3. Open the add-on menu and choose **Install from Disk…**.
+4. Select the SnapSplit ZIP and complete the installation.
+5. Enable SnapSplit if it is not enabled automatically.
 
--> Run "Planar Split"
+The exact installation controls may vary slightly between Blender versions.
 
-![F.e. Cap seams if hollow](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_03.jpg?cache=1)
+If you download the repository rather than a packaged release, create an extension ZIP containing `blender_manifest.toml` and the add-on modules at the archive root. Do not assume that the repository download ZIP is already an installable package.
 
--------------------------
-### Build Connections:
+### Blender setup
 
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1)
-![SnapSplit UI](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_04.jpg?cache=1)
+Recommended scene settings:
 
-Unfold the connections section foldout (More...) to choose, adjust and place in LINE/GRID mode with Live Preview selected:
+- **Unit System:** Metric
+- **Unit Scale:** 1.000
+- **Length:** Adaptive
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_01.jpg?cache=1)
+Open the **3D Viewport sidebar** with **N**, then select the **SnapSplit** tab.
 
-(-> in this case Blender's "Suzanne" used as a Custom Connector :) -> use any mesh as reference.
+### Mesh preparation and quality checks
 
+Before splitting or adding connectors:
 
-... and/or place your connectors per click:
+- Save a backup of your model.
+- Check the mesh for non-manifold geometry, intersections, inconsistent normals, and thin walls.
+- Use Blender’s **3D Print Toolbox** or another suitable mesh-checking tool.
+- Start with a watertight mesh wherever possible.
+- Review unapplied rotation and scale.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_01.jpg?cache=1)
+Planar Split attempts to apply rotation and scale automatically while preserving object location. Nevertheless, checking transforms before an operation helps produce predictable results.
 
--> Select two or more adjacent parts (order does not matter).
+**Freehand Cut has stricter requirements:** apply or remove modifiers first, and use a static mesh without shape keys. See the Freehand Cut limitations below.
 
--> Choose pins, tenons, dovetails or custom connectors distributed along a seam line or spread across a grid, with or without Snap-Pins/Snap-Tenons/Snap-Dovetails for glueless connection, or use your own custom mesh as a connector shape.
+After splitting and adding connectors:
 
--> Define your tolerance profile (under Connections UI) for your material.
+- Confirm that every intended part contains faces.
+- Inspect the caps, connector roots, and sockets.
+- Check the result for non-manifold edges and insufficient wall thickness.
+- Verify the exported dimensions in your slicer.
+- Print a small fit test before committing to a large assembly.
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_02.jpg?cache=1)
+### Planar Split workflow
 
+Expand the segmentation section using **More…** to access the additional settings.
 
-->  Click “Add connectors”: The pin/tenon is unioned into Part B, and a socket with tolerance is cut into Part A.
-or   ->  Choose "Place connectors (click)" to set individualized connectors with your mouse clicking at spots along the seems:
+![SnapSplit segmentation settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_01.jpg?cache=1)
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_03.jpg?cache=1)
+![SnapSplit additional segmentation settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_02.jpg?cache=1)
 
+1. Select the mesh you want to split.
+2. Choose the split axis: **X**, **Y**, or **Z**.
+3. Set the desired **Number of Parts**.
+4. Enable **Show split preview** to display the planned cutting planes.
+5. Adjust the split offset, or use **Adjust split axis**.
+6. Choose whether to enable **Cap seams during split**.
+7. Run **Planar Split**.
+8. Inspect the resulting parts.
 
-Dovetails with Snap spheres, Auto span and edge sensitive hard-side cut:
+![Planar segmentation preview](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_01.jpg?cache=1)
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_06.jpg?cache=1)
+The split offset shifts the planned cutting positions along the selected axis. An offset of **0** means no additional shift; for a two-part split, the default plane is at the middle of the object’s extent along that axis.
 
-#### Custom Connector:
+#### Seam capping
 
-Instead of the built-in pin/tenon/dovetail shapes, you can pick any watertight mesh object from your scene as a connector shape (`Custom Connector Object` field). SnapSplit scales a copy of it to your specified Width / Length / Depth (mm) and inserts it exactly like the built-in connector types — either via "Add connectors" or via individual click placement.
+With **Cap seams during split** enabled, SnapSplit attempts to close the new cut boundaries:
 
-![F.e. place connections per "click"](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_02.jpg?cache=1)
+- For solid geometry, it fills the cut surface.
+- For supported hollow geometry, it fills between the outer and inner boundaries to preserve the cavity.
 
-- The object's local Z axis defines the insertion direction (depth into the socket).
-- Works with both seam-line and grid distribution as well as per-click placement.
-- Ideal for logos, keyed/anti-rotation shapes, or custom-designed glueless mechanisms.
+![Capped seams on a hollow model](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_03.jpg?cache=1)
 
-#### Tolerance profiles (defaults, adjustable per project):
+Automatic capping can increase processing time on dense meshes or when creating many parts. You can disable it and use **Cap seams now** afterwards where the resulting boundaries are supported.
 
-- PLA: 0.20 mm per side
-- PETG: 0.30 mm per side
-- ABS/ASA: 0.25 mm per side
-- TPU: 0.35 mm per side
-- SLA: 0.10 mm per side
+Always inspect the caps. Hollow-aware capping depends on valid, identifiable section loops and is not a general-purpose mesh repair operation.
 
-Tolerances are provided as presets and can be overridden by the user via the tolerance override field.
+### Freehand Cut workflow
 
+**Freehand Cut** creates a local planar cut from a mouse-drawn stroke. The stroke determines a cutting plane and selects the material regions touched by the stroke.
 
-### Export parts as usual (STL/OBJ/3MF). Tip: for 3MF, double-check scale/units.
+**It does not create an arbitrary curved cutting path.**
 
--------------------------
--------------------------
+![Planar segmentation preview](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_SEG_04.jpg?cache=1)
 
-### The panel in the 3D View (N-Panel → “SnapSplit”) features:
+1. Select the source mesh in **Object Mode**.
+2. Apply or remove its modifiers.
+3. Leave Quad View if it is active.
+4. Choose whether to enable **Cap seams during split**.
+5. Click **Freehand Cut**.
+6. Draw a stroke across the intended cutting region with the **left mouse button**.
+7. Release the button to generate the preview.
+8. Inspect the highlighted section boundaries.
+9. Press **Enter** to execute the cut, or **Esc/right-click** to cancel.
 
-Property group with:
+Hold **Shift when releasing the mouse button** to snap the cutting-plane normal to a world axis.
 
-- Segmentation: Number of parts. Unclick "cap seams" for larger part numbers
-- Connections:  Cylindrical Pin, Rectangular Tenon, Dovetail, Snap-Pin, Snap-Tenon, Snap-Dovetail, Custom Connector
-- Tolerance:    Material profiles (PLA, PETG, ABS, ASA, TPU, SLA)
-- Alignment:    Face to face alignment option in object mode
+#### Preview colours
 
-Operators:
+- **Orange:** Selected section boundaries.
+- **Grey:** Unselected section boundaries.
+- **Red:** Invalid open or branched sections.
 
-- Planar Split along a global axis into the specified number of parts
-- Split preview and adjustment
-- Decap and cap seams toggle, pre and post split
-- Percentage-based edge margin for connector placement
-- Seam line connectors, Grid connectors with rows and columns input and individual per click connectors placement on the cut face.
-- Pin, Tenon, Dovetail and Snap-variant adjustments
-- Custom Connector placement using a user-selected mesh object, scaled to Width/Length/Depth
-- Adjustable insertion depth. Default: 50%
-- Alignment with face selection in object mode
+Selection expands to complete material regions, including their associated inner boundaries. This helps preserve hollow sections rather than treating the outer and inner loops as unrelated cuts.
 
-#### Languages:
+The preview does not modify the source mesh. On successful execution, SnapSplit creates new result objects and hides the unchanged original.
 
-The UI is fully localized and automatically follows Blender's interface language setting. Supported languages:
+The shared **Cap seams during split** setting controls whether the new cut boundaries are closed or left open.
 
-English (US), German (Deutsch), French (Français), Spanish (Español), Italian (Italiano), Portuguese (Português), Dutch (Nederlands), Polish (Polski), Japanese (日本語), Chinese (中文), Russian (Русский), Ukrainian (Українська), Turkish (Türkçe), Slovenian (Slovenščina), Korean (한국어), Swahili (Kiswahili), Arabic (العربية), Persian (فارسی), Hindi (हिन्दी), Bengali (বাংলা)
+#### Current Freehand Cut limitations
 
-- If your Blender UI language is not among the fully translated set, SnapSplit falls back to English.
-- If your language is missing feel free to fork and add your language into languages.py and open a pull request.
-- A "Reload UI Language" button in the Add-on Preferences lets you refresh translations after changing Blender's language without restarting Blender.
+Freehand Cut currently requires:
 
-#### Add-on Preferences:
+- An active mesh in Object Mode.
+- No modifiers, including disabled modifiers.
+- No shape keys.
+- No vertex groups, constraints, or animation.
+- A non-singular object transform.
+- A source without existing SnapSplit seam metadata.
 
-Accessible via Edit → Preferences → Add-ons → SnapSplit:
+Repeated cutting of objects that already contain SnapSplit seam metadata is not supported in this version. Do not delete seam metadata merely to bypass this restriction, because it identifies relationships needed by later operations.
 
-- **Default Profile**: Choose which material tolerance profile (PLA, PETG, ABS, ASA, TPU, SLA) is pre-selected whenever the SnapSplit panel is opened on a new file or object.
-- **Create export collection**: When enabled, SnapSplit automatically organizes split/connected parts into a dedicated collection to keep your outliner clean before export.
-- **Reload UI Language**: Manually re-applies translations, e.g. after switching Blender's interface language.
+Do not change the source geometry or transforms while the preview is active. Restart Freehand Cut if the source changes.
 
+#### Connectors on Freehand seams
 
----------------------------
----------------------------
+Connector placement on Freehand results is supported only when the seam relationship passes validation. Current requirements include:
 
-### Folder structure (file structure for snapsplit.zip):
+- A unique reciprocal seam relationship between the partner parts.
+- Seams that were **capped when the Freehand cut was created**.
+- Matching seam frames and contours.
+- Closed, edge-manifold partner meshes.
+- No active viewport or render modifiers on the partner parts.
+- Supported, non-mirrored transforms.
 
-    snapsplit
-    ├── blender_manifest.toml
-    ├── __init__.py
-    ├── localization.py
-    ├── LICENCE.txt
-    ├── ops_align.py
-    ├── ops_connectors.py
-    ├── ops_split.py
-    ├── prefs.py
-    ├── profiles.py
-    ├── README.md
-    ├── ui.py
-    └── utils.py
+Capping an initially open Freehand seam later does not, by itself, satisfy the requirement that it was capped at creation.
 
+**Automatic material-boundary and wall-depth validation is not currently enabled for Freehand connectors.** Check that every connector and socket has enough surrounding material, especially on hollow or thin-walled parts.
 
+### Building connections
 
----------------------------
----------------------------
+Expand the connections section using **More…** to choose the connector type and adjust its placement and dimensions.
 
-Thanks to your hints and comments, I cleaned up the collections, added more connectors and languages and fixed some bugs. Don't hesitate to contact me or participate via fork and pull request.
+![SnapSplit connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_03.jpg?cache=1) ![SnapSplit additional connection settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_UI_04.jpg?cache=1)
 
-### Changelog:
+Available connector options include:
 
+- Cylindrical pins
+- Rectangular tenons
+- Dovetails
+- Snap-pin variants
+- Snap-tenon variants
+- Snap-dovetail variants
+- Custom mesh connectors
 
-**V_0.1.9**
-- Added toggle to swap Pin-Socket orientation, and option to swap in Click placement via s key
-- Auto switch to X-ray while Cut-preview, Connector Live Preview and Place Connector per Click
-- Auto-apply rotation and scale before cut
-- Auto connector orientation for connectors after face-align of non split objects
+#### Line and grid placement
 
-**V_0.1.8**
-- Face-pick storage for the alignment tool is now a PropertyGroup that is registered and unregistered with the add-on
-- localization cleanup
+1. Select the adjacent parts you want to connect.
+2. Choose a connector type.
+3. Select **Line** or **Grid** placement.
+4. Adjust the connector dimensions, spacing, margins, and other available parameters.
+5. Choose a material tolerance profile or enter a positive tolerance override.
+6. Enable **Live Preview** to inspect the placement.
+7. Use **Swap Pin / Socket** if you want to reverse the connector and socket roles.
+8. Click **Add connectors**.
 
-**V_0.1.7**
-- Migrated translation system from key-based tr() to literal strings with _trf()
-- All translations now centralized in localization.py
-- Implemented _register_translations() for proper Blender integration
-- Enhanced stability for custom connector boolean operations
-- Optimized bpy.ops usage: replaced selection operators with RNA/BMesh API
-- Depsgraph handler now registers only when live preview is active
-- Better error handling and mesh cleanup for orphaned objects
-- Improved UI layout for connector parameter groups
-- Full adherence to Blender Extensions review requirements
-- Removed advertisement/donation links from UI
+SnapSplit joins the connector geometry to one partner and cuts the matching socket into the other. The swap setting reverses those roles.
 
-**V_0.1.6**
-- Added live preview option while creating connectors in Line/Grid mode for all connector types and a more adjustment options for connector creations -> Margin, Taper, Chamfer, Edge sensitive Span, Rotations and Offset along Length/Width on the cutting plane
-- Stability fixes for cutting and cap hollow forms created via standard boolean modifier.
+![Custom connectors distributed across a seam](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_01.jpg?cache=1)
 
-**V_0.1.5**
-- Full UI localization through switch to Blender's interface language setting with 20 languages: EN, DE, FR, ES, IT, PT, NL, PL, JA, ZH, RU, UK, TR, SL, KO, SW, AR, FA, HI, BN with automatic detection based on Blender's UI language.
+*Example: Blender’s Suzanne mesh used as a custom connector.*
 
-**V_0.1.4**
-- Added Dovetail and Snap-Dovetail connector types.
-- Added Custom Connector: use any mesh object from your scene as a connector shape, scaled to Width/Length/Depth, with click placement support.
+For multi-part selections, inspect the preview to confirm the intended seam and partner relationships. Freehand seams must meet the validation requirements described above.
 
-**V_0.1.3**
-- Initial public connector set: Cylindrical Pin, Rectangular Tenon, Snap-Pin, Snap-Tenon.
-- Planar split with adjustable axis/offset, cap seams toggle.
-- Seam-line and grid connector distribution, per-click placement.
-- Material tolerance profiles (PLA, PETG, ABS, ASA, TPU, SLA).
-- Face-to-face alignment operator.
+#### Individual click placement
 
-- Collections cleanup automation
+Use **Place connectors (click)** to position connectors individually on a supported connection surface.
 
----------------------------
----------------------------
+![Individual connector placement](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_01.jpg?cache=1)
 
-### Roadmap of ideas:
+1. Select the intended partner parts.
+2. Choose and configure the connector.
+3. Start **Place connectors (click)**.
+4. Click the desired positions on the connection surface.
+5. Press **S** during click placement to swap the connector and socket roles.
 
-- Add-on Preferences panel: Default Profile selection and automatic export collection creation.
-- Extend Add-on Preferences further: more granular Default Profile handling (e.g. per-project/per-object) and more configurable export collection behavior (e.g. naming schemes, per-part subfolders).
-- More languages beyond the current 20.
+![Connector placement and tolerance settings](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_02.jpg?cache=1)
 
-Thanks for your feedbacks. I'm always happy to hear your further needs for next versions and hints for better building experiences.
-I'd be happy if you fork and explore the code. You can join in accelerating further dev ops, as I am doing this in my free time and would be happy about productive extensions to make it a great free option to use Blender as program of choice for 3D printing.
+![Connectors placed along a seam](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_03.jpg?cache=1)
 
----------------------------
----------------------------
+#### Dovetails and snap variants
 
-And last but not least, as I am doing this in my free time you can support me.
+Dovetail options include snap spheres, span controls, and hard-side cutting settings.
 
-If you like the Addon and continue using it
+![Dovetails with snap spheres and span controls](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CON_06.jpg?cache=1)
 
--> buy me a drink on Gumroad: https://betakontext.gumroad.com/l/snapsplit
--> and/or support me on Superhive: https://superhivemarket.com/products/snapsplit
--> and/or buy me a coffee on Buymeacoffee: https://buymeacoffee.com/betakontext
+Check the available assembly direction and surrounding wall thickness. A connector that fits geometrically may still be difficult to assemble or too fragile to print.
 
-CONTACT: dev@betakontext.de | https://dev.betakontext.de |
+#### Live Preview
 
----------------------------
----------------------------
+Live Preview displays temporary wireframe connector geometry for placement checks.
 
-The project is made with AI assistance and under the terms of the GNU General Public License.
+- It is limited to **200 preview objects**.
+- It does not reproduce the complete final Boolean result.
+- It does not perform the final hard-side Boolean cut.
+- It is not a printability or fit guarantee.
+
+SnapSplit temporarily enables X-ray for supported preview and click-placement workflows where the viewport shading mode allows it.
+
+### Custom connectors
+
+Choose a watertight mesh object from your scene in the **Custom Connector Object** field.
+
+SnapSplit scales a copy to the specified **Width / Length / Depth** dimensions and uses it as the connector shape. Custom connectors support line placement, grid placement, and individual click placement.
+
+![Custom connector example](https://dev.betakontext.de/snapsplit/img/jpg/betakontext_snapsplit_CUSTOM_CON_02.jpg?cache=1)
+
+Important preparation notes:
+
+- The object’s **local Z axis** defines its depth/insertion direction.
+- Use clean, watertight geometry.
+- Inspect the orientation and scaled shape in the preview.
+- Test socket clearance and assembly before printing the complete model.
+
+Additional controls include custom snap spheres, chamfer, span axis, hard-side cutting, in-plane offsets, and in-plane rotation.
+
+Custom connectors are useful for keyed shapes, anti-rotation features, logos, and purpose-designed assembly mechanisms. A custom shape is not automatically a reliable snap-fit mechanism.
+
+### Tolerance profiles
+
+The following presets specify clearance **per side**, in millimetres:
+
+| Material profile | Default tolerance per side |
+|---|---:|
+| PLA | 0.20 mm |
+| PETG | 0.30 mm |
+| ABS | 0.25 mm |
+| ASA | 0.25 mm |
+| TPU | 0.35 mm |
+| SLA | 0.10 mm |
+
+Use the tolerance override field to replace the selected preset:
+
+- **0:** Use the material profile value.
+- **Positive value:** Use the entered tolerance instead.
+
+**An override of 0 does not request zero clearance.**
+
+These presets are starting points, not automatic printer calibration. Adjust them for your printer, material, print orientation, and required fit.
+
+### Face-to-face alignment
+
+SnapSplit includes a face-picking alignment tool that works in Object Mode.
+
+Use it to align suitable connection faces before placing connectors, including on supported objects that were not created by SnapSplit’s splitting tools.
+
+After alignment, inspect the connection orientation and preview. Alignment alone does not guarantee that an arbitrary pair of meshes forms a valid connector seam.
+
+### Exporting parts
+
+Export the finished parts using Blender’s available export tools, such as STL or OBJ. Use 3MF if a suitable exporter is available in your Blender setup.
+
+SnapSplit’s collection organization helps keep result parts and helper objects separate. Confirm that only the intended printable objects are included in the export.
+
+Before printing:
+
+- Check exported scale and units in the slicer.
+- Confirm that all intended parts are present.
+- Run a final mesh and wall-thickness check.
+- Verify connector fit with a small test print.
+
+### Panel overview
+
+The **3D Viewport → N-panel → SnapSplit** panel provides:
+
+#### Segmentation
+
+- Global X/Y/Z planar splitting
+- Number of parts
+- Split offset and interactive adjustment
+- Split preview
+- Automatic seam capping
+- Post-split capping and decapping tools
+- Stroke-based Freehand Cut
+
+#### Connections
+
+- Pin, tenon, dovetail, and snap variants
+- Custom mesh connectors
+- Line and grid distribution
+- Individual click placement
+- Live Preview
+- Connector/socket role swapping
+- Percentage-based placement margins
+- Insertion-depth control, with a default of 50%
+- Type-specific dimension, taper, chamfer, span, rotation, and offset controls
+
+#### Tolerance and alignment
+
+- Material tolerance profiles
+- Manual tolerance override
+- Face-to-face alignment in Object Mode
+
+### Languages
+
+SnapSplit uses Blender’s translation system and follows the interface language where a matching translation is available.
+
+The project includes translation dictionaries for:
+
+- German
+- French
+- Spanish
+- Italian
+- Portuguese
+- Dutch
+- Polish
+- Japanese
+- Chinese
+- Russian
+- Ukrainian
+- Turkish
+- Slovenian
+- Korean
+- Swahili
+- Arabic
+- Persian
+- Hindi
+- Bengali
+
+English is the source language and fallback.
+
+Translation availability depends on the locales recognized by your Blender build and its interface translation settings. Labels without a matching translation remain in English.
+
+To contribute a language or improve a translation, edit **`localization.py`** and open a pull request.
+
+The current preferences panel does not include a **Reload UI Language** button.
+
+### Add-on preferences
+
+Open **Edit → Preferences → Add-ons → SnapSplit** to access:
+
+- **Default Profile**
+- **Create export collection**
+
+These controls are present in the current preferences UI. However, their integration is incomplete: do not rely on them to initialize a material profile for every new file/object or to control all collection creation.
+
+Choose the material profile directly in the SnapSplit panel and inspect the generated collections before export.
+
+### Package structure
+
+The installable extension ZIP contains these files at its root:
+
+```text
+snapsplit.zip
+├── blender_manifest.toml
+├── __init__.py
+├── localization.py
+├── LICENCE.txt
+├── ops_align.py
+├── ops_connectors.py
+├── ops_freehand.py
+├── ops_split.py
+├── prefs.py
+├── profiles.py
+├── README.md
+├── seam_data.py
+├── ui.py
+└── utils.py
+```
+
+### Changelog
+
+#### 0.2.0
+
+- Added a hollow-aware Freehand Cut operator with stroke-based planar preview.
+- Added local material-region selection and optional seam capping.
+- Added seam metadata and validated connector handling for supported Freehand seam pairs.
+- Preserves the source mesh and hides the original after a successful Freehand cut.
+- Repeated cutting of objects with existing SnapSplit seam metadata remains unsupported.
+
+#### 0.1.9
+
+- Added a toggle to swap connector and socket orientation.
+- Added **S** to swap roles during click placement.
+- Added automatic X-ray handling for split preview, connector Live Preview, and click placement.
+- Added automatic rotation and scale application before planar splitting.
+- Improved connector orientation after face alignment of non-split objects.
+
+#### 0.1.8
+
+- Moved face-pick storage for the alignment tool into a registered PropertyGroup.
+- Cleaned up localization.
+
+#### 0.1.7
+
+- Migrated from key-based `tr()` translation calls to literal strings with `_trf()`.
+- Centralized translation data in `localization.py`.
+- Integrated translation registration with Blender.
+- Improved custom connector Boolean stability.
+- Replaced selected `bpy.ops` operations with RNA/BMesh API usage.
+- Limited dependency-graph handler registration to active Live Preview.
+- Improved error handling and orphaned-object cleanup.
+- Improved the connector settings layout.
+- Made changes intended to meet Blender Extensions requirements.
+- Removed advertising and donation links from the add-on UI.
+
+#### 0.1.6
+
+- Added line/grid Live Preview for all connector types.
+- Added placement margin, taper, chamfer, span, rotation, and in-plane offset controls.
+- Improved splitting and seam capping for supported hollow geometry created with Boolean modifiers.
+
+#### 0.1.5
+
+- Added translation dictionaries covering 19 additional languages alongside English.
+- Integrated language selection with Blender’s interface translation system.
+
+#### 0.1.4
+
+- Added dovetail and snap-dovetail connectors.
+- Added custom mesh connectors with Width/Length/Depth scaling and click placement.
+
+#### 0.1.3
+
+- Introduced cylindrical pins, rectangular tenons, snap-pins, and snap-tenons.
+- Added planar splitting with axis and offset controls.
+- Added optional seam capping.
+- Added line, grid, and individual click placement.
+- Added material tolerance profiles.
+- Added face-to-face alignment.
+- Added collection organization and cleanup.
+
+### Roadmap
+
+Ideas for future development include:
+
+- Complete default-profile initialization and make its scope explicit.
+- Make export-collection behaviour configurable and consistent.
+- Support repeated cuts through seam-metadata migration.
+- Add material-boundary and wall-depth validation for Freehand connectors.
+- Expand translation coverage, including newer workflow labels.
+- Improve diagnostics, documentation, and automated testing.
+
+These are development ideas, not commitments to a particular release.
+
+### Feedback and contributions
+
+SnapSplit is developed in my free time. Bug reports, reproducible examples, translation improvements, and focused pull requests are welcome.
+
+For bug reports, please include:
+
+- Your Blender version
+- Your SnapSplit version
+- Steps to reproduce the issue
+- Relevant settings
+- The error message or console output
+- A minimal example file, if you can share it
+
+You can contribute by forking the repository and opening a pull request.
+
+Thank you for your feedback and suggestions. They help improve the workflow and make SnapSplit a more useful free tool for Blender-based 3D printing.
+
+### Support
+
+If SnapSplit is useful to you and you would like to support its development:
+
+- [Support on Gumroad](https://betakontext.gumroad.com/l/snapsplit)
+- [Support on Superhive](https://superhivemarket.com/products/snapsplit)
+- [Buy me a coffee](https://buymeacoffee.com/betakontext)
+
+**Contact:** dev@betakontext.de
+**Website:** [dev.betakontext.de](https://dev.betakontext.de/)
+
+### License
+
+SnapSplit is developed with AI assistance and distributed under the **GNU General Public License, version 3 or later**.
+
+See **`LICENCE.txt`** for the license terms.
