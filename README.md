@@ -3,6 +3,8 @@
 Addon for Blender to automate cut and connection building workflows for complex 3D models, which are f.e. larger than your printing bed, to create printable parts. It has easy workflow options to create hollow forms and  generates precise, glue-free snap-fit connectors.
 Its goal is to integrate into a 3D printing workflow using robust booleans, material sensible adaptive tolerance models, and various options for splits and connections.
 
+This is version 0.1.9
+
 For now I tested it with Blender 4.5.3 LTS, 4.5.9 LTS, 5.0.1, 5.1.0, 5.1.1, 5.2.0, 5.2.2 LTS which work fine. Please let me know if you test on other Blender versions to update version compatabilities.
 
 ![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SLAIDSHOW.gif?cache=1)
