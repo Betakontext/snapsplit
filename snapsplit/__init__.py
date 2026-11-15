@@ -25,8 +25,8 @@ bl_info = {
     "author": "Christoph Medicus",
     "email": "dev@betakontext.de",
     "website": "https://dev.betakontext.de",
-    "version": (0, 2, 0),
-    "blender": (5, 2, 0),
+    "version": (0, 2, 1),
+    "blender": (5, 3, 0),
     "location": "View3D > N-Panel > SnapSplit",
     "description": (
         "Split meshes into printable parts and generate fitting connectors for 3D printing."
