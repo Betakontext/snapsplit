@@ -2491,10 +2491,3 @@ def unregister():
 
     for c in reversed(classes):
         bpy.utils.unregister_class(c)
-
-# SnapSplit mixed planar patch v5
-from .mixed_split import execute_planar_mixed as _ss_execute_planar_mixed
-_ss_original_planar_execute = SNAP_OT_planar_split.execute
-def _ss_mixed_planar_execute(self, context):
-    return _ss_execute_planar_mixed(self, context, _ss_original_planar_execute, globals())
-SNAP_OT_planar_split.execute = _ss_mixed_planar_execute
