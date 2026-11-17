@@ -420,6 +420,10 @@ def _world_record(obj, record):
         "tangent": tangent,
         "loops": loops,
         "side": record["side"],
+        "tolerance_world_at_creation": record[
+            "tolerance_world_at_creation"
+        ],
+
     }
 
 
@@ -492,186 +496,29 @@ def _loop_area(loop, origin, x_axis, y_axis):
 
 
 def _verify_current_cap(obj, frame, tolerance):
-    """Verify a current planar cap island against its stored boundary edges."""
-    mesh = obj.data
-    matrix = obj.matrix_world
-    vertices = [
-        matrix @ vertex.co
-        for vertex in mesh.vertices
-    ]
+    """Verify that a stored region is fully covered by a current planar surface."""
+    from .seam_regions import RegionError, overlay_region
 
-    if any(
-        not math.isfinite(component)
-        for point in vertices
-        for component in point
-    ):
-        raise SeamValidationError("The current mesh contains invalid vertices.")
+    try:
+        overlay_region(frame, [obj], tolerance)
+    except RegionError as exc:
+        raise SeamValidationError(str(exc)) from exc
 
-    origin = frame["origin"]
-    normal = frame["normal"]
-    edge_faces = {}
+def resolve_freehand_regions(obj_p, obj_q):
+    """Return all validated reciprocal contact regions for an object pair.
 
-    for face in mesh.polygons:
-        for edge in face.edge_keys:
-            key = tuple(sorted(edge))
-            edge_faces.setdefault(key, []).append(face.index)
-
-    # Require a closed edge-manifold surface, including any cavity walls.
-    if (
-        any(
-            len(edge_faces.get(tuple(sorted(edge.vertices)), ())) != 2
-            for edge in mesh.edges
-        )
-        or any(len(faces) != 2 for faces in edge_faces.values())
-    ):
-        raise SeamValidationError(
-            f"'{obj.name}' is open or contains non-manifold edges."
-        )
-
-    planar = {
-        face.index
-        for face in mesh.polygons
-        if all(
-            abs((vertices[index] - origin).dot(normal)) <= tolerance
-            for index in face.vertices
-        )
-    }
-
-    expected_edges = [
-        (loop[index], loop[(index + 1) % len(loop)])
-        for loop in frame["loops"]
-        for index in range(len(loop))
-    ]
-
-    def matches_edge(key, expected):
-        a, b = (vertices[index] for index in key)
-        c, d = expected
-        return (
-            (a - c).length <= tolerance
-            and (b - d).length <= tolerance
-        ) or (
-            (a - d).length <= tolerance
-            and (b - c).length <= tolerance
-        )
-
-    seed_faces = {
-        face_index
-        for key, linked in edge_faces.items()
-        if matches_edge(key, expected_edges[0])
-        for face_index in linked
-        if face_index in planar
-    }
-
-    if len(seed_faces) != 1:
-        raise SeamValidationError(
-            "The stored contour does not identify a unique current cap."
-        )
-
-    adjacency = {index: set() for index in planar}
-
-    for linked in edge_faces.values():
-        if linked[0] in planar and linked[1] in planar:
-            adjacency[linked[0]].add(linked[1])
-            adjacency[linked[1]].add(linked[0])
-
-    island = set()
-    pending = list(seed_faces)
-
-    while pending:
-        index = pending.pop()
-        if index in island:
-            continue
-        island.add(index)
-        pending.extend(adjacency[index] - island)
-
-    boundary = [
-        key
-        for key, linked in edge_faces.items()
-        if sum(index in island for index in linked) == 1
-    ]
-
-    if len(boundary) != len(expected_edges):
-        raise SeamValidationError(
-            "The current cap boundary differs from the stored contours."
-        )
-
-    remaining = list(boundary)
-
-    for expected in expected_edges:
-        matches = [
-            index
-            for index, key in enumerate(remaining)
-            if matches_edge(key, expected)
-        ]
-
-        if len(matches) != 1:
-            raise SeamValidationError(
-                "A stored contour edge is missing or ambiguous."
-            )
-
-        remaining.pop(matches[0])
-
-    # Positive-side parts have outward cap normals pointing to the negative side.
-    expected_normal = normal * -frame["side"]
-    area = 0.0
-
-    for index in island:
-        face = mesh.polygons[index]
-        points = [vertices[item] for item in face.vertices]
-        reference = points[0]
-        area_vector = Vector((0.0, 0.0, 0.0))
-
-        for item in range(1, len(points) - 1):
-            area_vector += (
-                (points[item] - reference).cross(
-                    points[item + 1] - reference
-                ) * 0.5
-            )
-
-        if (
-            area_vector.length <= tolerance * tolerance
-            or area_vector.normalized().dot(expected_normal) < 1.0 - 1e-5
-        ):
-            raise SeamValidationError(
-                "A cap face is degenerate or has an inconsistent orientation."
-            )
-
-        area += area_vector.length
-
-    x_axis = frame["tangent"]
-    y_axis = normal.cross(x_axis).normalized()
-    expected_area = (
-        _loop_area(frame["loops"][0], origin, x_axis, y_axis)
-        - sum(
-            _loop_area(hole, origin, x_axis, y_axis)
-            for hole in frame["loops"][1:]
-        )
-    )
-
-    if (
-        expected_area <= tolerance * tolerance
-        or abs(area - expected_area)
-        > max(expected_area * 1e-5, tolerance * tolerance * 32.0)
-    ):
-        raise SeamValidationError(
-            "The current cap area differs from the stored material region."
-        )
-
-
-def resolve_freehand_plane(obj_p, obj_q):
-    """Resolve a validated Freehand seam without enabling connector placement.
-
-    Return (socket, pin, origin, normal, tangent), or None when neither object
-    has Freehand metadata or when two valid documents have no shared seam.
-    Raise SeamValidationError for invalid or unsupported relationships.
+    Each item is (socket, pin, world_frame). Distinct contact planes are kept
+    separate; callers must not silently choose one of them.
     """
+    from .seam_regions import frame_tolerance
+
     if not (
         has_freehand_metadata(obj_p)
         or has_freehand_metadata(obj_q)
     ):
-        return None
+        return []
 
-    if obj_p == obj_q:
+    if obj_p is None or obj_q is None or obj_p == obj_q:
         raise SeamValidationError("Select two different seam partners.")
 
     if not (
@@ -685,87 +532,104 @@ def resolve_freehand_plane(obj_p, obj_q):
     p_data = _validated_document(obj_p)
     q_data = _validated_document(obj_q)
 
-    p_records = [
-        record
+    p_records = {
+        record["seam_id"]: record
         for record in p_data["seams"]
         if record["partner_id"] == q_data["object_id"]
-    ]
-    q_records = [
-        record
+    }
+    q_records = {
+        record["seam_id"]: record
         for record in q_data["seams"]
         if record["partner_id"] == p_data["object_id"]
-    ]
+    }
 
-    if not p_records and not q_records:
+    if set(p_records) != set(q_records):
+        raise SeamValidationError(
+            "The Freehand partner relationship is asymmetric."
+        )
+
+    resolved = []
+
+    for seam_id, p_record in p_records.items():
+        q_record = q_records[seam_id]
+
+        if p_record["side"] != -q_record["side"]:
+            raise SeamValidationError("The seam sides are not opposite.")
+
+        if not (
+            p_record["capped_at_creation"]
+            and q_record["capped_at_creation"]
+        ):
+            raise SeamValidationError(
+                "Open Freehand contacts do not support connector placement."
+            )
+
+        p_frame = _world_record(obj_p, p_record)
+        q_frame = _world_record(obj_q, q_record)
+        tolerance = max(
+            frame_tolerance(p_frame),
+            frame_tolerance(q_frame),
+        )
+
+        if (
+            p_frame["normal"].dot(q_frame["normal"]) < 1.0 - 1e-6
+            or p_frame["tangent"].dot(q_frame["tangent"]) < 1.0 - 1e-6
+            or (p_frame["origin"] - q_frame["origin"]).length > tolerance
+            or not _boundaries_match(
+                p_frame["loops"], q_frame["loops"], tolerance
+            )
+        ):
+            raise SeamValidationError(
+                "Reciprocal contact regions no longer coincide."
+            )
+
+        _verify_current_cap(obj_p, p_frame, tolerance)
+        _verify_current_cap(obj_q, q_frame, tolerance)
+
+        if p_frame["side"] == 1:
+            socket, pin = obj_p, obj_q
+        else:
+            socket, pin = obj_q, obj_p
+
+        resolved.append((socket, pin, p_frame))
+
+    return resolved
+
+def resolve_freehand_plane(obj_p, obj_q):
+    """Keep the existing single-plane API for compatible callers."""
+    from .seam_regions import frame_tolerance
+
+    regions = resolve_freehand_regions(obj_p, obj_q)
+
+    if not regions:
         return None
 
-    if (
-        len(p_records) != 1
-        or len(q_records) != 1
-        or p_records[0]["seam_id"] != q_records[0]["seam_id"]
-    ):
-        raise SeamValidationError(
-            "The partner relationship is missing, asymmetric, or ambiguous."
+    socket, pin, first = regions[0]
+
+    for other_socket, other_pin, frame in regions[1:]:
+        tolerance = max(
+            frame_tolerance(first),
+            frame_tolerance(frame),
         )
 
-    p_record, q_record = p_records[0], q_records[0]
-
-    if p_record["side"] != -q_record["side"]:
-        raise SeamValidationError("The seam sides are not opposite.")
-
-    if not (
-        p_record["capped_at_creation"]
-        and q_record["capped_at_creation"]
-    ):
-        raise SeamValidationError(
-            "Open Freehand seams are not supported for connectors in C2."
-        )
-
-    p_frame = _world_record(obj_p, p_record)
-    q_frame = _world_record(obj_q, q_record)
-
-    span = max(
-        (point - p_frame["loops"][0][0]).length
-        for loop in p_frame["loops"]
-        for point in loop
-    )
-
-    # Derive tolerance from current world dimensions, not stale creation scale.
-    tolerance = max(1e-7, span * 1e-6)
-
-    if (
-        p_frame["normal"].dot(q_frame["normal"]) < 1.0 - 1e-6
-        or p_frame["tangent"].dot(q_frame["tangent"]) < 1.0 - 1e-6
-        or (p_frame["origin"] - q_frame["origin"]).length > tolerance
-        or not _boundaries_match(
-            p_frame["loops"], q_frame["loops"], tolerance
-        )
-    ):
-        raise SeamValidationError(
-            "The two seam frames or contours no longer coincide."
-        )
-
-    for frame in (p_frame, q_frame):
-        if any(
-            abs((point - frame["origin"]).dot(frame["normal"])) > tolerance
-            for loop in frame["loops"]
-            for point in loop
+        if (
+            other_socket != socket
+            or other_pin != pin
+            or first["normal"].dot(frame["normal"]) < 1.0 - 1e-6
+            or abs(
+                (frame["origin"] - first["origin"]).dot(first["normal"])
+            ) > tolerance
         ):
-            raise SeamValidationError("A stored contour is not planar.")
-
-    _verify_current_cap(obj_p, p_frame, tolerance)
-    _verify_current_cap(obj_q, q_frame, tolerance)
-
-    if p_frame["side"] == 1:
-        socket, pin = obj_p, obj_q
-    else:
-        socket, pin = obj_q, obj_p
+            raise SeamValidationError(
+                "This object pair has multiple contact planes. "
+                "Use the region-aware pair builder."
+            )
 
     return (
         socket,
         pin,
-        p_frame["origin"],
-        p_frame["normal"],
-        p_frame["tangent"],
+        first["origin"],
+        first["normal"],
+        first["tangent"],
     )
 

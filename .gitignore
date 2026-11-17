@@ -21,6 +21,7 @@ snapsplit_plan.txt
 Debugging.txt
 snapsplit.zip
 create_source_snapshot_code_only.py
+sourcecode_snapshot.py
 snapsplit/ui00.py
 snapsplit/utils00.py
 snapsplit/profiles00.py

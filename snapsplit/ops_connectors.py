@@ -39,6 +39,8 @@ from .seam_data import (
     resolve_freehand_plane,
 )
 
+from .seam_data import resolve_freehand_regions
+
 
 
 
@@ -421,7 +423,7 @@ def _roles_swapped():
         return False
 
 
-def _swap_roles(resolved):
+def _ss_patch_legacy_swap_roles(resolved):
     """Exchange pin and socket in a resolved pair tuple.
 
     Input:  (a, b, axis, seam_pos, sign[, plane]), a = socket, b = pin.
@@ -542,7 +544,7 @@ def _resolve_pair(obj_p, obj_q):
     """Resolve the seam and roles of a part pair; honours the 'Swap Pin / Socket' switch."""
     return _maybe_swap(_resolve_pair_raw(obj_p, obj_q))
 
-def _resolve_freehand_pair_raw(obj_p, obj_q):
+def _ss_patch_legacy_resolve_freehand_pair_raw(obj_p, obj_q):
     """Adapt a validated Freehand seam to the existing connector pair format."""
     result = resolve_freehand_plane(obj_p, obj_q)
 
@@ -645,7 +647,7 @@ def _resolve_pair_raw(obj_p, obj_q):
     return a, b, axis, seam_pos, 1
 
 
-def _build_connector_pairs(parts, fallback_axis, warn=False):
+def _ss_patch_legacy_build_connector_pairs(parts, fallback_axis, warn=False):
     """Build detected pairs, preserving explicit Freehand seam planes."""
     objs = [o for o in parts if o is not None]
     pairs = []
@@ -826,7 +828,7 @@ def distribute_points_grid_on_seam(obj_a, obj_b, cols, rows, axis, seam_pos, mar
             pts.append(origin + t1n * sc + t2n * sr)
     return pts
 
-def distribute_points_on_plane(obj_a, obj_b, plane, distribution, cols, rows, margin_pct=10.0):
+def _ss_patch_legacy_distribute_points_on_plane(obj_a, obj_b, plane, distribution, cols, rows, margin_pct=10.0):
     """Distribute connector points on a slanted seam plane.
 
     plane = (origin, z, x) as returned by _resolve_pair_plane(). The points lie inside the
@@ -4021,7 +4023,7 @@ class SNAP_OT_place_connectors_click(Operator):
         self._update_status_text(context)
 
 
-    def _intersect_mouse_with_seam_plane(self, context, event):
+    def _ss_patch_legacy_intersect_mouse_with_seam_plane(self, context, event):
         """Raycast from mouse into the seam plane and return the hit point in world space."""
         n = {
             "X": Vector((1, 0, 0)),
@@ -4059,6 +4061,9 @@ class SNAP_OT_place_connectors_click(Operator):
         if t < 0:
             return None
         return ray_origin + ray_dir * t
+
+    def _intersect_mouse_with_seam_plane(self,context,event):
+     return _ss_patch_click_hit(self,context,event)
 
     def _build_frame_at(self, point_world):
         """Build a local placement frame (Matrix) at a world point based on axis and embed depth.
@@ -4154,3 +4159,114 @@ def unregister():
 
 
 
+
+
+\
+# SnapSplit freehand patch v3
+class _ss_patch_Plane(tuple):
+    def __new__(cls,o,n,x,region=None):
+        z=tuple.__new__(cls,(o,n,x));z.region=region;return z
+def _ss_patch_pair(socket,pin,frame):
+    o,n,x=frame["origin"],frame["normal"],frame["tangent"];axis=_world_axis_letter_from_direction(n)
+    return socket,pin,axis,o[_axis_index(axis)],1,_ss_patch_Plane(o,n,x,frame)
+def _resolve_freehand_pair_raw(p,q):
+    r=resolve_freehand_regions(p,q);return _ss_patch_pair(*r[0]) if r else None
+def _swap_roles(r):
+    if not r:return r
+    a,b,axis,pos,sign=r[:5];tail=r[5:]
+    if tail and tail[0] is not None:
+        o,n,x=tail[0][:3];tail=(_ss_patch_Plane(o,-n,x,getattr(tail[0],"region",None)),)+tuple(tail[1:])
+        return (b,a,axis,pos,sign)+tuple(tail)
+    return (b,a,axis,pos,-sign)+tuple(tail)
+def _build_connector_pairs(parts,fallback_axis,warn=False):
+    clean=[];seen_parts=set()
+    for part in list(parts):
+        if part is None:continue
+        pointer=part.as_pointer()
+        if pointer not in seen_parts:seen_parts.add(pointer);clean.append(part)
+    if not any(has_freehand_metadata(p) for p in clean):return _ss_patch_legacy_build_connector_pairs(clean,fallback_axis,warn)
+    out=[];seen=set()
+    for i,a in enumerate(clean):
+        for b in clean[i+1:]:
+            key=tuple(sorted((a.as_pointer(),b.as_pointer())))
+            if key in seen:continue
+            seen.add(key)
+            if has_freehand_metadata(a) or has_freehand_metadata(b):
+                try:
+                    for socket,pin,frame in resolve_freehand_regions(a,b):out.append(_maybe_swap(_ss_patch_pair(socket,pin,frame)))
+                except SeamValidationError as e:
+                    if warn:report_user(None,"WARNING",str(e))
+            else:
+                r=_resolve_pair(a,b)
+                if r:out.append(r)
+    return out
+def _ss_patch_frame(plane):
+    o,n,x=plane[:3];n=n/n.length;x=x-n*x.dot(n);x=x/x.length;y=n.cross(x);return o,n,x,y/y.length
+def _ss_patch_loops(plane):
+    o,n,x,y=_ss_patch_frame(plane)
+    if not getattr(plane,"region",None) or not plane.region.get("loops"):raise ValueError("freehand plane has no loops")
+    loops=[]
+    for q in plane.region["loops"]:
+        if len(q)<3:raise ValueError("freehand region contains a malformed loop")
+        loops.append([((p-o).dot(x),(p-o).dot(y)) for p in q])
+    return loops,o,x,y
+def _ss_patch_inside(p,loops):
+    def inside(q):
+        v=False
+        for i,a in enumerate(q):
+            b=q[(i+1)%len(q)]
+            if (a[1]>p[1]) != (b[1]>p[1]) and p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0]:v=not v
+        return v
+    return bool(loops) and inside(loops[0]) and not any(inside(q) for q in loops[1:])
+def distribute_points_on_plane(a,b,plane,distribution,cols,rows,margin_pct=10):
+    if not isinstance(plane,_ss_patch_Plane) or plane.region is None:return _ss_patch_legacy_distribute_points_on_plane(a,b,plane,distribution,cols,rows,margin_pct)
+    loops,o,x,y=_ss_patch_loops(plane);z=[p for q in loops for p in q];m=max(0,min(100,float(margin_pct)))/100
+    ulo,uhi=min(p[0] for p in z),max(p[0] for p in z);vlo,vhi=min(p[1] for p in z),max(p[1] for p in z)
+    def inset(lo,hi):
+        a,b=lo+m*(hi-lo),hi-m*(hi-lo);return ((lo+hi)/2,)*2 if a>b else (a,b)
+    ulo,uhi=inset(ulo,uhi);vlo,vhi=inset(vlo,vhi)
+    def span(lo,hi,n):
+        n=max(1,int(n));return [(lo+hi)/2] if n==1 else [lo+(hi-lo)*i/(n-1) for i in range(n)]
+    if str(distribution).upper()=="GRID":candidate=[(u,v) for v in span(vlo,vhi,rows) for u in span(ulo,uhi,cols)]
+    elif (uhi-ulo)>=(vhi-vlo):candidate=[(u,(vlo+vhi)/2) for u in span(ulo,uhi,cols)]
+    else:candidate=[((ulo+uhi)/2,v) for v in span(vlo,vhi,cols)]
+    # Center-only containment; millimetre dovetail offsets are not world units.
+    # This remains a conservative center test, not a full-footprint guarantee.
+    out=[]
+    for u,v in candidate:
+        if _ss_patch_inside((u,v),loops):out.append(o+x*u+y*v)
+    return out
+
+
+\
+def _ss_patch_preview(self,hidden):
+    seen=[]
+    for q in list(getattr(self,"preview_objs",[]) or [])+[getattr(self,"preview_obj",None)]:
+        if q is not None and q not in seen:
+            seen.append(q)
+            try:q.hide_set(hidden)
+            except (AttributeError,RuntimeError,ReferenceError):pass
+def _ss_patch_click_hit(self,context,event):
+    if not hasattr(self,"_ss_patch_click_regions"):
+        if not(has_freehand_metadata(self.a) or has_freehand_metadata(self.b)):return self._ss_patch_legacy_intersect_mouse_with_seam_plane(context,event)
+        try:self._ss_patch_click_regions=list(resolve_freehand_regions(self.a,self.b));self._ss_patch_scene_roles_swapped=bool(_roles_swapped())
+        except (SeamValidationError,ValueError,KeyError,TypeError) as exc:self._ss_patch_click_regions=[];self._ss_patch_scene_roles_swapped=False;report_user(self,"ERROR",str(exc))
+    try:
+        from bpy_extras import view3d_utils
+        xy=(event.mouse_region_x,event.mouse_region_y);ro=view3d_utils.region_2d_to_origin_3d(context.region,context.region_data,xy);rd=view3d_utils.region_2d_to_vector_3d(context.region,context.region_data,xy)
+    except Exception:return None
+    hit=None
+    try:
+        for socket,pin,f in self._ss_patch_click_regions:
+            o,n,x=f['origin'],f['normal'],f['tangent'];d=rd.dot(n)
+            if abs(d)<=1e-12:continue
+            t=(o-ro).dot(n)/d
+            if t<0:continue
+            point=ro+rd*t;loops,_,tx,y=_ss_patch_loops(_ss_patch_Plane(o,n,x,f))
+            if _ss_patch_inside(((point-o).dot(tx),(point-o).dot(y)),loops) and (hit is None or t<hit[0]):hit=(t,point,socket,pin,o,n,tx)
+    except (ValueError,KeyError,TypeError) as exc:report_user(self,"ERROR",str(exc));return None
+    if hit is None:_ss_patch_preview(self,True);return None
+    _,point,a,b,o,n,x=hit
+    if bool(self._ss_patch_scene_roles_swapped)^bool(getattr(self,"roles_flipped_live",False)):a,b,n=b,a,-n
+    _ss_patch_preview(self,False);self.a,self.b,self.frame_x,self.frame_z,self.plane_center=a,b,x,n,o;self.axis=_world_axis_letter_from_direction(n);self.seam_pos=o[_axis_index(self.axis)]
+    return point

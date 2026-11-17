@@ -40,7 +40,15 @@ from mathutils import Vector
 
 from .utils import report_user
 from .ops_split import warn_if_unapplied_transforms
-from .seam_data import write_freehand_seams
+from .seam_data import (
+    has_freehand_metadata,
+    write_freehand_seams,
+)
+from .seam_migration import (
+    ARCHIVE_KEY,
+    migrate_intact_freehand_seams,
+)
+
 
 
 
@@ -1277,8 +1285,10 @@ def _publish_freehand_parts(
     root_linked = False
     job = None
     objects = []
+    metadata_rollback = None
 
     try:
+
         if root is None:
             root = bpy.data.collections.new(
                 PARTS_COLLECTION_NAME
@@ -1322,7 +1332,16 @@ def _publish_freehand_parts(
             tolerance=operator._cut_tolerance,
         )
 
+        # Update world transforms before validating result cap ownership.
         context.view_layer.update()
+
+        # Transfer existing contacts only after new seam documents exist.
+        # The callback restores source, results, and external partners.
+        metadata_rollback = migrate_intact_freehand_seams(
+            source,
+            objects,
+        )
+
 
 
         # Never hide the source when results are excluded or invisible.
@@ -1343,15 +1362,29 @@ def _publish_freehand_parts(
 
         context.view_layer.objects.active = objects[0]
 
-        # Hide the original only after every result has been published.
+        # # Hide the original only after every result has been published.
         source.hide_set(True)
         source.hide_render = True
 
         return objects
 
     except Exception:
+        # Restore external relationships before deleting their result owners.
+        if metadata_rollback is not None:
+            try:
+                metadata_rollback()
+            except Exception as rollback_error:
+                # Keep the objects available if metadata restoration fails.
+                # Deleting them could leave external partners dangling.
+                raise RuntimeError(
+                    "Freehand publication failed and metadata rollback "
+                    "was incomplete. Result objects were retained to avoid "
+                    "deleting referenced seam owners."
+                ) from rollback_error
+
         # Roll back only the objects and collections owned by this operation.
         for obj in objects:
+
             bpy.data.objects.remove(
                 obj,
                 do_unlink=True,
@@ -1631,17 +1664,13 @@ class SNAP_OT_freehand_cut(Operator):
                 "Shape keys are not supported."
             )
 
-        # Seam migration is deliberately reserved for stage C.
-        if any(
-            str(key).startswith("snapsplit_seam")
-            for key in self._obj.keys()
-        ):
+        # Archived sources no longer own active seam relationships.
+        if ARCHIVE_KEY in self._obj:
             raise ValueError(
-                "The source has existing seam metadata. "
-                "Repeated cutting requires seam migration "
-                "and is not supported in this stage."
-
+                "This object is an archived Freehand source. "
+                "Use an active result object for further cutting."
             )
+
 
         # Result objects do not inherit rigging, animation or constraints.
         if (
@@ -1660,7 +1689,15 @@ class SNAP_OT_freehand_cut(Operator):
             context.scene.snapsplit.cap_seams_during_split
         )
 
+        # Migrating existing contacts requires closed new result parts.
+        if has_freehand_metadata(self._obj) and not cap_seams:
+            raise ValueError(
+                "Repeated Freehand cutting requires "
+                "'Cap seams during split' to be enabled."
+            )
+
         meshes, seam_regions = _build_freehand_meshes(
+
             self,
             cap_seams,
         )

@@ -1,0 +1,17 @@
+{
+  "files": {
+    "ops_connectors.py": {
+      "after_mode": 436,
+      "after_sha256": "ef243cbe9c758cf5574fda119e0d1f93e06eb0d4926834c67aae4aaaf2092ebc",
+      "before_mode": 436,
+      "before_sha256": "64f8d8bbc03ebfa3b9ffbc567fde00e1dfae51c1b036cd044e355ed961442afc"
+    },
+    "seam_regions.py": {
+      "after_mode": 436,
+      "after_sha256": "8aad3b46d622560e4c21c114fb7486fe47d6a1942541f6a1d78251bb8739738e",
+      "before_mode": 436,
+      "before_sha256": "4c4277a25c999d9ba65b09d65d255d69e20dee861d35eb2e7eb2a8ba7d04e497"
+    }
+  },
+  "format": 3
+}
