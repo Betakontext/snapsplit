@@ -38,6 +38,8 @@ from .seam_data import (
     has_freehand_metadata,
     resolve_freehand_plane,
 )
+from .contact_geometry import resolve_current_contact
+
 
 
 
@@ -599,50 +601,10 @@ def diagnose_selected_freehand_pair():
 
 
 def _resolve_pair_raw(obj_p, obj_q):
-    """Resolve a touching pair into (a, b, axis, seam_pos, sign[, plane]) or None.
-    Role rule (identical for cut parts and parts joined by Align Faces):
-    - a = socket part (DIFFERENCE), lies on the +axis side of the seam
-    - b = pin part (UNION), lies on the -axis side of the seam
-    The connector frame z points from B towards A, i.e. along the +world axis,
-    so the pin is embedded in B (negative side) and protrudes into A. The snap
-    sphere ring is placed on the protruding half and is therefore visible.
-    'sign' is always +1 and kept only so that all callers stay unchanged.
-    """
-    # Route Freehand seams through the existing explicit-plane pipeline.
-    # Invalid or unrelated Freehand pairs must never use legacy detection.
-    if (
-        has_freehand_metadata(obj_p)
-        or has_freehand_metadata(obj_q)
-    ):
-        try:
-            return _resolve_freehand_pair_raw(obj_p, obj_q)
-        except SeamValidationError:
-            return None
+    """Resolve current contact independently of historical seam ownership."""
+    tolerance = max(1e-7, SEAM_CONTACT_TOL_MM * unit_mm())
+    return resolve_current_contact(obj_p, obj_q, tolerance)
 
-
-    # Slanted seam stored by Align Faces, validated against the real vertices.
-    # Only returned for planes that are NOT parallel to a world axis, so axis-parallel
-    # seams keep the box based detection below and their results do not change.
-    slanted = _resolve_pair_plane(obj_p, obj_q)
-    if slanted is not None:
-        s_a, s_b, s_origin, s_z, s_x = slanted
-        s_letter = _world_axis_letter_from_direction(s_z)   # dominant axis, for legacy code
-        s_pos = float(s_origin[_axis_index(s_letter)])
-        # 6th element: (origin, z from pin to socket, in-plane tangent x)
-        return s_a, s_b, s_letter, s_pos, 1, (s_origin, s_z, s_x)
-
-    contact = _detect_seam_contact(obj_p, obj_q)
-    if contact is None:
-        return None
-    axis, seam_pos, sign_q = contact  # sign_q describes Q relative to P
-
-    if sign_q > 0:
-        # Q lies on the +axis side of P -> Q is the socket part (A), P the pin part (B)
-        a, b = obj_q, obj_p
-    else:
-        # Q lies on the -axis side of P -> P is the socket part (A), Q the pin part (B)
-        a, b = obj_p, obj_q
-    return a, b, axis, seam_pos, 1
 
 
 def _build_connector_pairs(parts, fallback_axis, warn=False):
@@ -669,33 +631,16 @@ def _build_connector_pairs(parts, fallback_axis, warn=False):
         return pairs
 
 
-    # Never guess contacts when Freehand metadata requires an explicit partner.
-    if any(has_freehand_metadata(obj) for obj in objs):
-        if warn:
-            report_user(
-                None,
-                'WARNING',
-                "No valid closed Freehand seam was found between the "
-                "selected parts. No Split Axis fallback was used. "
-                "Run the Freehand seam diagnostic for details.",
-            )
-        return []
+    if warn:
+        report_user(
+            None,
+            'WARNING',
+            "No shared planar contact area was found between "
+            "the selected parts. No Split Axis fallback was used.",
+        )
 
+    return []
 
-
-    # Legacy fallback: sort along the scene split axis
-    if warn and len(objs) >= 2:
-        report_user(None, 'WARNING',
-                    'No face contact detected between the parts; using the Split Axis setting.')
-    idx = _axis_index(fallback_axis)
-    ordered = sorted(objs, key=lambda o: o.location[idx])
-    fb = []
-    for k in range(len(ordered) - 1):
-        lo, hi = ordered[k], ordered[k + 1]
-        # Fallback role rule: lower coordinate = A (socket), higher coordinate = B (pin)
-        fb.append((lo, hi, fallback_axis, None, 1))
-    # Apply the pin/socket swap to the fallback pairs as well
-    return [_maybe_swap(t) for t in fb]
 
 
 
@@ -3460,41 +3405,14 @@ class SNAP_OT_place_connectors_click(Operator):
             self.a, self.b, self.axis, self.seam_pos, sign = resolved[:5]
             slanted_plane = resolved[5] if len(resolved) > 5 else None
         else:
-            # Reject invalid Freehand relationships before the legacy fallback.
-            if any(has_freehand_metadata(obj) for obj in sel):
-                message = (
-                    "No shared Freehand seam was found between "
-                    "the selected parts."
-                )
+            report_user(
+                self,
+                'ERROR',
+                "No shared planar contact area was found. "
+                "Select two parts that currently touch face-to-face.",
+            )
+            return {'CANCELLED'}
 
-                try:
-                    _resolve_freehand_pair_raw(sel[0], sel[1])
-                except SeamValidationError as exc:
-                    message = str(exc)
-
-                report_user(self, 'ERROR', message)
-                return {'CANCELLED'}
-
-            # Legacy fallback: scene Split Axis, lower coordinate = A (socket), higher = B (pin)
-
-            fb_axis = props.split_axis
-            fb_idx = _axis_index(fb_axis)
-            lo, hi = sorted(sel, key=lambda o: o.location[fb_idx])
-            self.a, self.b, sign = lo, hi, 1
-            self.axis = fb_axis
-            # Apply the pin/socket swap to the fallback roles as well
-            if _roles_swapped():
-                self.a, self.b, sign = self.b, self.a, -sign
-
-
-
-            report_user(self, 'WARNING',
-                        'No face contact detected between the parts; using the Split Axis setting.')
-            try:
-                self.seam_pos = _pair_seam_plane_pos(self.a, self.b, self.axis, props)
-            except Exception:
-                report_user(self, 'ERROR', 'Could not compute seam plane.')
-                return {'CANCELLED'}
 
         # Insertion direction (points from B (pin) towards A (socket)); used by preview and placement
 
