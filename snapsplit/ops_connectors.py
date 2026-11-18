@@ -1781,6 +1781,68 @@ def _apply_inplane_offset_and_rotation(M: Matrix, offset_u_mm: float, offset_v_m
     return M @ T @ R
 
 
+def _apply_connector_local_placement(M, props):
+    """Apply shared offsets and individual rotation exactly once."""
+    return _apply_inplane_offset_and_rotation(
+        M,
+        offset_u_mm=float(
+            getattr(props, "dovetail_inplane_offset_u_mm", 0.0)
+        ),
+        offset_v_mm=float(
+            getattr(props, "dovetail_inplane_offset_v_mm", 0.0)
+        ),
+        rotation_deg=float(
+            getattr(props, "dovetail_inplane_rotation_deg", 0.0)
+        ),
+    )
+
+
+def _rotate_connector_positions_around_center(
+    points, normal, props, x_hint=None
+):
+    """Rotate a complete LINE/GRID layout without changing connector frames.
+
+    The pivot is the center of the layout's bounds in seam-plane coordinates.
+    The complete point set must be supplied before any preview-cap truncation.
+    Offsets are deliberately applied later in the fixed seam-plane frame.
+    """
+    positions = [Vector(point).copy() for point in points]
+
+    if len(positions) < 2:
+        return positions
+
+    angle_deg = float(
+        getattr(props, "connector_rotation_around_center_deg", 0.0)
+    )
+    if abs(angle_deg) < 1e-12:
+        return positions
+
+    x, y, z = _orthonormal_frame_from_z(normal, x_hint)
+
+    # Use a nearby reference to reduce cancellation at large world coordinates.
+    reference = positions[0]
+    relative = [point - reference for point in positions]
+
+    u_values = [delta.dot(x) for delta in relative]
+    v_values = [delta.dot(y) for delta in relative]
+    n_values = [delta.dot(z) for delta in relative]
+
+    center_u = 0.5 * (min(u_values) + max(u_values))
+    center_v = 0.5 * (min(v_values) + max(v_values))
+    center_n = sum(n_values) / len(n_values)
+
+    center = (
+        reference
+        + x * center_u
+        + y * center_v
+        + z * center_n
+    )
+    rotation = Matrix.Rotation(radians(angle_deg), 3, z)
+
+    return [
+        center + rotation @ (point - center)
+        for point in positions
+    ]
 
 def _compute_edge_to_edge_span_width(a, b, axis, seam_pos, margin_pct=5.0):
     """Return the span length along the longer in-plane overlap axis on the seam plane (scene units)."""
@@ -2052,6 +2114,10 @@ def place_one_cyl_pin_at(a, b, axis, point_world, frame_z=None, props=None, name
         (0,   0,   0,   1.0),
     ))
 
+    # Apply shared placement before creating connector and socket geometry.
+    M = _apply_connector_local_placement(M, props)
+
+
     seg = int(getattr(props, "pin_segments", 32))
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
@@ -2094,6 +2160,10 @@ def place_one_rect_tenon_at(a, b, axis, point_world, frame_z=None, props=None, n
         (x.z, y.z, z.z, p_embed.z),
         (0,   0,   0,   1.0),
     ))
+
+    # Apply shared placement before creating connector and socket geometry.
+    M = _apply_connector_local_placement(M, props)
+
 
     cutters_coll = ensure_collection("_SnapSplit_Cutters")
 
@@ -2668,6 +2738,13 @@ def place_connectors_between(parts, axis, count, ctype, props):
         else:
             points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
 
+        # Rotate the complete layout once, before any geometry is modified.
+        points = _rotate_connector_positions_around_center(
+            points,
+            normal=naxis,
+            props=props,
+            x_hint=x_hint,
+        )
 
 
         ctype_for_pair = getattr(props, "connector_type", ctype)
@@ -2728,6 +2805,14 @@ def place_connectors_between(parts, axis, count, ctype, props):
                 (x.z, y.z, z.z, p_embed.z),
                 (0,   0,   0,   1.0),
             ))
+
+            # Pin and tenon branches use this shared matrix directly.
+            # Dovetail and Custom build their own matrices further below.
+            if ctype_cur in {
+                "CYL_PIN", "SNAP_PIN", "RECT_TENON", "SNAP_TENON"
+            }:
+                M = _apply_connector_local_placement(M, props)
+
 
             if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
                 seg = int(getattr(props, "pin_segments", 32))
@@ -3158,6 +3243,14 @@ def update_connector_placement_preview(context):
             else:
                 points = distribute_points_line_on_seam(a, b, cols, axis, seam_pos, margin_pct=margin_pct)
 
+            # Match batch placement and keep the pivot independent of the cap.
+            points = _rotate_connector_positions_around_center(
+                points,
+                normal=naxis,
+                props=props,
+                x_hint=x_hint,
+            )
+
 
             for p in points:
                 if created_count >= AUTOPREVIEW_CAP:
@@ -3227,6 +3320,13 @@ def update_connector_placement_preview(context):
                         r_ring = half_u_at_ring + protr_scene - sph_r_scene
                         _make_ring(M, ring_z, r_ring, d_sph_mm, name_base)
 
+                    # Dovetail is fully handled; do not create a fallback tenon.
+
+
+
+
+                    continue
+
 
                 if ctype_cur == "CUSTOM":
                     source_obj = getattr(props, "custom_connector_object", None)
@@ -3295,6 +3395,10 @@ def update_connector_placement_preview(context):
                     (x.z, y.z, z.z, p_embed.z),
                     (0,   0,   0,   1.0),
                 ))
+
+                # Match the final pin/tenon matrix, including snap-sphere frames.
+                M = _apply_connector_local_placement(M, props)
+
 
                 wire_obj = None
                 if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
@@ -3800,18 +3904,9 @@ class SNAP_OT_place_connectors_click(Operator):
                     if hit is not None:
                         M = self._build_frame_at(hit)
                         if self.preview_obj:
-
-                            ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
-                            # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
-                            if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
-                                M = _apply_inplane_offset_and_rotation(
-                                    M,
-                                    offset_u_mm=float(getattr(self.props, "dovetail_inplane_offset_u_mm", 0.0)),
-                                    offset_v_mm=float(getattr(self.props, "dovetail_inplane_offset_v_mm", 0.0)),
-                                    rotation_deg=float(getattr(self.props, "dovetail_inplane_rotation_deg", 0.0))
-                                )
-
+                            # The frame already contains shared placement.
                             self.preview_obj.matrix_world = M
+
 
                         if getattr(self, "preview_objs", None) and len(self.preview_objs) > 1:
                             try:
@@ -3979,37 +4074,52 @@ class SNAP_OT_place_connectors_click(Operator):
         return ray_origin + ray_dir * t
 
     def _build_frame_at(self, point_world):
-        """Build a local placement frame (Matrix) at a world point based on axis and embed depth.
+        """Build the final single-connector frame for preview and snap spheres.
 
-        Note: For preview, we use tenon_depth_mm by legacy for non-dovetail types.
-        Dovetail placement later overrides depth with dovetail_depth_mm.
+        A single click has no distributed layout, so center rotation does not
+        move its position. Shared offsets and individual rotation still apply.
         """
-        # Uses the in-plane tangent of a slanted seam if there is one (frame_x is None otherwise)
-        x, y, z = _orthonormal_frame_from_z(self.frame_z, getattr(self, "frame_x", None))
+        x, y, z = _orthonormal_frame_from_z(
+            self.frame_z,
+            getattr(self, "frame_x", None),
+        )
 
+        ctype = getattr(self.props, "connector_type", "CYL_PIN")
 
-        ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
-        if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
-            L_scene = float(self.props.pin_length_mm) * unit_mm()
-        elif ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
-            L_scene = float(getattr(self.props, "dovetail_depth_mm", 8.0)) * unit_mm()
-        elif ctype_cur == "CUSTOM":
-            # Use the Custom Connector's own depth so the preview/embed offset
-            # matches the actual placement in place_one_custom_connector_at().
-            L_scene = float(getattr(self.props, "custom_connector_depth_mm", 8.0)) * unit_mm()
+        if ctype in {"CYL_PIN", "SNAP_PIN"}:
+            depth_mm = float(
+                getattr(self.props, "pin_length_mm", 8.0)
+            )
+        elif ctype in {"DOVETAIL", "SNAP_DOVETAIL"}:
+            depth_mm = float(
+                getattr(self.props, "dovetail_depth_mm", 8.0)
+            )
+        elif ctype == "CUSTOM":
+            depth_mm = float(
+                getattr(self.props, "custom_connector_depth_mm", 8.0)
+            )
         else:
-            L_scene = float(getattr(self.props, "tenon_depth_mm", 8.0)) * unit_mm()
+            depth_mm = float(
+                getattr(self.props, "tenon_depth_mm", 8.0)
+            )
 
+        embed_fraction = (
+            float(getattr(self.props, "pin_embed_pct", 50.0)) * 0.01
+        )
+        origin = (
+            Vector(point_world)
+            - z * (embed_fraction * depth_mm * unit_mm())
+        )
 
-        embed_pct = float(getattr(self.props, "pin_embed_pct", 50.0)) * 0.01
-        p_embed = point_world - z * (embed_pct * L_scene)
-
-        return Matrix((
-            (x.x, y.x, z.x, p_embed.x),
-            (x.y, y.y, z.y, p_embed.y),
-            (x.z, y.z, z.z, p_embed.z),
-            (0,   0,   0,   1.0),
+        M = Matrix((
+            (x.x, y.x, z.x, origin.x),
+            (x.y, y.y, z.y, origin.y),
+            (x.z, y.z, z.z, origin.z),
+            (0.0, 0.0, 0.0, 1.0),
         ))
+
+        return _apply_connector_local_placement(M, self.props)
+
 
 
 # ---------------------------

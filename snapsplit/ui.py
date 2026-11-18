@@ -36,6 +36,63 @@ def _exists(obj, attr):
     except Exception:
         return False
 
+def _draw_connector_placement(layout, props):
+    """Draw one shared placement section for every connector type."""
+    placement = layout.box()
+    placement.label(text='Placement', icon='ORIENTATION_GLOBAL')
+
+    distribution = getattr(props, "connector_distribution", "LINE")
+
+    if _exists(props, "connectors_per_seam"):
+        placement.prop(
+            props,
+            "connectors_per_seam",
+            text='Connectors per Seam',
+        )
+
+    if distribution == "GRID" and _exists(props, "connectors_rows"):
+        placement.prop(props, "connectors_rows", text='Rows')
+
+    if _exists(props, "connector_margin_pct"):
+        placement.prop(
+            props, "connector_margin_pct", text='Margin (%)'
+        )
+
+    placement.separator()
+
+    fields = (
+        (
+            "dovetail_inplane_offset_u_mm",
+            'Offset along Width (mm)',
+        ),
+        (
+            "dovetail_inplane_offset_v_mm",
+            'Offset along Length (mm)',
+        ),
+        (
+            "dovetail_inplane_rotation_deg",
+            'Rotation in plane (deg)',
+        ),
+        (
+            "connector_rotation_around_center_deg",
+            'Rotation around center (deg)',
+        ),
+    )
+    for identifier, label in fields:
+        if _exists(props, identifier):
+            placement.prop(props, identifier, text=label)
+
+    if distribution == "GRID":
+        placement.label(
+            text='Connectors per Seam sets the number of columns.',
+            icon='INFO',
+        )
+
+    placement.label(
+        text='Count, margin and center rotation apply to LINE/GRID.',
+        icon='INFO',
+    )
+
 
 class SNAP_PT_panel(Panel):
     """Main SnapSplit UI panel in the 3D Viewport N-Panel."""
@@ -157,15 +214,6 @@ class SNAP_PT_panel(Panel):
         if getattr(props, "ui_more_conn", False):
             adv = box.column(align=True)
             dist = getattr(props, "connector_distribution", "LINE")
-            if dist == "LINE":
-                if _exists(props, "connectors_per_seam"):
-                    adv.prop(props, "connectors_per_seam", text='Connectors per Seam')
-            else:
-                r = adv.row(align=True)
-                if _exists(props, "connectors_per_seam"):
-                    r.prop(props, "connectors_per_seam", text='Columns')
-                if _exists(props, "connectors_rows"):
-                    r.prop(props, "connectors_rows", text='Rows')
 
             if _exists(props, "connector_margin_pct"):
                 adv.prop(props, "connector_margin_pct", text='Margin (%)')
@@ -298,70 +346,12 @@ class SNAP_PT_panel(Panel):
                 #     span_box.prop(props, "dovetail_span_margin_pct", text=tr("ui.dovetail_span_margin_pct", "Auto-span End Margin (%)"))
                 # span_box.label(text=tr("ui.auto_span_hint", "AUTO span = edge-to-edge along seam; # margin trims ends."), icon='INFO')
 
-                # Placement
-                extra = gbox.box()
-                # extra.label(text=tr("ui.dovetail_extra", "Placement & Sides"),  icon='ORIENTATION_GIMBAL')
-                # In-plane placement controls (offsets along width/length + rotation)
-                # Ensures "Rotation in plane" is visible; ops already apply it in placement and preview.
-                extra.label(text='Placement', icon='ORIENTATION_GLOBAL')
-                if _exists(props, "dovetail_inplane_offset_u_mm") or _exists(props, "dovetail_inplane_offset_v_mm") or _exists(props, "dovetail_inplane_rotation_deg"):
-                    s = gbox.box()
-                    if _exists(props, "dovetail_inplane_offset_u_mm"):
-                        s.prop(props, "dovetail_inplane_offset_u_mm", text='Offset along Width (mm)')
-                    if _exists(props, "dovetail_inplane_offset_v_mm"):
-                        s.prop(props, "dovetail_inplane_offset_v_mm", text='Offset along Length (mm)')
-                    if _exists(props, "dovetail_inplane_rotation_deg"):
-                        s.prop(props, "dovetail_inplane_rotation_deg", text='Rotation in plane (deg)')
-
-            # --- Custom connector ---
-            elif ctype == "CUSTOM":
-                if _exists(props, "custom_connector_object"):
-                    gbox.prop(props, "custom_connector_object", text='Select connector object')
-                if _exists(props, "custom_connector_width_mm"):
-                    gbox.prop(props, "custom_connector_width_mm", text='Custom Width (mm)')
-                if _exists(props, "custom_connector_length_mm"):
-                    gbox.prop(props, "custom_connector_length_mm", text='Custom Length (mm)')
-                if _exists(props, "custom_connector_depth_mm"):
-                    gbox.prop(props, "custom_connector_depth_mm", text='Custom Depth (mm)')
-                if _exists(props, "pin_embed_pct"):
-                    gbox.prop(props, "pin_embed_pct", text='Insert Depth (%)')
-
-                # NEW: Chamfer (reuses the shared add_chamfer_mm property)
-                if _exists(props, "add_chamfer_mm"):
-                    gbox.prop(props, "add_chamfer_mm", text='Chamfer (mm)')
-
-                # NEW: Span Axis / Hard-side Cut (reuses the shared dovetail_* properties)
-                if _exists(props, "dovetail_span_axis"):
-                    gbox.prop(props, "dovetail_span_axis", text='Span Axis')
-                    if str(getattr(props, "dovetail_span_axis", "NONE")) != "NONE":
-                        gbox.label(text='Forces hard-side cut along this axis.', icon='INFO')
-                if _exists(props, "dovetail_hard_side_cut"):
-                    gbox.prop(props, "dovetail_hard_side_cut", text='Hard-side Cut')
-
-                # NEW: Snap Spheres — own checkbox, then the shared snap_* properties
-                if _exists(props, "custom_snap_spheres_enabled"):
-                    s = gbox.box()
-                    s.prop(props, "custom_snap_spheres_enabled", text='Enable Snap Spheres')
-                    if getattr(props, "custom_snap_spheres_enabled", False):
-                        if _exists(props, "snap_spheres_per_side"):
-                            s.prop(props, "snap_spheres_per_side", text='Spheres per side')
-                        if _exists(props, "snap_sphere_diameter_mm"):
-                            s.prop(props, "snap_sphere_diameter_mm", text='Sphere Diameter (mm)')
-                        if _exists(props, "snap_sphere_protrusion_mm"):
-                            s.prop(props, "snap_sphere_protrusion_mm", text='Protrusion (mm)')
-
-                # NEW: Placement (reuses the shared dovetail_inplane_* properties)
-                extra = gbox.box()
-                extra.label(text='Placement', icon='ORIENTATION_GLOBAL')
-                if _exists(props, "dovetail_inplane_offset_u_mm"):
-                    extra.prop(props, "dovetail_inplane_offset_u_mm", text='Offset along Width (mm)')
-                if _exists(props, "dovetail_inplane_offset_v_mm"):
-                    extra.prop(props, "dovetail_inplane_offset_v_mm", text='Offset along Length (mm)')
-                if _exists(props, "dovetail_inplane_rotation_deg"):
-                    extra.prop(props, "dovetail_inplane_rotation_deg", text='Rotation in plane (deg)')
-
             else:
                 gbox.label(text='Unsupported connector type', icon='INFO')
+
+        # Shared placement remains available even when geometry is collapsed.
+        _draw_connector_placement(box, props)
+
 
         layout.separator()
 

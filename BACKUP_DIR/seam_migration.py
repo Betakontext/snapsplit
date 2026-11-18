@@ -156,316 +156,207 @@ def _record_for_object(record, frame, obj):
 
 
 def migrate_intact_freehand_seams(source, results):
-    """Transfer intact contacts without blocking cuts on modified old caps.
+    """Transfer intact old seams and return a metadata rollback callback.
 
-    Modified, divided, or ambiguous old relationships are removed from
-    active seam documents and preserved in contact history.
-
-    Existing connector mesh geometry is never modified here.
-    Return a callback restoring all metadata changed by this function.
+    Newly created seam documents must already exist on all result objects.
+    Intersected, open, or modified old seams are deliberately rejected.
+    No mesh geometry is modified by this function.
     """
-    history_key = "snapsplit_contact_history"
-    property_keys = (
-        DATA_KEY,
-        OBJECT_ID_KEY,
-        ARCHIVE_KEY,
-        history_key,
-    )
-
     if ARCHIVE_KEY in source:
         raise SeamValidationError(
-            "This object is an archived cut source."
+            "This object is an archived cut source. "
+            "Use an active Freehand result or restore the earlier operation."
         )
 
     if DATA_KEY not in source and OBJECT_ID_KEY not in source:
         return lambda: None
 
-    results = list(results)
-    source_pointer = source.as_pointer()
-    result_pointers = [obj.as_pointer() for obj in results]
-
-    if (
-        len(results) < 2
-        or len(set(result_pointers)) != len(results)
-        or source_pointer in result_pointers
-    ):
-        raise SeamValidationError(
-            "Migration requires at least two distinct new result objects."
-        )
-
-    source_document = copy.deepcopy(_validated_document(source))
+    source_document = _validated_document(source)
     source_id = source_document["object_id"]
 
     result_documents = []
+
     for obj in results:
-        if ARCHIVE_KEY in obj:
-            raise SeamValidationError(
-                "A new result unexpectedly contains archived metadata."
-            )
-        result_documents.append(
-            copy.deepcopy(_validated_document(obj))
-        )
+        document = read_seam_data(obj)
 
+        if document is None:
+            raise SeamValidationError(
+                "A new result is missing its newly created seam metadata."
+            )
+
+        result_documents.append(copy.deepcopy(document))
+
+    # Partner changes are accumulated in detached documents first.
     partners = {}
-    events = []
-    event_targets = []
-
-    def matrix_values(obj):
-        """Store the current placement independently of object names."""
-        return [
-            [
-                float(obj.matrix_world[row][column])
-                for column in range(4)
-            ]
-            for row in range(4)
-        ]
-
-    def read_history(obj):
-        """Preserve previous history instead of silently overwriting it."""
-        if history_key not in obj:
-            return []
-
-        raw = obj[history_key]
-        if not isinstance(raw, str):
-            raise SeamValidationError(
-                f"Contact history on '{obj.name}' is not JSON text."
-            )
-
-        try:
-            value = json.loads(raw)
-        except (TypeError, ValueError) as exc:
-            raise SeamValidationError(
-                f"Contact history on '{obj.name}' is invalid."
-            ) from exc
-
-        if not isinstance(value, list):
-            raise SeamValidationError(
-                f"Contact history on '{obj.name}' is not a list."
-            )
-
-        return value
+    planned_transfers = []
 
     for old_record in source_document["seams"]:
-        seam_id = old_record["seam_id"]
+        if not old_record["capped_at_creation"]:
+            raise SeamValidationError(
+                "Migration of existing open seams is not implemented. "
+                "No result or partner metadata was changed."
+            )
+
         partner_id = old_record["partner_id"]
 
         if partner_id not in partners:
             partner = _find_partner(partner_id)
-            pointer = partner.as_pointer()
-
-            if (
-                pointer == source_pointer
-                or pointer in result_pointers
-                or ARCHIVE_KEY in partner
-            ):
-                raise SeamValidationError(
-                    "An existing contact has an invalid external partner."
-                )
-
-            partners[partner_id] = (
-                partner,
-                copy.deepcopy(_validated_document(partner)),
-            )
+            document = copy.deepcopy(_validated_document(partner))
+            partners[partner_id] = (partner, document)
 
         partner, partner_document = partners[partner_id]
         reciprocal = _counterpart(
             partner_document,
             source_id,
-            seam_id,
+            old_record["seam_id"],
         )
 
-        if reciprocal["side"] != -old_record["side"]:
+        if (
+            reciprocal["side"] != -old_record["side"]
+            or not reciprocal["capped_at_creation"]
+        ):
             raise SeamValidationError(
-                "An existing contact has inconsistent reciprocal sides."
+                "An existing seam has inconsistent sides or cap states."
             )
 
-        # Preserve both original records before editing their relationship.
-        event = {
-            "previous_seam_id": seam_id,
-            "source_id": source_id,
-            "partner_id": partner_id,
-            "source_record": copy.deepcopy(old_record),
-            "partner_record": copy.deepcopy(reciprocal),
-            "source_matrix_world": matrix_values(source),
-            "partner_matrix_world": matrix_values(partner),
-        }
+        frame = _world_record(source, old_record)
+        tolerance = _frame_tolerance(frame)
+
+        # Reject already altered old caps before attempting ownership transfer.
+        _verify_current_cap(source, frame, tolerance)
 
         owners = []
+        rejected_results = []
 
-        if old_record["capped_at_creation"]:
-            # Local metadata follows the source's current placement.
-            # The external partner need not currently coincide with it.
-            frame = _world_record(source, old_record)
-            tolerance = _frame_tolerance(frame)
-
-            for index, obj in enumerate(results):
-                try:
-                    _verify_current_cap(obj, frame, tolerance)
-                except SeamValidationError:
-                    # A changed old cap must not block a new mesh cut.
-                    continue
+        for index, obj in enumerate(results):
+            try:
+                _verify_current_cap(obj, frame, tolerance)
+            except SeamValidationError as exc:
+                rejected_results.append(
+                    f"'{obj.name}': {exc}"
+                )
+            else:
                 owners.append(index)
 
-        if len(owners) == 1:
-            owner_index = owners[0]
-            owner = results[owner_index]
-            owner_document = result_documents[owner_index]
+        if len(owners) != 1:
+            seam_id = old_record["seam_id"]
 
-            if any(
-                record["seam_id"] == seam_id
-                for record in owner_document["seams"]
-            ):
-                raise SeamValidationError(
-                    "A migrated seam ID already exists on its new owner."
+            if owners:
+                owner_names = ", ".join(
+                    f"'{results[index].name}'"
+                    for index in owners
+                )
+                summary = (
+                    "The existing seam matches more than one result: "
+                    f"{owner_names}."
+                )
+            else:
+                summary = (
+                    "No result contains a complete cap matching the "
+                    "existing strict contour validation."
                 )
 
-            migrated = _record_for_object(
-                old_record,
-                frame,
-                owner,
+            details = "\n".join(
+                f"  - {message}"
+                for message in rejected_results
             )
-            migrated["side"] = old_record["side"]
-            migrated["partner_id"] = partner_id
-            owner_document["seams"].append(migrated)
 
-            # Keep the partner's own local geometry and placement unchanged.
-            reciprocal["partner_id"] = owner_document["object_id"]
-
-            event["action"] = "TRANSFERRED"
-            event["new_owner_id"] = owner_document["object_id"]
-            targets = [source, partner, owner]
-
-        else:
-            # Do not retain an active link to an archived source.
-            # The complete old relationship survives in the history.
-            partner_document["seams"].remove(reciprocal)
-
-            event["action"] = "RETIRED"
-            event["reason"] = (
-                "The old contact was open, modified, divided, or "
-                "could not be assigned to one intact result cap."
+            diagnostic = (
+                "[SnapSplit] Existing seam migration rejected\n"
+                f"Source: '{source.name}'\n"
+                f"Seam ID: {seam_id}\n"
+                f"Partner: '{partner.name}'\n"
+                f"World tolerance: {tolerance:.9g}\n"
+                f"{summary}"
             )
-            targets = [source, partner, *results]
 
-        events.append(event)
-        event_targets.append(targets)
+            if details:
+                diagnostic += "\nRejected results:\n" + details
 
-    touched = {}
-    for obj in [
-        source,
-        *results,
-        *(obj for obj, _document in partners.values()),
-    ]:
-        touched[obj.as_pointer()] = obj
+            # Keep full per-result diagnostics available in Blender's console.
+            print(diagnostic)
 
-    histories = {
-        pointer: read_history(obj)
-        for pointer, obj in touched.items()
-    }
+            raise SeamValidationError(
+                f"Existing seam '{seam_id}' on '{source.name}' "
+                f"could not be migrated. {summary} "
+                "This can indicate changed edge subdivision, a split "
+                "contact region, or invalid result geometry. "
+                "See the system console for individual validation errors. "
+                "Contact-region splitting is not implemented in this version."
+            )
 
-    for event, targets in zip(events, event_targets):
-        seen = set()
-        for obj in targets:
-            pointer = obj.as_pointer()
-            if pointer not in seen:
-                histories[pointer].append(copy.deepcopy(event))
-                seen.add(pointer)
 
-    # Prepare all payloads before changing any existing properties.
-    writes = []
+        owner_index = owners[0]
+        owner = results[owner_index]
+        owner_document = result_documents[owner_index]
 
-    for obj, document in zip(results, result_documents):
-        writes.append((obj, DATA_KEY, _encode(document)))
+        if any(
+            record["seam_id"] == old_record["seam_id"]
+            for record in owner_document["seams"]
+        ):
+            raise SeamValidationError(
+                "The migrated seam ID already exists on its new owner."
+            )
 
-    for partner, document in partners.values():
-        if document["seams"]:
-            writes.append((partner, DATA_KEY, _encode(document)))
-        else:
-            # An empty active document would fail the existing validator.
-            # History alone must not mark the partner as archived.
-            writes.append((partner, DATA_KEY, None))
-            writes.append((partner, OBJECT_ID_KEY, None))
+        migrated = _record_for_object(old_record, frame, owner)
+        owner_document["seams"].append(migrated)
 
-    for pointer, obj in touched.items():
-        writes.append((
-            obj,
-            history_key,
-            _encode(histories[pointer]),
-        ))
+        # Keep the seam ID and external partner ID; replace only its owner.
+        reciprocal["partner_id"] = owner_document["object_id"]
 
-    archive = {
+        planned_transfers.append({
+            "seam_id": old_record["seam_id"],
+            "new_owner_id": owner_document["object_id"],
+        })
+
+    # Serialize every payload before touching existing objects.
+    changes = [
+        (obj, _encode(document))
+        for obj, document in zip(results, result_documents)
+    ]
+    changes.extend(
+        (obj, _encode(document))
+        for obj, document in partners.values()
+    )
+
+    archive = _encode({
         "version": 1,
         "state": "REPLACED_BY_FREEHAND_RESULTS",
         "previous_document": source_document,
-        "transfers": events,
-    }
+        "transfers": planned_transfers,
+    })
 
-    writes.extend([
-        (source, ARCHIVE_KEY, _encode(archive)),
-        (source, DATA_KEY, None),
-        (source, OBJECT_ID_KEY, None),
-    ])
+    touched = [source, *results]
+    touched.extend(obj for obj, _document in partners.values())
 
-    snapshots = [
-        (
-            obj,
-            {
-                key: (
-                    key in obj,
-                    copy.deepcopy(obj[key]) if key in obj else None,
-                )
-                for key in property_keys
-            },
-        )
-        for obj in touched.values()
-    ]
+    snapshots = []
+    seen = set()
+
+    for obj in touched:
+        pointer = obj.as_pointer()
+
+        if pointer not in seen:
+            snapshots.append(_snapshot(obj))
+            seen.add(pointer)
 
     def rollback():
-        """Restore every touched property, attempting all restorations."""
-        failures = []
-
-        for obj, values in reversed(snapshots):
-            for key, (existed, value) in values.items():
-                try:
-                    if existed:
-                        obj[key] = copy.deepcopy(value)
-                    elif key in obj:
-                        del obj[key]
-                except Exception as exc:
-                    failures.append(f"{key}: {exc}")
-
-        if failures:
-            raise RuntimeError(
-                "Contact metadata rollback failed: "
-                + "; ".join(failures)
-            )
+        """Restore source, result, and external partner metadata."""
+        for snapshot in reversed(snapshots):
+            _restore(snapshot)
 
     try:
-        for obj, key, value in writes:
-            if value is None:
-                if key in obj:
-                    del obj[key]
-            else:
-                obj[key] = value
+        for obj, payload in changes:
+            obj[DATA_KEY] = payload
 
-        for obj in results:
-            _validated_document(obj)
+        # Preserve history without retaining an active identity or relationship.
+        source[ARCHIVE_KEY] = archive
+        del source[DATA_KEY]
+        del source[OBJECT_ID_KEY]
 
-        for partner, document in partners.values():
-            if document["seams"]:
-                _validated_document(partner)
-
-    except Exception as exc:
-        try:
-            rollback()
-        except Exception as rollback_exc:
-            raise RuntimeError(
-                f"Contact migration failed: {exc}. "
-                f"Rollback also failed: {rollback_exc}"
-            ) from exc
+    except Exception:
+        rollback()
         raise
 
     return rollback
-
 
 
