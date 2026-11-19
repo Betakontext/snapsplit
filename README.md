@@ -1,33 +1,19 @@
 # SnapSplit
 
-SnapSplit is a Blender add-on for splitting 3D models into printable parts and creating matching connectors and sockets. It is useful for models that exceed your print bed, modular sculptures, props, prototypes, and other projects that need to be assembled after printing.
-
-SnapSplit combines planar segmentation, stroke-based local cuts, hollow-aware seam capping, and connector placement in one workflow. Connector options include pins, tenons, dovetails, snap variants, and custom mesh shapes.
+SnapSplit is a Blender add-on for splitting 3D models into printable parts and creating matching connectors and sockets. It is useful for models that exceed your print bed, modular sculptures, props, prototypes, and other projects that need to be assembled after printing. It combines planar segmentation, stroke-based freehand local cuts, hollow-aware seam capping, and connector placement in one workflow. Connector options include pins, tenons, dovetails, snap variants, and custom mesh shapes.
 
 Material-specific tolerance presets and a manual override help you adjust the fit for your printing process. Final fit depends on your material, printer calibration, print orientation, and connector dimensions.
 
 **Current version: 0.2.1**
 
+Feedback, bug reports, and suggestions are welcome.
+
 ![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SLAIDSHOW.gif?cache=1)
 
-### Why SnapSplit?
-
-SnapSplit brings two common modeling tasks together:
-
-- Splitting large or complex models into manageable parts.
-- Creating matching connector and socket geometry for assembly.
-
-Place connectors along a seam line, distribute them across a grid, or position them individually with mouse clicks. Live Preview helps you inspect placement before applying the connector operations.
-
-SnapSplit also supports splitting and capping **existing hollow models**. It is not a replacement for a dedicated hollowing tool or a final printability check.
-
-Snap variants are intended for glue-free assembly. Test the fit on a small sample before printing a large project.
-
-Feedback, bug reports, and suggestions are welcome.
 
 ### Blender compatibility
 
-The maintainer reports successful testing with:
+Testied with:
 
 - Blender 4.5.3 LTS
 - Blender 4.5.9 LTS
@@ -40,19 +26,16 @@ The maintainer reports successful testing with:
 
 Please report your results with other Blender versions, including the SnapSplit version and the workflow you tested.
 
-**Metadata note:** The current extension manifest declares Blender 4.2.0 as the minimum version, while the legacy `bl_info` metadata specifies Blender 5.2.0. These declarations are not a guarantee that every intervening version has been tested.
-
 ### Installation
 
-1. Download the packaged SnapSplit release ZIP.
+1. Get the packaged SnapSplit release ZIP from Blender Extensions, Superhive or Gumroad.
 2. In Blender, open **Edit → Preferences → Add-ons**.
 3. Open the add-on menu and choose **Install from Disk…**.
 4. Select the SnapSplit ZIP and complete the installation.
 5. Enable SnapSplit if it is not enabled automatically.
 
-The exact installation controls may vary slightly between Blender versions.
 
-If you download the repository rather than a packaged release, create an extension ZIP containing `blender_manifest.toml` and the add-on modules at the archive root. Do not assume that the repository download ZIP is already an installable package.
+If you download the repository rather than a packaged release, create an extension ZIP from /snapsplit containing `blender_manifest.toml` and the add-on modules at the archive root. Do not assume that the repository download ZIP is already an installable package.
 
 ### Blender setup
 
@@ -167,20 +150,6 @@ Repeated cutting of objects that already contain SnapSplit seam metadata is not 
 
 Do not change the source geometry or transforms while the preview is active. Restart Freehand Cut if the source changes.
 
-#### Connectors on Freehand seams
-
-Connector placement on Freehand results is supported only when the seam relationship passes validation. Current requirements include:
-
-- A unique reciprocal seam relationship between the partner parts.
-- Seams that were **capped when the Freehand cut was created**.
-- Matching seam frames and contours.
-- Closed, edge-manifold partner meshes.
-- No active viewport or render modifiers on the partner parts.
-- Supported, non-mirrored transforms.
-
-Capping an initially open Freehand seam later does not, by itself, satisfy the requirement that it was capped at creation.
-
-**Automatic material-boundary and wall-depth validation is not currently enabled for Freehand connectors.** Check that every connector and socket has enough surrounding material, especially on hollow or thin-walled parts.
 
 ### Building connections
 
@@ -500,16 +469,9 @@ These are development ideas, not commitments to a particular release.
 
 ### Feedback and contributions
 
-SnapSplit is developed in my free time. Bug reports, reproducible examples, translation improvements, and focused pull requests are welcome.
+Bug reports, reproducible examples, translation improvements, and focused pull requests are welcome.
 
 For bug reports, please include:
-
-- Your Blender version
-- Your SnapSplit version
-- Steps to reproduce the issue
-- Relevant settings
-- The error message or console output
-- A minimal example file, if you can share it
 
 You can contribute by forking the repository and opening a pull request.
 
