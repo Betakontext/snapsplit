@@ -456,16 +456,7 @@ snapsplit.zip
 
 ### Roadmap
 
-Ideas for future development include:
-
-- Complete default-profile initialization and make its scope explicit.
-- Make export-collection behaviour configurable and consistent.
-- Support repeated cuts through seam-metadata migration.
-- Add material-boundary and wall-depth validation for Freehand connectors.
-- Expand translation coverage, including newer workflow labels.
-- Improve diagnostics, documentation, and automated testing.
-
-These are development ideas, not commitments to a particular release.
+If you have ideas for future development, please let me know :)
 
 ### Feedback and contributions
 
