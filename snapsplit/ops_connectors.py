@@ -2789,7 +2789,7 @@ def place_connectors_between(parts, axis, count, ctype, props):
             ctype_cur = getattr(props, "connector_type", "CYL_PIN")
             if ctype_cur in {"CYL_PIN", "SNAP_PIN"}:
                 L_scene = float(props.pin_length_mm) * unit_mm()
-            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
+            elif ctype_cur in {"RECT_TENON", "SNAP_TENON", "DOVETAIL", "SNAP_DOVETAIL"}:
                 # For dovetail in batch we will override depth_n via dovetail_depth_mm later
                 L_scene = float(getattr(props, "tenon_depth_mm", 8.0)) * unit_mm()
             elif ctype_cur == "CUSTOM":
@@ -3263,8 +3263,9 @@ def update_connector_placement_preview(context):
                 x, y, z = _orthonormal_frame_from_z(naxis, x_hint)
 
 
-                # --- DOVETAIL / SNAP_DOVETAIL and CUSTOM: dedicated u/v/n frame + in-plane offset/rotation ---
-                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
+                # --- DOVETAIL / SNAP_DOVETAIL: dedicated u/v/n frame + in-plane offset/rotation ---
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+
                     width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
                     length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
                     depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))

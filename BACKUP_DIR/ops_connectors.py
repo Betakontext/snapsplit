@@ -3225,8 +3225,9 @@ def update_connector_placement_preview(context):
                 x, y, z = _orthonormal_frame_from_z(naxis, x_hint)
 
 
-                # --- DOVETAIL / SNAP_DOVETAIL and CUSTOM: dedicated u/v/n frame + in-plane offset/rotation ---
-                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
+                # Custom uses its own source-mesh preview branch below.
+                if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+
                     width_u_mm = float(getattr(props, "dovetail_width_mm", 10.0))
                     length_v_mm = float(getattr(props, "dovetail_length_mm", width_u_mm))
                     depth_n_mm = float(getattr(props, "dovetail_depth_mm", 8.0))
@@ -3883,9 +3884,9 @@ class SNAP_OT_place_connectors_click(Operator):
                         M = self._build_frame_at(hit)
                         if self.preview_obj:
 
-                            ctype_cur = getattr(self.props, "connector_type", "CYL_PIN")
-                            # For dovetail previews, apply in-plane offsets (width/length) + rotation so preview == result
-                            if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL"}:
+                            # Match existing dovetail and custom placement transforms.
+                            if ctype_cur in {"DOVETAIL", "SNAP_DOVETAIL", "CUSTOM"}:
+
                                 M = _apply_inplane_offset_and_rotation(
                                     M,
                                     offset_u_mm=float(getattr(self.props, "dovetail_inplane_offset_u_mm", 0.0)),

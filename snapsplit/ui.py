@@ -215,8 +215,6 @@ class SNAP_PT_panel(Panel):
             adv = box.column(align=True)
             dist = getattr(props, "connector_distribution", "LINE")
 
-            if _exists(props, "connector_margin_pct"):
-                adv.prop(props, "connector_margin_pct", text='Margin (%)')
 
 
 
@@ -346,11 +344,118 @@ class SNAP_PT_panel(Panel):
                 #     span_box.prop(props, "dovetail_span_margin_pct", text=tr("ui.dovetail_span_margin_pct", "Auto-span End Margin (%)"))
                 # span_box.label(text=tr("ui.auto_span_hint", "AUTO span = edge-to-edge along seam; # margin trims ends."), icon='INFO')
 
+            # --- Custom connector ---
+            elif ctype == "CUSTOM":
+                # Restore source selection and custom connector dimensions.
+                base_box = gbox.box()
+                base_box.label(text='Base size', icon='MESH_CUBE')
+
+                if _exists(props, "custom_connector_object"):
+                    base_box.prop(
+                        props,
+                        "custom_connector_object",
+                        text='Select connector object',
+                    )
+
+                if _exists(props, "custom_connector_width_mm"):
+                    base_box.prop(
+                        props,
+                        "custom_connector_width_mm",
+                        text='Custom Width (mm)',
+                    )
+
+                if _exists(props, "custom_connector_length_mm"):
+                    base_box.prop(
+                        props,
+                        "custom_connector_length_mm",
+                        text='Custom Length (mm)',
+                    )
+
+                if _exists(props, "custom_connector_depth_mm"):
+                    base_box.prop(
+                        props,
+                        "custom_connector_depth_mm",
+                        text='Custom Depth (mm)',
+                    )
+
+                if _exists(props, "pin_embed_pct"):
+                    base_box.prop(
+                        props,
+                        "pin_embed_pct",
+                        text='Insert Depth (%)',
+                    )
+
+                if _exists(props, "add_chamfer_mm"):
+                    base_box.prop(
+                        props,
+                        "add_chamfer_mm",
+                        text='Chamfer (mm)',
+                    )
+
+                # Reuse the existing shared dovetail span and clipping settings.
+                if _exists(props, "dovetail_span_axis"):
+                    base_box.prop(
+                        props,
+                        "dovetail_span_axis",
+                        text='Span Axis',
+                    )
+                    if str(
+                        getattr(props, "dovetail_span_axis", "NONE")
+                    ) != "NONE":
+                        base_box.label(
+                            text='Forces hard-side cut along this axis.',
+                            icon='INFO',
+                        )
+
+                if _exists(props, "dovetail_hard_side_cut"):
+                    base_box.prop(
+                        props,
+                        "dovetail_hard_side_cut",
+                        text='Hard-side Cut',
+                    )
+
+                # Preserve optional snap spheres for custom connectors.
+                if _exists(props, "custom_snap_spheres_enabled"):
+                    snap_box = gbox.box()
+                    snap_box.prop(
+                        props,
+                        "custom_snap_spheres_enabled",
+                        text='Enable Snap Spheres',
+                    )
+
+                    if bool(
+                        getattr(props, "custom_snap_spheres_enabled", False)
+                    ):
+                        if _exists(props, "snap_spheres_per_side"):
+                            snap_box.prop(
+                                props,
+                                "snap_spheres_per_side",
+                                text='Spheres per side',
+                            )
+
+                        if _exists(props, "snap_sphere_diameter_mm"):
+                            snap_box.prop(
+                                props,
+                                "snap_sphere_diameter_mm",
+                                text='Sphere Diameter (mm)',
+                            )
+
+                        if _exists(props, "snap_sphere_protrusion_mm"):
+                            snap_box.prop(
+                                props,
+                                "snap_sphere_protrusion_mm",
+                                text='Protrusion (mm)',
+                            )
+
+                # Shared placement is already drawn below the type-specific UI.
+
             else:
                 gbox.label(text='Unsupported connector type', icon='INFO')
 
-        # Shared placement remains available even when geometry is collapsed.
-        _draw_connector_placement(box, props)
+            # Show shared placement only when Connections is expanded.
+            # Keep it below all connector-specific settings.
+            _draw_connector_placement(box, props)
+
 
 
         layout.separator()
