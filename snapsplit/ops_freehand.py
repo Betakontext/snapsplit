@@ -41,6 +41,8 @@ from mathutils import Vector
 from .utils import report_user
 from .ops_split import warn_if_unapplied_transforms
 from .seam_data import write_freehand_seams
+from .seam_migration import migrate_intact_freehand_seams
+
 
 
 
@@ -1277,6 +1279,7 @@ def _publish_freehand_parts(
     root_linked = False
     job = None
     objects = []
+    rollback_seams = None
 
     try:
         if root is None:
@@ -1322,6 +1325,13 @@ def _publish_freehand_parts(
             tolerance=operator._cut_tolerance,
         )
 
+        # Transfer old seams only after all new result identities exist.
+        rollback_seams = migrate_intact_freehand_seams(
+            source,
+            objects,
+        )
+
+
         context.view_layer.update()
 
 
@@ -1350,7 +1360,11 @@ def _publish_freehand_parts(
         return objects
 
     except Exception:
-        # Roll back only the objects and collections owned by this operation.
+        # Restore metadata while all referenced objects still exist.
+        if rollback_seams is not None:
+            rollback_seams()
+
+        # Remove newly published objects only after metadata restoration.
         for obj in objects:
             bpy.data.objects.remove(
                 obj,
@@ -1359,6 +1373,7 @@ def _publish_freehand_parts(
 
         if job is not None:
             bpy.data.collections.remove(job)
+
 
         if root_created:
             bpy.data.collections.remove(root)
@@ -1630,18 +1645,26 @@ class SNAP_OT_freehand_cut(Operator):
             raise ValueError(
                 "Shape keys are not supported."
             )
+        # Archived backups must not become active seam owners accidentally.
+        if "snapsplit_seam_archive" in self._obj:
+            raise ValueError(
+                "This object is an archived cut source. "
+                "Use an active Freehand result or undo the previous cut."
+            )
 
-        # Seam migration is deliberately reserved for stage C.
+        # Legacy metadata needs its own migration path.
         if any(
             str(key).startswith("snapsplit_seam")
+            and str(key) not in {
+                "snapsplit_seam_data",
+                "snapsplit_seam_object_id",
+            }
             for key in self._obj.keys()
         ):
             raise ValueError(
-                "The source has existing seam metadata. "
-                "Repeated cutting requires seam migration "
-                "and is not supported in this stage."
-
+                "The source contains unsupported legacy seam metadata."
             )
+
 
         # Result objects do not inherit rigging, animation or constraints.
         if (

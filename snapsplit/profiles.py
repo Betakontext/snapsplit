@@ -621,11 +621,11 @@ class SnapSplitProps(PropertyGroup):
         default=False,
     )
 
-    # In-plane placement: offsets (mm) along both seam-plane axes (u = width, v = length)
-    # and rotation (deg) within the cut plane.
+    # Keep the legacy RNA identifiers to preserve values in existing scenes.
+    # These placement settings are shared by every connector type.
     dovetail_inplane_offset_u_mm: FloatProperty(
         name='Offset along Width (mm)',
-        description='Offset within the cut plane along the width (u) axis to shift the dovetail pattern',
+        description='Shift connectors along the fixed seam-plane width axis',
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
@@ -634,22 +634,31 @@ class SnapSplitProps(PropertyGroup):
 
     dovetail_inplane_offset_v_mm: FloatProperty(
         name='Offset along Length (mm)',
-        description='Offset within the cut plane along the length (v) axis to shift the dovetail pattern',
+        description='Shift connectors along the fixed seam-plane length axis',
         default=0.0,
         soft_min=-100000.0,
         soft_max=100000.0,
         update=_snapsplit_update_connector_preview,
     )
 
-
     dovetail_inplane_rotation_deg: FloatProperty(
         name='Rotation in plane (deg)',
-        description='Rotation within the cut plane to orient the dovetail pattern',
+        description='Rotate each connector around its own insertion axis without moving its position',
         default=0.0,
         soft_min=-180.0,
         soft_max=180.0,
         update=_snapsplit_update_connector_preview,
     )
+
+    connector_rotation_around_center_deg: FloatProperty(
+        name='Rotation around center (deg)',
+        description='Rotate LINE or GRID positions around their shared center in the seam plane without rotating individual connectors',
+        default=0.0,
+        soft_min=-180.0,
+        soft_max=180.0,
+        update=_snapsplit_update_connector_preview,
+    )
+
 
 
 # ---------------------------

@@ -216,14 +216,16 @@ class SeamValidationError(ValueError):
 
 
 def has_freehand_metadata(obj):
-    """Reserve objects carrying either new metadata key for this resolver."""
+    """Reserve active and archived Freehand objects for explicit resolution."""
     return (
         obj is not None
         and (
             DATA_KEY in obj
             or OBJECT_ID_KEY in obj
+            or "snapsplit_seam_archive" in obj
         )
     )
+
 
 
 def _checked_vector(value, label):

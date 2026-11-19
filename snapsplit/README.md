@@ -6,7 +6,7 @@ SnapSplit combines planar segmentation, stroke-based local cuts, hollow-aware se
 
 Material-specific tolerance presets and a manual override help you adjust the fit for your printing process. Final fit depends on your material, printer calibration, print orientation, and connector dimensions.
 
-**Current version: 0.2.0**
+**Current version: 0.2.1**
 
 ![SnapSplit Slideshow](https://dev.betakontext.de/snapsplit/img/betakontext_snapsplit_SLAIDSHOW.gif?cache=1)
 
@@ -36,6 +36,7 @@ The maintainer reports successful testing with:
 - Blender 5.1.1
 - Blender 5.2.0 LTS
 - Blender 5.2.2 LTS
+- Blender 5.3.0 LTS
 
 Please report your results with other Blender versions, including the SnapSplit version and the workflow you tested.
 
@@ -394,12 +395,13 @@ Choose the material profile directly in the SnapSplit panel and inspect the gene
 
 The installable extension ZIP contains these files at its root:
 
-```text
+```
 snapsplit.zip
 ├── blender_manifest.toml
+├── contact_geometry.py
 ├── __init__.py
-├── localization.py
 ├── LICENCE.txt
+├── localization.py
 ├── ops_align.py
 ├── ops_connectors.py
 ├── ops_freehand.py
@@ -408,11 +410,20 @@ snapsplit.zip
 ├── profiles.py
 ├── README.md
 ├── seam_data.py
+├── seam_migration.py
 ├── ui.py
 └── utils.py
 ```
 
 ### Changelog
+
+#### 0.2.1
+
+
+- Added support for successive Freehand Cuts on previously cut parts.
+- Added support for switching between Freehand Cut and Planar Split within the same workflow.
+- Added **Rotation around center** to rotate the Line/Grid connector arrangement around its center.
+- Unified Placement settings across all connector types.
 
 #### 0.2.0
 
